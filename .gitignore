@@ -9,3 +9,29 @@ __pycache__/
 *.gguf
 *.bin
 pgdata/
+
+# TypeScript incremental build
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+.coverage
+htmlcov/
+
+# Python tools
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+logs/
+
+# TLS / local certs
+*.pem
+*.key
+*.crt
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/

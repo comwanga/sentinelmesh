@@ -1,4 +1,4 @@
-.PHONY: up down logs test test-gateway test-signal smoke seed build-shared
+.PHONY: up down down-clean logs test test-gateway test-signal smoke seed build-shared install lint
 
 up:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
@@ -10,8 +10,19 @@ logs:
 	docker compose logs -f
 
 build-shared:
-	cd shared/crypto && npm ci && npm run build
-	cd shared/nostr && npm ci && npm run build
+	@echo "No shared packages to build in Phase 1."
+
+install:
+	cd services/gateway && npm ci
+	cd apps/pwa && npm ci
+	pip install -r services/signal/requirements.txt
+
+down-clean:
+	docker compose down -v --remove-orphans
+
+lint:
+	cd services/gateway && npx tsc --noEmit
+	cd services/signal && python -m ruff check .
 
 test-gateway:
 	cd services/gateway && npm test
