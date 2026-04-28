@@ -1,0 +1,32 @@
+version: '3.9'
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  gateway:
+    build:
+      context: ./services/gateway
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./services/gateway/src:/app/src:ro
+    environment:
+      NODE_ENV: development
+
+  signal:
+    build:
+      context: ./services/signal
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/signal:/app:ro
+    environment:
+      WHISPER_MODEL: base
