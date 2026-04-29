@@ -28,16 +28,19 @@ export interface EventLocation {
   lat: number
   lng: number
   county: string | null
-  radius_meters: number
+  /** Optional — present when source is a known gazetteer entry */
+  radius_meters?: number
 }
 
 export interface SafetyEvent {
   event_id: string
   event_type: EventType
   severity: Severity
+  /** Max 200 characters */
   title: string
   summary: string | null
   location: EventLocation | null
+  /** 0.0–1.0 */
   confidence: number
   source_count: number
   source_breakdown: Record<string, number>
@@ -48,10 +51,12 @@ export interface SafetyEvent {
   bitcoin_txid: string | null
 }
 
-export interface WsMessage {
-  type: 'NEW_EVENT' | 'EVENT_UPDATED' | 'EVENT_RESOLVED' | 'NEW_REPORT' | 'PROXIMITY_ALERT'
-  payload: SafetyEvent | Record<string, unknown>
-}
+export type WsMessage =
+  | { type: 'NEW_EVENT';       payload: SafetyEvent }
+  | { type: 'EVENT_UPDATED';   payload: SafetyEvent }
+  | { type: 'EVENT_RESOLVED';  payload: { event_id: string } }
+  | { type: 'NEW_REPORT';      payload: Record<string, unknown> }
+  | { type: 'PROXIMITY_ALERT'; payload: Record<string, unknown> }
 
 export interface SentinelError {
   code: string
