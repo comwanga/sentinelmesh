@@ -31,3 +31,14 @@ services:
       - ./services/signal:/app
     environment:
       WHISPER_MODEL: base
+
+  ml-worker:
+    build:
+      context: ./services/signal
+      dockerfile: Dockerfile.dev
+    command: python -m worker.transcriber
+    volumes:
+      - ./services/signal:/app
+    environment:
+      WHISPER_MODEL: base
+

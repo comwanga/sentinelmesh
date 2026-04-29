@@ -1,103 +1,78 @@
-import whisper
-import httpx
-import asyncio
-from io import BytesIO
+"""Radio stream monitoring: queue transcription jobs for ML worker."""
+
+import logging
 from datetime import datetime, timezone
 
+import httpx
+
 import config
-from publisher import emit_event, get_client
-from ingest.deduplicator import is_duplicate
-from nlp.classifier import classify_event
-from nlp.location_extractor import extract_locations
-from nlp.severity_scorer import score_severity
-from nlp.event_fuser import build_event
+from queue_manager import QueueManager
 
-# Load model once at module level — heavy, never reload per request.
-# Uses WHISPER_MODEL env var: "base" in dev, "large-v3" in production.
-_model = whisper.load_model(config.WHISPER_MODEL)
+logger = logging.getLogger(__name__)
 
-# Minimum meaningful transcript length — filters out silence and noise
-MIN_TRANSCRIPT_CHARS = 30
+# Queue manager instance (initialized once per process)
+_queue: QueueManager | None = None
 
 
-async def _capture_audio(stream_url: str, duration_seconds: int = 30) -> BytesIO:
-    """Download a fixed number of bytes from an HLS/MP3 stream (approx 30s at 128kbps)."""
-    target_bytes = (128_000 * duration_seconds) // 8
-    buffer = BytesIO()
-
-    async with httpx.AsyncClient(timeout=60) as client:
-        async with client.stream("GET", stream_url) as response:
-            async for chunk in response.aiter_bytes(chunk_size=4096):
-                buffer.write(chunk)
-                if buffer.tell() >= target_bytes:
-                    break
-
-    buffer.seek(0)
-    return buffer
+async def get_queue() -> QueueManager:
+    """Get or initialize the queue manager."""
+    global _queue
+    if _queue is None:
+        _queue = QueueManager(config.REDIS_URL)
+        await _queue.init()
+    return _queue
 
 
-async def _transcribe_and_process(station_name: str, stream_url: str) -> None:
-    redis_client = await get_client()
-
+async def _capture_audio_metadata(stream_url: str, duration_seconds: int = 30) -> dict:
+    """Check that stream is alive and capture audio segment."""
     try:
-        audio = await _capture_audio(stream_url)
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.head(stream_url)
+            response.raise_for_status()
+        return {
+            "status": "ok",
+            "stream_url": stream_url,
+            "duration": duration_seconds,
+        }
     except Exception as e:
-        print(f"Radio capture failed ({station_name}): {e}")
-        return
-
-    try:
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: _model.transcribe(
-                audio,
-                language=None,          # auto-detect sw or en
-                task="transcribe",
-                initial_prompt="Kenya news broadcast:",
-                fp16=False,
-            ),
-        )
-        text = result.get("text", "").strip()
-    except Exception as e:
-        print(f"Whisper transcription failed ({station_name}): {e}")
-        return
-
-    if len(text) < MIN_TRANSCRIPT_CHARS:
-        return
-
-    if await is_duplicate(text, redis_client):
-        return
-
-    classification = classify_event(text)
-    if classification["confidence"] < 0.4:
-        return
-
-    locations = extract_locations(text)
-    if not locations:
-        return
-
-    signal = {
-        "event_type": classification["event_type"],
-        "severity": score_severity(text),
-        "title": text[:200],
-        "summary": text[:500],
-        "location": locations[0],
-        "confidence": classification["confidence"],
-        "source_type": "radio",
-        "timestamp": datetime.now(timezone.utc),
-    }
-    event = build_event([signal])
-    await emit_event(event)
+        logger.warning(f"Stream check failed: {e}")
+        return {"status": "error", "error": str(e)}
 
 
 async def monitor_radio() -> None:
-    """Transcribe all configured radio streams concurrently. Runs every 30 seconds."""
-    tasks = [
-        _transcribe_and_process(name, url)
-        for name, url in config.RADIO_STREAMS.items()
-    ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    """
+    Monitor all configured radio streams and queue transcription jobs.
 
-    for name, result in zip(config.RADIO_STREAMS.keys(), results):
-        if isinstance(result, Exception):
-            print(f"Radio monitor error ({name}): {result}")
+    Runs every 30 seconds via APScheduler.
+    Instead of transcribing directly (heavy), queue jobs for the ML worker.
+    """
+    queue = await get_queue()
+
+    logger.info("Radio monitor: checking streams and queueing transcription jobs")
+
+    tasks = []
+    for station_name, stream_url in config.RADIO_STREAMS.items():
+        try:
+            # Quick sanity check on stream
+            metadata = await _capture_audio_metadata(stream_url)
+            if metadata["status"] != "ok":
+                logger.warning(f"Radio {station_name}: stream unavailable - {metadata.get('error')}")
+                continue
+
+            # Queue transcription job for ML worker
+            job_id = await queue.enqueue(
+                "transcribe_audio",
+                {
+                    "stream_id": station_name,
+                    "audio_url": stream_url,
+                    "captured_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+
+            logger.info(f"Queued transcription job {job_id} for {station_name}")
+
+        except Exception as e:
+            logger.exception(f"Radio {station_name}: error during job queueing")
+
+    logger.info(f"Radio monitor: queued jobs for {len(config.RADIO_STREAMS)} streams")
+
