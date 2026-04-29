@@ -3,8 +3,10 @@ import os
 import pytest
 
 
-def _reload(monkeypatch, extra: dict = {}):
+def _reload(monkeypatch, extra: dict | None = None):
     """Reload config module with a controlled environment."""
+    if extra is None:
+        extra = {}
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
     for k, v in extra.items():
         monkeypatch.setenv(k, v)
@@ -14,6 +16,8 @@ def _reload(monkeypatch, extra: dict = {}):
 
 
 def test_log_level_defaults_to_info(monkeypatch):
+    # Uses delenv to guarantee LOG_LEVEL is absent even if set in the shell environment.
+    # _reload() doesn't delete pre-existing vars, so we can't use it here.
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
     monkeypatch.delenv("LOG_LEVEL", raising=False)
     import config
