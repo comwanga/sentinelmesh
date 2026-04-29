@@ -1,95 +1,80 @@
-"""ML Worker: Handles Whisper transcription and NLP processing."""
+"""ML Worker: Whisper transcription and NLP pipeline."""
 
 import asyncio
-import json
 import logging
+import os
 from datetime import datetime, timezone
-
-import whisper
 
 import config
 from queue_manager import QueueManager
-from publisher import emit_event
-from ingest.deduplicator import is_duplicate
-from nlp.classifier import classify_event
-from nlp.location_extractor import extract_locations
-from nlp.severity_scorer import score_severity
-from nlp.event_fuser import build_event
+from publisher import emit_event, get_client
+import worker.audio_capture as _audio_capture
 
 logger = logging.getLogger(__name__)
 
-# Load Whisper model ONCE at startup (global, shared by all jobs)
-# Uses WHISPER_MODEL env var: "base" in dev, "large-v3" in production.
-MODEL = whisper.load_model(config.WHISPER_MODEL)
-
-# Minimum meaningful transcript length
 MIN_TRANSCRIPT_CHARS = 30
+TRANSCRIPTION_TIMEOUT = 120  # hard ceiling per job in seconds
+
+# Initialised inside worker_loop(), not at module import time.
+# This prevents the 1-2 GB model load from happening during test collection
+# or if this module is imported for other reasons.
+MODEL = None
+
+
+def _load_model():
+    from faster_whisper import WhisperModel
+    return WhisperModel(config.WHISPER_MODEL, device="cpu", compute_type="int8")
+
+
+def _transcribe(model, audio_path: str) -> str:
+    """Run faster-whisper synchronously; called via run_in_executor."""
+    segments, _ = model.transcribe(
+        audio_path,
+        language=None,           # auto-detect Swahili or English
+        initial_prompt="Kenya news broadcast:",
+        vad_filter=True,         # skip silent gaps, reduces false short transcripts
+    )
+    return " ".join(seg.text for seg in segments).strip()
 
 
 async def process_transcription_job(job_data: dict) -> dict:
-    """
-    Process a transcription job: fetch audio, transcribe, run NLP pipeline.
-
-    Args:
-        job_data: Job with payload containing audio_url, stream_id, etc.
-
-    Returns:
-        Result dict with transcript, event data, or error
-    """
     job_id = job_data["id"]
     payload = job_data["payload"]
+    audio_path = None
 
     try:
-        logger.info(f"Processing transcription job {job_id} from {payload.get('stream_id')}")
+        logger.info(f"Processing job {job_id} from {payload.get('stream_id')}")
 
-        # Download and transcribe (blocking CPU operation, OK in worker context)
-        import httpx
-        from io import BytesIO
+        # Capture a 30-second, frame-safe WAV segment via ffmpeg
+        audio_path = await _audio_capture.capture_audio_segment(payload["audio_url"], duration=30)
 
-        # Capture ~30 seconds of audio from stream
-        target_bytes = (128_000 * 30) // 8  # 128kbps * 30s
-        buffer = BytesIO()
-
-        async with httpx.AsyncClient(timeout=60) as client:
-            async with client.stream("GET", payload["audio_url"]) as response:
-                async for chunk in response.aiter_bytes(chunk_size=4096):
-                    buffer.write(chunk)
-                    if buffer.tell() >= target_bytes:
-                        break
-
-        buffer.seek(0)
-
-        # Transcribe with Whisper (runs in event loop via executor)
+        # Transcribe with a hard timeout — stuck jobs must not block the loop forever
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: MODEL.transcribe(
-                buffer,
-                language=None,  # auto-detect Swahili or English
-                task="transcribe",
-                initial_prompt="Kenya news broadcast:",
-                fp16=False,  # No half-precision needed for CPU
-            ),
+        text = await asyncio.wait_for(
+            loop.run_in_executor(None, _transcribe, MODEL, audio_path),
+            timeout=TRANSCRIPTION_TIMEOUT,
         )
-
-        text = result.get("text", "").strip()
 
         if len(text) < MIN_TRANSCRIPT_CHARS:
             logger.info(f"Job {job_id}: transcript too short ({len(text)} chars)")
             return {"status": "skipped", "reason": "transcript_too_short"}
 
-        # Check for duplicates
-        from publisher import get_client
+        # Lazy imports — spacy and other ML deps are not installed in the dev/test
+        # environment and should not fail at module import time.
+        from ingest.deduplicator import is_duplicate
+        from nlp.classifier import classify_event
+        from nlp.location_extractor import extract_locations
+        from nlp.severity_scorer import score_severity
+        from nlp.event_fuser import build_event
 
         redis_client = await get_client()
         if await is_duplicate(text, redis_client):
-            logger.info(f"Job {job_id}: duplicate detected")
+            logger.info(f"Job {job_id}: duplicate")
             return {"status": "skipped", "reason": "duplicate"}
 
-        # Run NLP pipeline
         classification = classify_event(text)
         if classification["confidence"] < 0.4:
-            logger.info(f"Job {job_id}: low confidence ({classification['confidence']})")
+            logger.info(f"Job {job_id}: low confidence {classification['confidence']}")
             return {"status": "skipped", "reason": "low_confidence"}
 
         locations = extract_locations(text)
@@ -97,7 +82,6 @@ async def process_transcription_job(job_data: dict) -> dict:
             logger.info(f"Job {job_id}: no locations found")
             return {"status": "skipped", "reason": "no_locations"}
 
-        # Build event from signals
         signal = {
             "event_type": classification["event_type"],
             "severity": score_severity(text),
@@ -109,8 +93,6 @@ async def process_transcription_job(job_data: dict) -> dict:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         event = build_event([signal])
-
-        # Emit to gateway
         await emit_event(event)
 
         logger.info(f"Job {job_id}: completed, event emitted")
@@ -121,58 +103,65 @@ async def process_transcription_job(job_data: dict) -> dict:
             "locations": locations,
         }
 
+    except asyncio.TimeoutError:
+        logger.error(f"Job {job_id}: transcription exceeded {TRANSCRIPTION_TIMEOUT}s")
+        return {"status": "failed", "error": f"transcription timeout after {TRANSCRIPTION_TIMEOUT}s"}
+
     except Exception as e:
-        logger.exception(f"Job {job_id}: error during processing")
+        logger.exception(f"Job {job_id}: unhandled error")
         return {"status": "failed", "error": str(e)}
+
+    finally:
+        if audio_path:
+            _audio_capture._safe_unlink(audio_path)
 
 
 async def worker_loop():
-    """
-    Main worker loop: listen on Redis queue, process jobs.
+    global MODEL
 
-    Blocks on queue.transcribe_audio, processes jobs indefinitely.
-    """
+    logging.basicConfig(
+        level=getattr(logging, config.LOG_LEVEL.upper(), logging.INFO),
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
+
+    logger.info(f"Loading Whisper model '{config.WHISPER_MODEL}' ...")
+    MODEL = _load_model()
+    logger.info("Whisper model ready.")
+
     queue = QueueManager(config.REDIS_URL)
     await queue.init()
-
-    logger.info(f"ML Worker started. Whisper model: {config.WHISPER_MODEL}")
+    logger.info("ML Worker started.")
 
     try:
         while True:
-            # Block on queue with 5s timeout (allows graceful shutdown)
             job_data = await queue.dequeue("transcribe_audio", timeout=5)
-
             if not job_data:
                 continue
 
             job_id = job_data["id"]
+            await queue.update_job(job_id, {
+                "status": "running",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            })
 
-            # Update status to running
-            await queue.update_job(job_id, {"status": "running", "started_at": datetime.utcnow().isoformat()})
-
-            # Process the job
             result = await process_transcription_job(job_data)
 
-            # Update job with result
-            await queue.update_job(
-                job_id,
-                {
+            if result["status"] == "failed":
+                # Retry or send to dead-letter — do not silently discard failures
+                await queue.requeue_failed(job_data, result)
+            else:
+                await queue.update_job(job_id, {
                     "status": result.get("status"),
                     "result": result,
-                    "completed_at": datetime.utcnow().isoformat(),
-                },
-            )
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                })
 
-            # Publish to Redis pub/sub for listeners (optional, for real-time dashboards)
-            await queue.publish_result(
-                "worker:transcription_complete",
-                {
-                    "job_id": job_id,
-                    "status": result.get("status"),
-                    "transcript": result.get("transcript"),
-                    "stream_id": job_data["payload"].get("stream_id"),
-                },
-            )
+            await queue.publish_result("worker:transcription_complete", {
+                "job_id": job_id,
+                "status": result.get("status"),
+                "transcript": result.get("transcript"),
+                "stream_id": job_data["payload"].get("stream_id"),
+            })
 
     except KeyboardInterrupt:
         logger.info("Worker shutting down...")
@@ -181,15 +170,4 @@ async def worker_loop():
 
 
 if __name__ == "__main__":
-    import sys
-
-    logging.basicConfig(
-        level=getattr(logging, config.LOG_LEVEL.upper(), "INFO"),
-        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-    )
-
-    try:
-        asyncio.run(worker_loop())
-    except KeyboardInterrupt:
-        print("Worker interrupted")
-        sys.exit(0)
+    asyncio.run(worker_loop())
