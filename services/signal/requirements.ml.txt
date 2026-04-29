@@ -1,0 +1,9 @@
+# ML worker dependencies (superset of API deps).
+# Used by: services/signal/Dockerfile.ml
+
+-r requirements.api.txt
+
+# Speech-to-text via CTranslate2 — no torch/CUDA required, 4-5x faster than
+# openai-whisper on CPU. Verify latest 1.x stable via `pip index versions faster-whisper`
+# before updating this pin.
+faster-whisper==1.0.3

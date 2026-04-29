@@ -1,33 +1,4 @@
-# PINNED VERSIONS - Deterministic builds
-
-# Web framework
-fastapi==0.115.12
-uvicorn[standard]==0.34.0
-
-# Data & Cache
-asyncpg==0.30.0
-redis==5.2.1
-
-# ML & NLP (CPU-only, no CUDA)
-openai-whisper==20240930
-torch==2.4.1+cpu
-torchaudio==2.4.1+cpu
-spacy==3.8.5
-
-# NLP Utilities
-langdetect==1.0.9
-scikit-learn==1.6.0
-
-# Job Queue
-rq==1.19.0
-
-# HTTP & Feed Parsing
-httpx==0.28.1
-feedparser==6.0.11
-
-# Scheduling
-apscheduler==3.11.0
-
-# Testing
-pytest==8.3.5
-pytest-asyncio==0.25.3
+# Redirects to requirements.api.txt.
+# For the ML worker image, use requirements.ml.txt.
+# For test tooling, use requirements.dev.txt.
+-r requirements.api.txt
