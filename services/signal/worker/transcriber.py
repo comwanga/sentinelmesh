@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import os
 from datetime import datetime, timezone
 
 import config
@@ -49,7 +48,7 @@ async def process_transcription_job(job_data: dict) -> dict:
         audio_path = await _audio_capture.capture_audio_segment(payload["audio_url"], duration=30)
 
         # Transcribe with a hard timeout — stuck jobs must not block the loop forever
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         text = await asyncio.wait_for(
             loop.run_in_executor(None, _transcribe, MODEL, audio_path),
             timeout=TRANSCRIPTION_TIMEOUT,

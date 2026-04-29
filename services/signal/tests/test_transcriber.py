@@ -29,7 +29,6 @@ async def test_process_job_skips_short_transcript(job_data):
 
     with patch("worker.audio_capture.capture_audio_segment",
                new_callable=AsyncMock, return_value="/tmp/fake.wav"), \
-         patch("os.unlink"), \
          patch("worker.transcriber.get_client", new_callable=AsyncMock):
         from worker import transcriber
         transcriber.MODEL = mock_model
@@ -64,7 +63,6 @@ async def test_process_job_returns_failed_on_transcription_timeout(job_data):
 
     with patch("worker.audio_capture.capture_audio_segment",
                new_callable=AsyncMock, return_value="/tmp/fake.wav"), \
-         patch("os.unlink"), \
          patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()):
         from worker import transcriber
         transcriber.MODEL = mock_model
