@@ -1,0 +1,70 @@
+import Map, { Marker, Popup } from 'react-map-gl'
+import { useState } from 'react'
+import { useAppSelector } from '../store'
+import EventMarker from './EventMarker'
+import type { SafetyEvent } from '../../../../shared/types'
+import 'mapbox-gl/dist/mapbox-gl.css'
+
+const MAPBOX_TOKEN = import.meta.env['VITE_MAPBOX_TOKEN'] as string
+
+export default function SafetyMap() {
+  const events = useAppSelector(state => state.events.items.filter(e => e.is_active && e.location))
+  const connected = useAppSelector(state => state.events.connected)
+  const [selected, setSelected] = useState<SafetyEvent | null>(null)
+
+  return (
+    <>
+      {/* Connection status badge */}
+      <div style={{
+        position: 'absolute', top: 12, left: 12, zIndex: 10,
+        background: connected ? '#4CAF50' : '#FF2D2D',
+        color: 'white', padding: '4px 10px', borderRadius: 12,
+        fontSize: 12, fontFamily: 'sans-serif',
+      }}>
+        {connected ? `Live · ${events.length} events` : 'Reconnecting…'}
+      </div>
+
+      <Map
+        mapboxAccessToken={MAPBOX_TOKEN}
+        initialViewState={{
+          longitude: 36.8219,
+          latitude: -1.2921,
+          zoom: 11,
+        }}
+        style={{ width: '100%', height: '100%' }}
+        mapStyle="mapbox://styles/mapbox/dark-v11"
+      >
+        {events.map(event => (
+          event.location && (
+            <Marker
+              key={event.event_id}
+              longitude={event.location.lng}
+              latitude={event.location.lat}
+              anchor="center"
+            >
+              <EventMarker event={event} onClick={setSelected} />
+            </Marker>
+          )
+        ))}
+
+        {selected && selected.location && (
+          <Popup
+            longitude={selected.location.lng}
+            latitude={selected.location.lat}
+            onClose={() => setSelected(null)}
+            closeButton={true}
+            maxWidth="280px"
+          >
+            <div style={{ fontFamily: 'sans-serif', fontSize: 13 }}>
+              <strong style={{ color: '#333' }}>{selected.title}</strong>
+              {selected.summary && <p style={{ margin: '6px 0 0' }}>{selected.summary}</p>}
+              <p style={{ margin: '6px 0 0', color: '#666', fontSize: 11 }}>
+                {selected.location.place_name} · {selected.severity} · {Math.round(selected.confidence * 100)}% confidence
+              </p>
+            </div>
+          </Popup>
+        )}
+      </Map>
+    </>
+  )
+}
