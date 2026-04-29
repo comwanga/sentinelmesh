@@ -11,15 +11,13 @@ scheduler = AsyncIOScheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # RSS: poll every 60 seconds
+    if not config.DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is required for the signal API service")
+
     scheduler.add_job(poll_rss_feeds, "interval", seconds=60, id="rss")
-
-    # Radio: continuous 30-second windows
     scheduler.add_job(monitor_radio, "interval", seconds=30, id="radio")
-
     scheduler.start()
 
-    # Twitter stream runs as a background task if token is present
     if config.TWITTER_BEARER_TOKEN:
         import asyncio
         asyncio.create_task(start_twitter_stream())
