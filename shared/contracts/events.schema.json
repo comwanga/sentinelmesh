@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "EventType": {
+      "type": "string",
+      "enum": [
+        "TRAFFIC_INCIDENT",
+        "FLOOD",
+        "CIVIL_UNREST",
+        "SECURITY_INCIDENT",
+        "FIRE",
+        "MEDICAL_EMERGENCY",
+        "INFRASTRUCTURE_FAILURE",
+        "FALSE_ALARM"
+      ]
+    },
+    "Severity": {
+      "type": "string",
+      "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+    },
+    "Location": {
+      "type": "object",
+      "required": ["lat", "lng"],
+      "properties": {
+        "place_name": { "type": "string" },
+        "lat":        { "type": "number", "minimum": -4.67, "maximum": 4.62 },
+        "lng":        { "type": "number", "minimum": 33.91, "maximum": 41.90 },
+        "county":     { "type": "string" },
+        "radius_meters": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "SafetyEvent": {
+      "type": "object",
+      "required": ["event_id", "event_type", "severity", "title", "confidence", "source_count", "is_active", "started_at", "last_updated"],
+      "properties": {
+        "event_id":        { "type": "string", "format": "uuid" },
+        "event_type":      { "$ref": "#/definitions/EventType" },
+        "severity":        { "$ref": "#/definitions/Severity" },
+        "title":           { "type": "string", "maxLength": 200 },
+        "summary":         { "type": "string" },
+        "location":        { "oneOf": [{ "$ref": "#/definitions/Location" }, { "type": "null" }] },
+        "confidence":      { "type": "number", "minimum": 0, "maximum": 1 },
+        "source_count":    { "type": "integer", "minimum": 1 },
+        "source_breakdown":{ "type": "object" },
+        "is_active":       { "type": "boolean" },
+        "started_at":      { "type": "string", "format": "date-time" },
+        "last_updated":    { "type": "string", "format": "date-time" },
+        "nostr_event_id":  { "type": ["string", "null"] },
+        "bitcoin_txid":    { "type": ["string", "null"] }
+      }
+    }
+  }
+}
