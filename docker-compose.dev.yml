@@ -16,9 +16,10 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./services/gateway/src:/app/src:ro
+      - ./services/gateway/src:/app/src
     environment:
       NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
 
   signal:
     build:
@@ -27,6 +28,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./services/signal:/app:ro
+      - ./services/signal:/app
     environment:
       WHISPER_MODEL: base

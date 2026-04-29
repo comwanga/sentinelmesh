@@ -5,8 +5,8 @@ CREATE EXTENSION IF NOT EXISTS cube;
 -- Safety events from public signal aggregation
 CREATE TABLE safety_events (
   id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  event_type       VARCHAR(30)  NOT NULL,
-  severity         VARCHAR(10)  NOT NULL,
+  event_type       VARCHAR(30)  NOT NULL CHECK (event_type IN ('TRAFFIC_INCIDENT','FLOOD','CIVIL_UNREST','SECURITY_INCIDENT','FIRE','MEDICAL_EMERGENCY','INFRASTRUCTURE_FAILURE','FALSE_ALARM')),
+  severity         VARCHAR(10)  NOT NULL CHECK (severity IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
   title            VARCHAR(200) NOT NULL,
   summary          TEXT,
 
@@ -115,19 +115,24 @@ CREATE TABLE blockchain_anchors (
   period_start    TIMESTAMPTZ,
   period_end      TIMESTAMPTZ,
   event_count     INT,
-  digest_hash     VARCHAR(64) NOT NULL,
-  digest_payload  JSONB NOT NULL,
+  digest_hash     CHAR(64)    NOT NULL,
+  digest_payload  JSONB       NOT NULL,
   bitcoin_txid    VARCHAR(64),
   bitcoin_block   INT,
   bitcoin_network VARCHAR(10) DEFAULT 'testnet',
   anchor_status   VARCHAR(20) DEFAULT 'pending',
   created_at      TIMESTAMPTZ DEFAULT NOW(),
-  confirmed_at    TIMESTAMPTZ
+  confirmed_at    TIMESTAMPTZ,
+  UNIQUE (digest_hash)
 );
 
 -- Indexes for Phase 1 query patterns
 CREATE INDEX idx_events_active    ON safety_events(is_active, severity);
 CREATE INDEX idx_events_type      ON safety_events(event_type, started_at DESC);
 CREATE INDEX idx_events_county    ON safety_events(county, is_active);
-CREATE INDEX idx_events_location  ON safety_events(lat, lng);
+CREATE INDEX idx_events_location  ON safety_events USING gist (ll_to_earth(lat, lng));
 CREATE INDEX idx_blobs_recipient  ON location_blobs(recipient_pubkey_hash, expires_at);
+CREATE INDEX idx_events_started_at ON safety_events(started_at DESC);
+CREATE INDEX idx_reports_pubkey    ON community_reports(nostr_pubkey, created_at DESC);
+CREATE INDEX idx_reports_event     ON community_reports(linked_event_id) WHERE linked_event_id IS NOT NULL;
+CREATE INDEX idx_blobs_expiry      ON location_blobs(expires_at);
