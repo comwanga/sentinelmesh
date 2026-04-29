@@ -22,7 +22,8 @@ class QueueManager:
         payload: Dict[str, Any],
         max_retries: int = 3,
     ) -> str:
-        assert self.client is not None, "call await qm.init() first"
+        if self.client is None:
+            raise RuntimeError("QueueManager not initialized; call await qm.init() first")
 
         job_id = str(uuid.uuid4())
         job_data = {
@@ -40,12 +41,14 @@ class QueueManager:
         return job_id
 
     async def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("QueueManager not initialized; call await qm.init() first")
         data = await self.client.get(f"job:{job_id}")
         return json.loads(data) if data else None
 
     async def update_job(self, job_id: str, updates: Dict[str, Any]):
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("QueueManager not initialized; call await qm.init() first")
         job_data = await self.get_job(job_id)
         if not job_data:
             return
@@ -53,7 +56,8 @@ class QueueManager:
         await self.client.setex(f"job:{job_id}", 86400, json.dumps(job_data))
 
     async def dequeue(self, task_type: str, timeout: int = 5) -> Optional[Dict[str, Any]]:
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("QueueManager not initialized; call await qm.init() first")
         result = await self.client.blpop(f"queue:{task_type}", timeout=timeout)
         if not result:
             return None
@@ -65,7 +69,8 @@ class QueueManager:
 
         Dead-letter entries are retained for 7 days so ops staff can inspect and replay.
         """
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("QueueManager not initialized; call await qm.init() first")
 
         attempts = job_data.get("attempts", 0) + 1
         updated = {
@@ -74,6 +79,7 @@ class QueueManager:
             "last_error": error_result.get("error"),
         }
 
+        # attempts <= max_retries allows max_retries additional tries after initial failure
         if attempts <= job_data.get("max_retries", 3):
             updated["status"] = "queued"
             await self.client.rpush(f"queue:{updated['type']}", json.dumps(updated))
@@ -85,11 +91,13 @@ class QueueManager:
             await self.client.setex(f"job:{updated['id']}", 86400 * 7, json.dumps(updated))
 
     async def get_queue_length(self, task_type: str) -> int:
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("QueueManager not initialized; call await qm.init() first")
         return await self.client.llen(f"queue:{task_type}")
 
     async def publish_result(self, channel: str, result: Dict[str, Any]):
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("QueueManager not initialized; call await qm.init() first")
         await self.client.publish(channel, json.dumps(result))
 
     async def close(self):

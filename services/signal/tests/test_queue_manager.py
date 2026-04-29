@@ -40,7 +40,6 @@ async def test_requeue_failed_retries_when_below_limit():
     qm.client = AsyncMock()
     qm.client.rpush = AsyncMock()
     qm.client.setex = AsyncMock()
-    qm.client.get = AsyncMock(return_value=json.dumps(_make_job(attempts=0)))
 
     job = _make_job(attempts=0)
     await qm.requeue_failed(job, {"error": "ffmpeg exit 1"})
@@ -58,7 +57,6 @@ async def test_requeue_failed_sends_to_dlq_when_exhausted():
     qm.client = AsyncMock()
     qm.client.rpush = AsyncMock()
     qm.client.setex = AsyncMock()
-    qm.client.get = AsyncMock(return_value=json.dumps(_make_job(attempts=3)))
 
     job = _make_job(attempts=3)
     await qm.requeue_failed(job, {"error": "timeout"})
@@ -69,6 +67,10 @@ async def test_requeue_failed_sends_to_dlq_when_exhausted():
     assert dlq_job["status"] == "dead"
     assert dlq_job["attempts"] == 4
 
+    # Verify 7-day TTL on dead-letter entry
+    setex_call = qm.client.setex.call_args[0]
+    assert setex_call[1] == 86400 * 7
+
 
 @pytest.mark.asyncio
 async def test_requeue_failed_stores_last_error():
@@ -77,7 +79,6 @@ async def test_requeue_failed_stores_last_error():
     qm.client = AsyncMock()
     qm.client.rpush = AsyncMock()
     qm.client.setex = AsyncMock()
-    qm.client.get = AsyncMock(return_value=json.dumps(_make_job(attempts=0)))
 
     job = _make_job(attempts=0)
     await qm.requeue_failed(job, {"error": "ffmpeg exit 1"})
