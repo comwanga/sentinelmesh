@@ -136,3 +136,24 @@ CREATE INDEX idx_events_started_at ON safety_events(started_at DESC);
 CREATE INDEX idx_reports_pubkey    ON community_reports(nostr_pubkey, created_at DESC);
 CREATE INDEX idx_reports_event     ON community_reports(linked_event_id) WHERE linked_event_id IS NOT NULL;
 CREATE INDEX idx_blobs_expiry      ON location_blobs(expires_at);
+
+-- Lightning zaps — reporter tips via Bitcoin Lightning (Phase 5)
+CREATE TABLE lightning_zaps (
+  id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  report_id         UUID NOT NULL REFERENCES community_reports(id) ON DELETE CASCADE,
+  recipient_pubkey  VARCHAR(64)  NOT NULL,
+  amount_sats       INT          NOT NULL CHECK (amount_sats > 0 AND amount_sats <= 100000),
+  bolt11_invoice    TEXT         NOT NULL,
+  payment_hash      VARCHAR(64)  NOT NULL UNIQUE,
+  status            VARCHAR(20)  NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','expired')),
+  paid_at           TIMESTAMPTZ,
+  zap_receipt_id    VARCHAR(64),
+  zap_receipt_json  JSONB,
+  created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  expires_at        TIMESTAMPTZ  NOT NULL DEFAULT (NOW() + INTERVAL '1 hour')
+);
+
+CREATE INDEX idx_zaps_report     ON lightning_zaps(report_id);
+CREATE INDEX idx_zaps_recipient  ON lightning_zaps(recipient_pubkey);
+CREATE INDEX idx_zaps_status     ON lightning_zaps(status, expires_at);
+CREATE INDEX idx_zaps_hash       ON lightning_zaps(payment_hash);
