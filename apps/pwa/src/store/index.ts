@@ -1,10 +1,12 @@
 import { configureStore } from '@reduxjs/toolkit'
 import eventsReducer from './eventsSlice'
+import acousticReducer from './acousticSlice'
 import { useSelector, TypedUseSelectorHook } from 'react-redux'
 
 export const store = configureStore({
   reducer: {
     events: eventsReducer,
+    acoustic: acousticReducer,
   },
 })
 
