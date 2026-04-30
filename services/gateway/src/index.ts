@@ -3,6 +3,7 @@ import helmet from 'helmet'
 import cors from 'cors'
 import { config } from './config'
 import { eventsRouter } from './routes/events'
+import { zapRouter } from './routes/zap'
 import { initPool } from './db/pool'
 import { startEventSubscriber } from './subscribers/eventSubscriber'
 import { createWsHub } from './ws/hub'
@@ -12,6 +13,8 @@ const app = express()
 
 app.use(helmet())
 app.use(cors())
+// Keep webhook body as raw bytes for HMAC verification before JSON parsing.
+app.use('/api/zaps/webhook', express.raw({ type: 'application/json' }))
 app.use(express.json())
 
 app.get('/health', (_req, res) => {
@@ -19,6 +22,7 @@ app.get('/health', (_req, res) => {
 })
 
 app.use('/api/events', eventsRouter)
+app.use('/api/zaps', zapRouter)
 
 const server = createServer(app)
 const wsHub = createWsHub(server)

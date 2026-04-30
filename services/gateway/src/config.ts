@@ -14,4 +14,5 @@ export const config = {
   redisUrl: require_env('REDIS_URL'),
   jwtSecret: require_env('JWT_SECRET'),
   internalSecret: require_env('INTERNAL_SERVICE_SECRET'),
+  zapWebhookSecret: require_env('ZAP_WEBHOOK_SECRET'),
 } as const
