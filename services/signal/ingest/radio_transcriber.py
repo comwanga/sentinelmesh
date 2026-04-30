@@ -1,17 +1,28 @@
 """Radio stream monitoring: queue transcription jobs for ML worker."""
 
 import logging
+import time
 from datetime import datetime, timezone
 
-import httpx
-
 import config
+from ingest.stream_validator import validate_stream
 from queue_manager import QueueManager
 
 logger = logging.getLogger(__name__)
 
 # Queue manager instance (initialized once per process)
 _queue: QueueManager | None = None
+
+# Track consecutive validation failures per stream.
+# A stream with >= 3 failures is skipped for the current cycle.
+_failure_counts: dict[str, int] = {}
+
+# Track the last time.monotonic() a warning was logged per stream.
+# Warnings are suppressed if fewer than 60 seconds have passed.
+_last_warned: dict[str, float] = {}
+
+_BACKOFF_THRESHOLD = 3
+_LOG_WINDOW_SECONDS = 60
 
 
 async def get_queue() -> QueueManager:
@@ -23,43 +34,52 @@ async def get_queue() -> QueueManager:
     return _queue
 
 
-async def _capture_audio_metadata(stream_url: str, duration_seconds: int = 30) -> dict:
-    """Check that stream is alive and capture audio segment."""
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.head(stream_url)
-            response.raise_for_status()
-        return {
-            "status": "ok",
-            "stream_url": stream_url,
-            "duration": duration_seconds,
-        }
-    except Exception as e:
-        logger.warning(f"Stream check failed: {e}")
-        return {"status": "error", "error": str(e)}
-
-
 async def monitor_radio() -> None:
     """
     Monitor all configured radio streams and queue transcription jobs.
 
     Runs every 30 seconds via APScheduler.
     Instead of transcribing directly (heavy), queue jobs for the ML worker.
+
+    Streams with 3 or more consecutive failures are cooled down (skipped for
+    the current cycle). Failure warnings are throttled to once per 60 seconds
+    per stream to prevent log spam.
     """
     queue = await get_queue()
 
-    logger.info("Radio monitor: checking streams and queueing transcription jobs")
+    queued_count = 0
+    total_count = 0
 
-    tasks = []
     for station_name, stream_url in config.RADIO_STREAMS.items():
+        # Skip cooling-down streams
+        if _failure_counts.get(station_name, 0) >= _BACKOFF_THRESHOLD:
+            logger.debug(
+                "Radio monitor: %s is cooling down (%d failures), skipping",
+                station_name,
+                _failure_counts[station_name],
+            )
+            continue
+
+        total_count += 1
+
         try:
-            # Quick sanity check on stream
-            metadata = await _capture_audio_metadata(stream_url)
-            if metadata["status"] != "ok":
-                logger.warning(f"Radio {station_name}: stream unavailable - {metadata.get('error')}")
+            is_live = await validate_stream(stream_url)
+
+            if not is_live:
+                _failure_counts[station_name] = _failure_counts.get(station_name, 0) + 1
+                now = time.monotonic()
+                if now - _last_warned.get(station_name, 0) >= _LOG_WINDOW_SECONDS:
+                    logger.warning(
+                        "Radio %s: stream unavailable (failures=%d)",
+                        station_name,
+                        _failure_counts[station_name],
+                    )
+                    _last_warned[station_name] = now
                 continue
 
-            # Queue transcription job for ML worker
+            # Stream is live — reset failure tracking
+            _failure_counts[station_name] = 0
+
             job_id = await queue.enqueue(
                 "transcribe_audio",
                 {
@@ -69,10 +89,14 @@ async def monitor_radio() -> None:
                 },
             )
 
-            logger.info(f"Queued transcription job {job_id} for {station_name}")
+            logger.info("Queued transcription job %s for %s", job_id, station_name)
+            queued_count += 1
 
-        except Exception as e:
-            logger.exception(f"Radio {station_name}: error during job queueing")
+        except Exception:
+            logger.exception("Radio %s: error during job queueing", station_name)
 
-    logger.info(f"Radio monitor: queued jobs for {len(config.RADIO_STREAMS)} streams")
-
+    logger.info(
+        "Radio monitor: queued %d/%d streams",
+        queued_count,
+        total_count,
+    )

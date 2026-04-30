@@ -25,9 +25,15 @@ RSS_FEEDS = [
     "https://ntv.co.ke/feed/",
 ]
 
+# Verified 2026-04-30. Original radiojar URLs (citizen-radio, radio-maisha) return 404.
+# These three endpoints were confirmed live (HTTP 200, audio/* Content-Type):
+#   nation_fm   - Nation FM Kenya via radiojar (GET only; HEAD returns 400)
+#   nrg_radio   - NRG Radio Kenya via Shoutcast (GET only; HEAD returns 404)
+#   kameme_fm   - Kameme FM (Royal Media) via StreamGuys (HEAD + GET both 200)
 RADIO_STREAMS = {
-    "citizen_radio": "https://stream.radiojar.com/citizen-radio",
-    "radio_maisha":  "https://stream.radiojar.com/radio-maisha",
+    "nation_fm":  "http://stream.radiojar.com/3by7s8eg65quv",
+    "nrg_radio":  "https://streamingv2.shoutcast.com/nrg-radio-ke",
+    "kameme_fm":  "https://kamemefm-atunwadigital.streamguys1.com/kamemefm",
 }
 
 KENYA_BBOX = "33.91,-4.67,41.90,4.62"
