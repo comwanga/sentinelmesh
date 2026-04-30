@@ -27,12 +27,15 @@ def test_health_detailed_returns_queue_depths():
 
     mock_qm = MagicMock()
     mock_qm.get_queue_length = AsyncMock(side_effect=[7, 2])
+    mock_qm.close = AsyncMock()
 
     app = _make_app()
     main._queue_manager = mock_qm
-
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/health/detailed")
+    try:
+        with TestClient(app, raise_server_exceptions=False) as client:
+            response = client.get("/health/detailed")
+    finally:
+        main._queue_manager = None
 
     assert response.status_code == 200
     body = response.json()
@@ -49,9 +52,11 @@ def test_health_detailed_when_queue_not_ready():
     main._queue_manager = None
 
     with TestClient(app, raise_server_exceptions=False) as client:
+        # Set after lifespan startup so the endpoint sees an unready queue.
+        main._queue_manager = None
         response = client.get("/health/detailed")
 
-    assert response.status_code == 200
+    assert response.status_code == 503
     body = response.json()
     assert body["ok"] is False
     assert "not initialized" in body["reason"]
