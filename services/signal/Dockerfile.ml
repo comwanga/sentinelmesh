@@ -29,6 +29,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /build/venv /venv
