@@ -9,15 +9,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc g++ python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.api.txt .
+# requirements.ml.txt includes -r requirements.api.txt
+COPY requirements.api.txt requirements.ml.txt ./
 
 RUN python -m venv /build/venv
 ENV PATH="/build/venv/bin:$PATH"
 
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
-RUN pip install --no-cache-dir -r requirements.api.txt
+RUN pip install --no-cache-dir -r requirements.ml.txt
 
-# spaCy model installs into the venv as a package — captured by the venv COPY below
 RUN python -m spacy download en_core_web_sm
 
 # ============================================================================
@@ -42,8 +42,8 @@ RUN useradd -m -u 1000 sentinel \
 
 USER sentinel
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8000/health', timeout=5)" || exit 1
+# Worker has no HTTP server — check the process is alive at the OS level
+HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)"
 
-EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "worker.transcriber"]
