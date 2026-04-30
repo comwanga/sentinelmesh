@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git *)",
+      "PowerShell(scoop install *)",
+      "Bash(make up *)",
+      "PowerShell(Get-Command *)",
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); docker version 2>&1; docker info 2>&1 | Select-Object -First 20)",
+      "Bash(python -m pytest tests/test_config.py -v)",
+      "Read(//c/tmp/**)",
+      "Bash(python -m venv test-api-venv)",
+      "Bash(./test-api-venv/bin/pip install *)",
+      "Bash(timeout 180 /tmp/test-api-venv/Scripts/pip install --no-cache-dir -q -r /c/Users/mwang/sentinelmesh/services/signal/requirements.api.txt)",
+      "Bash(/tmp/test-api-venv/Scripts/pip list *)",
+      "Bash(/tmp/test-api-venv/Scripts/pip show *)",
+      "Bash(python -m venv /tmp/test-ml-venv)",
+      "Bash(/tmp/test-ml-venv/Scripts/pip install *)",
+      "Bash(/tmp/test-ml-venv/Scripts/pip list *)",
+      "Bash(/tmp/test-ml-venv/Scripts/pip show *)",
+      "Bash(python *)",
+      "Bash(python3 -m venv /tmp/test_req_venv)",
+      "Bash(/tmp/test_req_venv/bin/pip install *)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 *)",
+      "Bash(docker compose *)",
+      "Bash(pip install *)",
+      "WebFetch(domain:citizentv.co.ke)",
+      "WebFetch(domain:www.capitalfm.co.ke)",
+      "WebFetch(domain:citizen.digital)",
+      "WebFetch(domain:www.kissfmkenya.com)",
+      "WebFetch(domain:www.classic105.com)",
+      "WebFetch(domain:radio.garden)",
+      "WebFetch(domain:zeno.fm)",
+      "WebFetch(domain:onlineradiobox.com)",
+      "WebFetch(domain:www.radio-browser.info)"
+    ]
+  }
+}
