@@ -15,6 +15,8 @@ class QueueManager:
 
     async def init(self):
         self.client = await redis.from_url(self.redis_url, decode_responses=True)
+        # Verify connectivity immediately so callers get a clear error on startup.
+        await self.client.ping()
 
     async def enqueue(
         self,
