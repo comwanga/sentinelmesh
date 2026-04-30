@@ -1,5 +1,8 @@
 version: '3.9'
 
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Overrides prod settings for local development.
+
 services:
   postgres:
     ports:
@@ -31,14 +34,20 @@ services:
       - ./services/signal:/app
     environment:
       WHISPER_MODEL: base
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      DATABASE_URL: postgresql://sentinel:${POSTGRES_PASSWORD}@postgres:5432/sentinelmesh
+      LOG_LEVEL: DEBUG
 
   ml-worker:
     build:
       context: ./services/signal
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile.ml.dev
     command: python -m worker.transcriber
     volumes:
       - ./services/signal:/app
+      - whisper-cache:/root/.cache/whisper
     environment:
       WHISPER_MODEL: base
-
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      DATABASE_URL: postgresql://sentinel:${POSTGRES_PASSWORD}@postgres:5432/sentinelmesh
+      LOG_LEVEL: DEBUG
