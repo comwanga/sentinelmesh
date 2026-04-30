@@ -1,7 +1,7 @@
 // apps/pwa/src/services/reportAutoSubmit.ts
 import { ThreatDetection } from '../constants/acousticThreats'
 
-const API_BASE = (typeof import.meta !== 'undefined' && (import.meta as any).env?.['VITE_API_BASE_URL']) || ''
+const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
 
 interface Location { lat: number; lng: number }
 

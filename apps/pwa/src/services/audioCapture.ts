@@ -10,21 +10,20 @@ export class AudioCapture {
   constructor(private onWindow: AudioWindowCallback) {}
 
   async start(): Promise<void> {
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-    this.context = new AudioContext({ sampleRate: 16000 })
-    await this.context.audioWorklet.addModule('/audio-processor.js')
-
-    const source = this.context.createMediaStreamSource(this.stream)
-    this.node = new AudioWorkletNode(this.context, 'sentinel-audio-processor')
-
-    this.node.port.onmessage = (event: MessageEvent<{ type: string; samples: Float32Array }>) => {
-      if (event.data.type === 'window') {
-        this.onWindow(event.data.samples)
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      this.context = new AudioContext({ sampleRate: 16000 })
+      await this.context.audioWorklet.addModule('/audio-processor.js')
+      const source = this.context.createMediaStreamSource(this.stream)
+      this.node = new AudioWorkletNode(this.context, 'sentinel-audio-processor')
+      this.node.port.onmessage = (event: MessageEvent<{ type: string; samples: Float32Array }>) => {
+        if (event.data.type === 'window') this.onWindow(event.data.samples)
       }
+      source.connect(this.node)
+    } catch (err) {
+      this.stop()
+      throw err
     }
-
-    source.connect(this.node)
-    // Do NOT connect node to destination — mic playback not wanted
   }
 
   stop(): void {

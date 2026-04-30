@@ -22,13 +22,16 @@ export class AcousticDetectionService {
     if (!this.model) return
 
     const inputTensor = tf.tensor1d(samples)
-    const outputTensor = this.model.predict(inputTensor) as tf.Tensor
-    const scores = await outputTensor.data() as Float32Array
-
-    inputTensor.dispose()
-    outputTensor.dispose()
-
-    const threat = getThreatFromScores(scores)
-    if (threat) this.onThreat(threat)
+    let outputTensor: tf.Tensor | null = null
+    try {
+      const raw = this.model.predict(inputTensor)
+      outputTensor = Array.isArray(raw) ? raw[0]! : raw
+      const scores = await outputTensor.data() as Float32Array
+      const threat = getThreatFromScores(scores)
+      if (threat) this.onThreat(threat)
+    } finally {
+      inputTensor.dispose()
+      outputTensor?.dispose()
+    }
   }
 }

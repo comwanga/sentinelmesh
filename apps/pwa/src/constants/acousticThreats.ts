@@ -1,11 +1,13 @@
 // apps/pwa/src/constants/acousticThreats.ts
 
+export type ThreatCategory = 'SECURITY_INCIDENT' | 'FIRE' | 'CIVIL_UNREST' | 'ACCIDENT'
+
 export const DETECTION_THRESHOLD = 0.80
 
 export const YAMNET_THREAT_MAP: ReadonlyArray<{
   classIndex: number
   label: string
-  category: 'SECURITY_INCIDENT' | 'FIRE' | 'CIVIL_UNREST' | 'ACCIDENT'
+  category: ThreatCategory
 }> = [
   { classIndex: 427, label: 'Gunshot',        category: 'SECURITY_INCIDENT' },
   { classIndex: 429, label: 'Explosion',       category: 'SECURITY_INCIDENT' },
@@ -22,7 +24,7 @@ export const YAMNET_THREAT_MAP: ReadonlyArray<{
 export interface ThreatDetection {
   classIndex: number
   label: string
-  category: 'SECURITY_INCIDENT' | 'FIRE' | 'CIVIL_UNREST' | 'ACCIDENT'
+  category: ThreatCategory
   confidence: number
 }
 
