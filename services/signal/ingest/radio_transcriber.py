@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 
 import config
-from ingest.stream_validator import validate_stream
+from .stream_validator import validate_stream
 from queue_manager import QueueManager
 
 logger = logging.getLogger(__name__)
@@ -21,8 +21,12 @@ _failure_counts: dict[str, int] = {}
 # Warnings are suppressed if fewer than 60 seconds have passed.
 _last_warned: dict[str, float] = {}
 
+# Track when a stream first entered cooldown so it can be retried after the window.
+_cooldown_since: dict[str, float] = {}
+
 _BACKOFF_THRESHOLD = 3
 _LOG_WINDOW_SECONDS = 60
+_COOLDOWN_RESET_SECONDS = 300
 
 
 async def get_queue() -> QueueManager:
@@ -51,14 +55,20 @@ async def monitor_radio() -> None:
     total_count = 0
 
     for station_name, stream_url in config.RADIO_STREAMS.items():
-        # Skip cooling-down streams
+        # Skip cooling-down streams, but reset after the cooldown window
         if _failure_counts.get(station_name, 0) >= _BACKOFF_THRESHOLD:
-            logger.debug(
-                "Radio monitor: %s is cooling down (%d failures), skipping",
-                station_name,
-                _failure_counts[station_name],
-            )
-            continue
+            elapsed = time.monotonic() - _cooldown_since.get(station_name, 0)
+            if elapsed < _COOLDOWN_RESET_SECONDS:
+                logger.debug(
+                    "Radio monitor: %s is cooling down (%d failures, %.0fs remaining), skipping",
+                    station_name,
+                    _failure_counts[station_name],
+                    _COOLDOWN_RESET_SECONDS - elapsed,
+                )
+                continue
+            # Cooldown expired — give the stream another chance
+            logger.info("Radio monitor: %s cooldown expired, retrying", station_name)
+            _failure_counts[station_name] = 0
 
         total_count += 1
 
@@ -67,6 +77,8 @@ async def monitor_radio() -> None:
 
             if not is_live:
                 _failure_counts[station_name] = _failure_counts.get(station_name, 0) + 1
+                if _failure_counts[station_name] == _BACKOFF_THRESHOLD:
+                    _cooldown_since[station_name] = time.monotonic()
                 now = time.monotonic()
                 if now - _last_warned.get(station_name, 0) >= _LOG_WINDOW_SECONDS:
                     logger.warning(

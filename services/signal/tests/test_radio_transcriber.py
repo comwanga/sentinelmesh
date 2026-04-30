@@ -2,6 +2,7 @@
 
 import sys
 import importlib
+import time
 import pytest
 from unittest.mock import AsyncMock, patch
 
@@ -21,6 +22,7 @@ def _reset_module_state():
     """Reset module-level tracking dicts between tests."""
     transcriber_module._failure_counts.clear()
     transcriber_module._last_warned.clear()
+    transcriber_module._cooldown_since.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -93,6 +95,8 @@ async def test_failing_stream_increments_failure_count(single_stream):
 async def test_stream_skipped_after_3_failures(single_stream):
     """A stream with failure_count >= 3 is skipped — validate_stream is not called."""
     transcriber_module._failure_counts["test_station"] = 3
+    # Mark cooldown as just started so the window has not expired yet
+    transcriber_module._cooldown_since["test_station"] = time.monotonic()
 
     mock_queue = AsyncMock()
 
@@ -116,3 +120,22 @@ async def test_success_resets_failure_count(single_stream):
         await transcriber_module.monitor_radio()
 
     assert transcriber_module._failure_counts.get("test_station") == 0
+
+
+@pytest.mark.asyncio
+async def test_cooled_down_stream_retried_after_window(single_stream, monkeypatch):
+    """A cooled-down stream is re-admitted once _COOLDOWN_RESET_SECONDS has elapsed."""
+    transcriber_module._failure_counts["test_station"] = 3
+    # Simulate cooldown started long ago (> 300s)
+    transcriber_module._cooldown_since["test_station"] = time.monotonic() - 400
+
+    mock_queue = AsyncMock()
+    mock_queue.enqueue = AsyncMock(return_value="job-789")
+
+    with patch.object(transcriber_module, "validate_stream", new_callable=AsyncMock, return_value=True), \
+         patch.object(transcriber_module, "get_queue", new_callable=AsyncMock, return_value=mock_queue):
+        await transcriber_module.monitor_radio()
+
+    # Failure count reset and job queued
+    assert transcriber_module._failure_counts.get("test_station") == 0
+    mock_queue.enqueue.assert_called_once()

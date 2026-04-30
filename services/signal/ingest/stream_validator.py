@@ -27,8 +27,11 @@ async def validate_stream(url: str) -> bool:
             response = await client.head(url)
 
             if response.status_code == 405:
-                # Server rejected HEAD — fall back to a streaming GET
-                response = await client.get(url)
+                # Server rejected HEAD — use a streaming GET so we can inspect
+                # headers without buffering the audio body.
+                async with client.stream("GET", url) as response:
+                    content_type = response.headers.get("content-type", "")
+                    return any(content_type.startswith(p) for p in _AUDIO_PREFIXES)
 
             if not response.is_success:
                 return False
