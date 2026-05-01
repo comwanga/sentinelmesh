@@ -1,6 +1,9 @@
 import { vi, describe, test, expect, beforeEach } from 'vitest'
 
 const store: Record<string, string> = {}
+// vi.stubGlobal runs at module-eval time. nostrService accesses localStorage
+// only inside functions (never at module scope), so the static import above
+// resolves safely before the stub is needed.
 vi.stubGlobal('localStorage', {
   getItem: (k: string) => store[k] ?? null,
   setItem: (k: string, v: string) => { store[k] = v },
