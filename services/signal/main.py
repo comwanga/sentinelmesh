@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sentry_sdk.integrations.fastapi import FastAPIIntegration
+from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from ingest.rss_parser import poll_rss_feeds
@@ -23,7 +23,7 @@ if os.environ.get("SENTRY_DSN"):
         # Starlette + FastAPI integrations for better request tracking
         integrations=[
             StarletteIntegration(),
-            FastAPIIntegration(),
+            FastApiIntegration(),
         ],
         # Capture 100% of transactions for performance monitoring
         traces_sample_rate=1.0,

@@ -12,7 +12,7 @@ _HIGH_KEYWORDS = [
 
 _MEDIUM_KEYWORDS = [
     "accident", "crash", "collision", "road block", "protest",
-    "flooding", "power outage", "robbery",
+    "flooding", "power outage", "robbery", "traffic jam",
 ]
 
 
