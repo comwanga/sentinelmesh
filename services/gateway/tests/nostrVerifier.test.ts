@@ -30,4 +30,13 @@ describe('verifyNostrSignature', () => {
     const wrongSig = 'a'.repeat(128)
     expect(verifyNostrSignature({ ...event, sig: wrongSig })).toBe(false)
   })
+
+  test('returns false when original object is mutated between calls', () => {
+    const sk = generateSecretKey()
+    const event = makeEvent(sk)
+    expect(verifyNostrSignature(event)).toBe(true)
+    // Mutate the same object reference after first verification
+    ;(event as Record<string, unknown>)['content'] = 'tampered'
+    expect(verifyNostrSignature(event)).toBe(false)
+  })
 })
