@@ -94,7 +94,7 @@ describe('POST /api/reports/:id/vote', () => {
     mockCompute.mockReturnValueOnce('UNVERIFIED')
     mockApply.mockResolvedValueOnce(undefined)
     const res = await request(app).post('/api/reports/r1/vote')
-      .send({ voter_pubkey: 'pk2', vote: 'CONFIRM', voter_nostr_event: validEvent })
+      .send({ voter_pubkey: 'pk2', vote: 'CONFIRM', voter_nostr_event: { ...validEvent, pubkey: 'pk2' } })
     expect(res.status).toBe(200)
     expect(res.body.status).toBe('UNVERIFIED')
     expect(mockHub.broadcast).toHaveBeenCalledWith(null, {
@@ -104,14 +104,14 @@ describe('POST /api/reports/:id/vote', () => {
 
   it('400 when vote value invalid', async () => {
     const res = await request(app).post('/api/reports/r1/vote')
-      .send({ voter_pubkey: 'pk2', vote: 'MAYBE', voter_nostr_event: validEvent })
+      .send({ voter_pubkey: 'pk2', vote: 'MAYBE', voter_nostr_event: { ...validEvent, pubkey: 'pk2' } })
     expect(res.status).toBe(400)
   })
 
   it('404 when report not found', async () => {
     mockVote.mockRejectedValueOnce(new Error('report not found'))
     const res = await request(app).post('/api/reports/nope/vote')
-      .send({ voter_pubkey: 'pk2', vote: 'CONFIRM', voter_nostr_event: validEvent })
+      .send({ voter_pubkey: 'pk2', vote: 'CONFIRM', voter_nostr_event: { ...validEvent, pubkey: 'pk2' } })
     expect(res.status).toBe(404)
   })
 
@@ -119,9 +119,17 @@ describe('POST /api/reports/:id/vote', () => {
     const err = Object.assign(new Error('dup'), { code: '23505' })
     mockVote.mockRejectedValueOnce(err)
     const res = await request(app).post('/api/reports/r1/vote')
-      .send({ voter_pubkey: 'pk2', vote: 'CONFIRM', voter_nostr_event: validEvent })
+      .send({ voter_pubkey: 'pk2', vote: 'CONFIRM', voter_nostr_event: { ...validEvent, pubkey: 'pk2' } })
     expect(res.status).toBe(409)
     expect(res.body.code).toBe('ALREADY_VOTED')
+  })
+
+  it('403 when voter tries to vote on own report', async () => {
+    mockVote.mockRejectedValueOnce(new Error('cannot vote on own report'))
+    const res = await request(app).post('/api/reports/r1/vote')
+      .send({ voter_pubkey: 'pk1', vote: 'CONFIRM', voter_nostr_event: { ...validEvent, pubkey: 'pk1' } })
+    expect(res.status).toBe(403)
+    expect(res.body.code).toBe('FORBIDDEN')
   })
 })
 
@@ -129,6 +137,16 @@ describe('GET /api/reports', () => {
   it('200 with report list', async () => {
     mockList.mockResolvedValueOnce([{ report_id: 'r1' }])
     const res = await request(app).get('/api/reports')
+    expect(res.status).toBe(200)
+    expect(res.body.reports).toHaveLength(1)
+    expect(res.body.total).toBe(1)
+  })
+})
+
+describe('GET /api/reports/by-event/:event_id', () => {
+  it('200 with reports linked to event', async () => {
+    mockList.mockResolvedValueOnce([{ report_id: 'r1', linked_event_id: 'ev1' }])
+    const res = await request(app).get('/api/reports/by-event/ev1')
     expect(res.status).toBe(200)
     expect(res.body.reports).toHaveLength(1)
     expect(res.body.total).toBe(1)

@@ -75,6 +75,10 @@ export function createReportsRouter(hub: WsHub): Router {
       res.status(401).json({ code: 'INVALID_SIGNATURE', message: 'Nostr signature verification failed', retryable: false })
       return
     }
+    if (voter_nostr_event.pubkey !== voter_pubkey) {
+      res.status(401).json({ code: 'PUBKEY_MISMATCH', message: 'Event pubkey does not match voter_pubkey', retryable: false })
+      return
+    }
 
     try {
       const report = await castVote({
