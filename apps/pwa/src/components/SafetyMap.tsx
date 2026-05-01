@@ -4,6 +4,7 @@ import { useAppSelector } from '../store'
 import EventMarker from './EventMarker'
 import { fetchSafeRoutes, SafeRoute } from '../services/routingService'
 import { SafeRouteOverlay } from './SafeRouteOverlay'
+import { ZapButton } from './ZapButton'
 import type { SafetyEvent } from '../../../../shared/types'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
@@ -89,6 +90,7 @@ export default function SafetyMap({ proximityAlert }: { proximityAlert?: Proximi
               <p style={{ margin: '6px 0 0', color: '#666', fontSize: 11 }}>
                 {selected.location.place_name} · {selected.severity} · {Math.round(selected.confidence * 100)}% confidence
               </p>
+              <ZapButton reportId={selected.event_id} />
             </div>
           </Popup>
         )}
