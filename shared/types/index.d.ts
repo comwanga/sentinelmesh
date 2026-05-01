@@ -1,5 +1,6 @@
-// Generated from shared/contracts/events.schema.json
-// Do not edit by hand — update the schema and regenerate.
+// Shared TypeScript types for SentinelMesh services.
+// EventType, Severity, SafetyEvent are derived from shared/contracts/events.schema.json.
+// Community Reports types (CommunityReport, ReportVote, ReportType) are maintained here directly.
 
 export type EventType =
   | 'TRAFFIC_INCIDENT'
@@ -64,7 +65,7 @@ export type ReportType =
 
 export interface CommunityReport {
   report_id: string
-  report_type: ReportType | string
+  report_type: ReportType
   description: string | null
   lat: number
   lng: number
@@ -72,9 +73,9 @@ export interface CommunityReport {
   nostr_pubkey: string
   nostr_signature: string
   nostr_event_id: string | null
-  reporter_tier: ReporterTier | string
+  reporter_tier: ReporterTier
   consensus_score: number
-  status: ReportStatus | string
+  status: ReportStatus
   confirmation_count: number
   denial_count: number
   photo_ipfs_cid: string | null
