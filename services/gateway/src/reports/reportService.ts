@@ -18,6 +18,8 @@ const TIER_SCORES: Record<string, number> = {
   NEWCOMER: 1, TRUSTED: 2, VETERAN: 3, SENTINEL: 4,
 }
 
+const VALID_STATUSES = ['PENDING', 'UNVERIFIED', 'VERIFIED', 'AUTHORITATIVE', 'DISPUTED', 'REJECTED']
+
 export async function createReport(input: CreateReportInput): Promise<CommunityReport> {
   const pool = getPool()
 
@@ -28,6 +30,8 @@ export async function createReport(input: CreateReportInput): Promise<CommunityR
     [input.nostr_pubkey]
   )
 
+  // Tier is read after upsert; concurrent tier promotion between these two
+  // queries is accepted as a low-frequency race on new-reporter submissions.
   const userRow = await pool.query(
     'SELECT reputation_tier FROM users WHERE nostr_pubkey = $1',
     [input.nostr_pubkey]
@@ -66,7 +70,7 @@ export async function castVote(input: CastVoteInput): Promise<CommunityReport> {
     'SELECT * FROM community_reports WHERE id = $1',
     [input.report_id]
   )
-  if (reportRes.rowCount === 0) throw new Error('report not found')
+  if (reportRes.rows.length === 0) throw new Error('report not found')
   if (reportRes.rows[0].nostr_pubkey === input.voter_pubkey) throw new Error('cannot vote on own report')
 
   await pool.query(
@@ -92,6 +96,7 @@ export async function castVote(input: CastVoteInput): Promise<CommunityReport> {
 }
 
 export async function applyStatusTransition(report: CommunityReport, newStatus: string): Promise<void> {
+  if (!VALID_STATUSES.includes(newStatus)) throw new Error(`Invalid status: ${newStatus}`)
   const pool = getPool()
   await pool.query(
     'UPDATE community_reports SET status = $1, updated_at = NOW() WHERE id = $2',
