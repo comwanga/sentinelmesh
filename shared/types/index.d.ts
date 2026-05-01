@@ -51,11 +51,54 @@ export interface SafetyEvent {
   bitcoin_txid: string | null
 }
 
+export type ReportType =
+  | 'ROAD_BLOCKED'
+  | 'FLOODING'
+  | 'SECURITY_INCIDENT'
+  | 'FIRE'
+  | 'PROTEST_MARCH'
+  | 'ACCIDENT'
+  | 'INFRASTRUCTURE'
+  | 'ALL_CLEAR'
+  | 'OTHER'
+
+export interface CommunityReport {
+  report_id: string
+  report_type: ReportType | string
+  description: string | null
+  lat: number
+  lng: number
+  place_name: string | null
+  nostr_pubkey: string
+  nostr_signature: string
+  nostr_event_id: string | null
+  reporter_tier: ReporterTier | string
+  consensus_score: number
+  status: ReportStatus | string
+  confirmation_count: number
+  denial_count: number
+  photo_ipfs_cid: string | null
+  linked_event_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ReportVote {
+  vote_id: string
+  report_id: string
+  voter_pubkey: string
+  vote: 'CONFIRM' | 'DENY'
+  voter_lat: number | null
+  voter_lng: number | null
+  created_at: string
+}
+
 export type WsMessage =
   | { type: 'NEW_EVENT';       payload: SafetyEvent }
   | { type: 'EVENT_UPDATED';   payload: SafetyEvent }
   | { type: 'EVENT_RESOLVED';  payload: { event_id: string } }
-  | { type: 'NEW_REPORT';      payload: Record<string, unknown> }
+  | { type: 'NEW_REPORT';      payload: CommunityReport }
+  | { type: 'REPORT_UPDATED';  payload: CommunityReport }
   | { type: 'PROXIMITY_ALERT'; payload: Record<string, unknown> }
 
 export interface SentinelError {
