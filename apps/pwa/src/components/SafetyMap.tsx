@@ -1,16 +1,44 @@
 import Map, { Marker, Popup } from 'react-map-gl'
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAppSelector } from '../store'
 import EventMarker from './EventMarker'
+import { fetchSafeRoutes, SafeRoute } from '../services/routingService'
+import { SafeRouteOverlay } from './SafeRouteOverlay'
 import type { SafetyEvent } from '../../../../shared/types'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 const MAPBOX_TOKEN = import.meta.env['VITE_MAPBOX_TOKEN'] as string
 
-export default function SafetyMap() {
+interface ProximityAlert {
+  event_id: string
+  event_lat: number
+  event_lng: number
+  event_radius_meters: number
+}
+
+export default function SafetyMap({ proximityAlert }: { proximityAlert?: ProximityAlert | null }) {
   const events = useAppSelector(state => state.events.items.filter(e => e.is_active && e.location))
   const connected = useAppSelector(state => state.events.connected)
   const [selected, setSelected] = useState<SafetyEvent | null>(null)
+  const [escapeRoutes, setEscapeRoutes] = useState<SafeRoute[]>([])
+
+  const fetchRoutes = useCallback(() => {
+    if (!proximityAlert) {
+      setEscapeRoutes([])
+      return
+    }
+    setEscapeRoutes([])
+    navigator.geolocation?.getCurrentPosition((pos) => {
+      fetchSafeRoutes(
+        { lat: pos.coords.latitude, lng: pos.coords.longitude },
+        { lat: proximityAlert.event_lat, lng: proximityAlert.event_lng },
+        (proximityAlert.event_radius_meters ?? 500) / 1000,
+        MAPBOX_TOKEN,
+      ).then(setEscapeRoutes)
+    })
+  }, [proximityAlert])
+
+  useEffect(() => { fetchRoutes() }, [fetchRoutes])
 
   return (
     <>
@@ -64,6 +92,8 @@ export default function SafetyMap() {
             </div>
           </Popup>
         )}
+
+        <SafeRouteOverlay routes={escapeRoutes} />
       </Map>
     </>
   )
