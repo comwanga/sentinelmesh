@@ -65,21 +65,23 @@ export function ReportSubmit({ onClose, linkedEventId }: Props) {
     }
 
     const keypair = loadOrCreateKeypair()
-    const payload = { report_type: reportType, description: description || null, lat, lng }
-    const nostrEvent = signReport(payload, keypair.secretKey)
+    const postBody = {
+      report_type: reportType,
+      description: description || null,
+      lat, lng,
+      photo_ipfs_cid: photoCid,
+      linked_event_id: linkedEventId ?? null,
+    }
+    const nostrEvent = signReport(postBody, keypair.secretKey)
 
     try {
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          report_type: reportType,
-          description: description || null,
-          lat, lng,
+          ...postBody,
           nostr_pubkey: keypair.publicKey,
           nostr_event: nostrEvent,
-          photo_ipfs_cid: photoCid,
-          linked_event_id: linkedEventId ?? null,
         }),
       })
       if (!res.ok) {
