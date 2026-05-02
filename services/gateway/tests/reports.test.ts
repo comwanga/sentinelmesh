@@ -43,7 +43,7 @@ app.use(express.json())
 app.use('/api/reports', createReportsRouter(mockHub as any))
 
 const validEvent = {
-  id: 'ev1', pubkey: 'pk1', created_at: 1000000,
+  id: 'ev1', pubkey: 'pk1', created_at: Math.floor(Date.now() / 1000),
   kind: 30078, tags: [], content: '{}', sig: 'sig1',
 }
 

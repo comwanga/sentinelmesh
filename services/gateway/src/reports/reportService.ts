@@ -1,15 +1,15 @@
 import { getPool } from '../db/pool'
-import type { CommunityReport } from '../../../../shared/types'
+import type { CommunityReport, ReportType } from '../../../../shared/types'
 
 export interface CreateReportInput {
-  report_type: string
+  report_type: ReportType
   description: string | null
   lat: number
   lng: number
   place_name: string | null
   nostr_pubkey: string
   nostr_signature: string
-  nostr_event_id: string
+  nostr_event_id: string | null
   photo_ipfs_cid: string | null
   linked_event_id: string | null
 }
@@ -188,10 +188,10 @@ export function rowToReport(row: Record<string, unknown>): CommunityReport {
     nostr_signature:    row['nostr_signature'] as string,
     nostr_event_id:     row['nostr_event_id'] as string | null,
     reporter_tier:      row['reporter_tier'] as CommunityReport['reporter_tier'],
-    consensus_score:    row['consensus_score'] as number,
+    consensus_score:    Number(row['consensus_score']),
     status:             row['status'] as CommunityReport['status'],
-    confirmation_count: row['confirmation_count'] as number,
-    denial_count:       row['denial_count'] as number,
+    confirmation_count: Number(row['confirmation_count']),
+    denial_count:       Number(row['denial_count']),
     photo_ipfs_cid:     row['photo_ipfs_cid'] as string | null,
     linked_event_id:    row['linked_event_id'] as string | null,
     created_at:         (row['created_at'] as Date).toISOString(),

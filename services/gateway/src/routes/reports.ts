@@ -4,6 +4,14 @@ import { verifyNostrSignature } from '../nostr/verifier'
 import { createReport, castVote, listReports, applyStatusTransition } from '../reports/reportService'
 import { computeNewStatus } from '../reports/consensusEngine'
 import type { WsHub } from '../ws/hub'
+import type { ReportType } from '../../../../shared/types'
+
+const VALID_REPORT_TYPES: ReportType[] = [
+  'ROAD_BLOCKED', 'FLOODING', 'SECURITY_INCIDENT', 'FIRE',
+  'PROTEST_MARCH', 'ACCIDENT', 'INFRASTRUCTURE', 'ALL_CLEAR', 'OTHER',
+]
+
+const EVENT_STALENESS_SECS = 300
 
 const reportLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -26,8 +34,18 @@ export function createReportsRouter(hub: WsHub): Router {
     const { report_type, description, lat, lng, place_name,
             nostr_pubkey, nostr_event, photo_ipfs_cid, linked_event_id } = req.body
 
+    const parsedLat = parseFloat(String(lat))
+    const parsedLng = parseFloat(String(lng))
     if (!report_type || lat == null || lng == null || !nostr_pubkey || !nostr_event) {
       res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Missing required fields', retryable: false })
+      return
+    }
+    if (isNaN(parsedLat) || isNaN(parsedLng)) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: 'lat and lng must be valid numbers', retryable: false })
+      return
+    }
+    if (!VALID_REPORT_TYPES.includes(String(report_type) as ReportType)) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: `Invalid report_type`, retryable: false })
       return
     }
     if (!verifyNostrSignature(nostr_event)) {
@@ -38,17 +56,22 @@ export function createReportsRouter(hub: WsHub): Router {
       res.status(401).json({ code: 'PUBKEY_MISMATCH', message: 'Event pubkey does not match nostr_pubkey', retryable: false })
       return
     }
+    const nowSecs = Math.floor(Date.now() / 1000)
+    if (Math.abs(nowSecs - Number(nostr_event.created_at)) > EVENT_STALENESS_SECS) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Nostr event is stale or too far in the future', retryable: false })
+      return
+    }
 
     try {
       const report = await createReport({
-        report_type,
+        report_type: report_type as ReportType,
         description: description ?? null,
-        lat: parseFloat(String(lat)),
-        lng: parseFloat(String(lng)),
+        lat: parsedLat,
+        lng: parsedLng,
         place_name: place_name ?? null,
         nostr_pubkey,
         nostr_signature: nostr_event.sig as string,
-        nostr_event_id: nostr_event.id as string,
+        nostr_event_id: (nostr_event.id as string | undefined) ?? null,
         photo_ipfs_cid: photo_ipfs_cid ?? null,
         linked_event_id: linked_event_id ?? null,
       })
@@ -77,6 +100,11 @@ export function createReportsRouter(hub: WsHub): Router {
     }
     if (voter_nostr_event.pubkey !== voter_pubkey) {
       res.status(401).json({ code: 'PUBKEY_MISMATCH', message: 'Event pubkey does not match voter_pubkey', retryable: false })
+      return
+    }
+    const nowSecs = Math.floor(Date.now() / 1000)
+    if (Math.abs(nowSecs - Number(voter_nostr_event.created_at)) > EVENT_STALENESS_SECS) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Nostr event is stale or too far in the future', retryable: false })
       return
     }
 
