@@ -1,6 +1,6 @@
 // apps/pwa/src/App.tsx
 import { useEffect, useCallback, useState } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+
 import SafetyMap from './components/SafetyMap'
 import { AcousticAlert } from './components/AcousticAlert'
 import { ReportSubmit } from './components/ReportSubmit'
@@ -10,14 +10,14 @@ import { AudioCapture } from './services/audioCapture'
 import { AcousticDetectionService } from './services/acousticDetectionService'
 import { autoSubmitAcousticReport } from './services/reportAutoSubmit'
 import { detectionReceived, alertDismissed, detectionStarted, detectionStopped } from './store/acousticSlice'
-import type { RootState } from './store'
+import { useAppSelector, useAppDispatch } from './store'
 
 type Panel = 'none' | 'submit' | 'list'
 
 export default function App() {
   useWsConnection()
-  const dispatch = useDispatch()
-  const currentAlert = useSelector((s: RootState) => s.acoustic.currentAlert)
+  const dispatch = useAppDispatch()
+  const currentAlert = useAppSelector(s => s.acoustic.currentAlert)
   const [panel, setPanel] = useState<Panel>('none')
 
   const handleDismiss = useCallback(() => dispatch(alertDismissed()), [dispatch])

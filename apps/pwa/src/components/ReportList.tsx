@@ -31,17 +31,22 @@ export function ReportList() {
       lng = pos.coords.longitude
     } catch { /* vote without location */ }
 
-    await fetch(`${API_BASE}/api/reports/${report.report_id}/vote`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        voter_pubkey: keypair.publicKey,
-        vote,
-        voter_nostr_event: voteEvent,
-        voter_lat: lat,
-        voter_lng: lng,
-      }),
-    })
+    try {
+      const res = await fetch(`${API_BASE}/api/reports/${report.report_id}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          voter_pubkey: keypair.publicKey,
+          vote,
+          voter_nostr_event: voteEvent,
+          voter_lat: lat,
+          voter_lng: lng,
+        }),
+      })
+      if (!res.ok) console.error(`[vote] server error ${res.status}`)
+    } catch (err) {
+      console.error('[vote] network error', err)
+    }
   }, [])
 
   if (reports.length === 0) {
