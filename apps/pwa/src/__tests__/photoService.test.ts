@@ -1,5 +1,5 @@
 // apps/pwa/src/__tests__/photoService.test.ts
-import { vi, describe, test, expect, beforeAll } from 'vitest'
+import { vi, describe, test, expect, beforeAll, beforeEach } from 'vitest'
 
 // Mock blazeface before importing photoService
 vi.mock('@tensorflow-models/blazeface', () => ({
@@ -16,6 +16,7 @@ const mockCtx = {
   putImageData: vi.fn(),
   filter: '',
   fillRect: vi.fn(),
+  imageSmoothingEnabled: true,
 }
 
 // Patch the jsdom prototype so document.createElement('canvas') works
@@ -24,6 +25,11 @@ beforeAll(() => {
   HTMLCanvasElement.prototype.toBlob = function (cb: BlobCallback) {
     cb(new Blob(['img'], { type: 'image/jpeg' }))
   }
+})
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  mockCtx.imageSmoothingEnabled = true
 })
 
 // Mock createImageBitmap
@@ -40,14 +46,19 @@ describe('compressAndStrip', () => {
     const file = new File(['data'], 'photo.jpg', { type: 'image/jpeg' })
     const result = await compressAndStrip(file)
     expect(result).toBeInstanceOf(Blob)
+    expect(mockCtx.drawImage).toHaveBeenCalledOnce()
   })
 })
 
 describe('blurFaces', () => {
-  test('returns the canvas after applying blur', async () => {
+  test('returns the canvas and pixelates face regions', async () => {
     const canvas = document.createElement('canvas')
+    canvas.width = 200
+    canvas.height = 200
     const result = await blurFaces(canvas)
     expect(result).toBe(canvas)
+    // Two drawImage calls: one to scale region down, one to scale back up
+    expect(mockCtx.drawImage).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -61,10 +72,30 @@ describe('uploadToIPFS', () => {
     const blob = new Blob(['data'], { type: 'image/jpeg' })
     const cid = await uploadToIPFS(blob)
     expect(cid).toBe('QmTestCID')
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.pinata.cloud/pinning/pinFileToIPFS',
+      expect.objectContaining({ headers: { Authorization: 'Bearer test-jwt' } }),
+    )
   })
 
   test('returns null when VITE_PINATA_JWT not set', async () => {
     vi.stubEnv('VITE_PINATA_JWT', '')
+    const blob = new Blob(['data'], { type: 'image/jpeg' })
+    const cid = await uploadToIPFS(blob)
+    expect(cid).toBeNull()
+  })
+
+  test('returns null when fetch returns non-ok response', async () => {
+    vi.stubEnv('VITE_PINATA_JWT', 'test-jwt')
+    mockFetch.mockResolvedValueOnce({ ok: false })
+    const blob = new Blob(['data'], { type: 'image/jpeg' })
+    const cid = await uploadToIPFS(blob)
+    expect(cid).toBeNull()
+  })
+
+  test('returns null when fetch throws', async () => {
+    vi.stubEnv('VITE_PINATA_JWT', 'test-jwt')
+    mockFetch.mockRejectedValueOnce(new Error('network error'))
     const blob = new Blob(['data'], { type: 'image/jpeg' })
     const cid = await uploadToIPFS(blob)
     expect(cid).toBeNull()

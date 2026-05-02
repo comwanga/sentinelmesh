@@ -2,6 +2,7 @@ import * as blazeface from '@tensorflow-models/blazeface'
 
 const MAX_DIMENSION = 800
 const JPEG_QUALITY = 0.85
+const BLUR_SCALE = 0.05 // scale face region down then up for pixelate blur
 
 let faceModel: blazeface.BlazeFaceModel | null = null
 
@@ -19,8 +20,9 @@ export async function compressAndStrip(file: File): Promise<Blob> {
   const canvas = document.createElement('canvas')
   canvas.width = w
   canvas.height = h
-  const ctx = canvas.getContext('2d')!
-  ctx.drawImage(bitmap as unknown as CanvasImageSource, 0, 0, w, h)
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Could not get 2D context')
+  ctx.drawImage(bitmap as CanvasImageSource, 0, 0, w, h)
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -37,14 +39,26 @@ export async function blurFaces(canvas: HTMLCanvasElement): Promise<HTMLCanvasEl
 
   if (predictions.length === 0) return canvas
 
-  const ctx = canvas.getContext('2d')!
-  ctx.filter = 'blur(20px)'
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return canvas
+
   for (const pred of predictions) {
     const [x, y] = pred.topLeft as [number, number]
     const [x2, y2] = pred.bottomRight as [number, number]
-    ctx.fillRect(x - 10, y - 10, (x2 - x) + 20, (y2 - y) + 20)
+    const fw = x2 - x
+    const fh = y2 - y
+
+    // Pixelate-blur: scale region down then back up without smoothing
+    const tmp = document.createElement('canvas')
+    tmp.width = Math.max(1, Math.round(fw * BLUR_SCALE))
+    tmp.height = Math.max(1, Math.round(fh * BLUR_SCALE))
+    const tmpCtx = tmp.getContext('2d')
+    if (!tmpCtx) continue
+    tmpCtx.drawImage(canvas, x, y, fw, fh, 0, 0, tmp.width, tmp.height)
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(tmp, 0, 0, tmp.width, tmp.height, x, y, fw, fh)
+    ctx.imageSmoothingEnabled = true
   }
-  ctx.filter = 'none'
 
   return canvas
 }
