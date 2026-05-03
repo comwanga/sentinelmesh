@@ -48,4 +48,10 @@ describe('FamilyCircleDashboard', () => {
     render(<Provider store={makeStore()}><FamilyCircleDashboard /></Provider>)
     expect(screen.getByText(/Proximity Alert Log/i)).toBeInTheDocument()
   })
+
+  it('shows empty state when no active circle', () => {
+    const emptyStore = configureStore({ reducer: { circles: circlesReducer, events: eventsReducer, acoustic: acousticReducer } })
+    render(<Provider store={emptyStore}><FamilyCircleDashboard /></Provider>)
+    expect(screen.getByText(/No active circle/i)).toBeInTheDocument()
+  })
 })

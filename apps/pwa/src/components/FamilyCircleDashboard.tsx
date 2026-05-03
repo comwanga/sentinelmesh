@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import Map from 'react-map-gl'
 import { useAppSelector, useAppDispatch } from '../store'
-import { activeAlertDismissed } from '../store/circlesSlice'
+import { activeAlertDismissed, circleLeft } from '../store/circlesSlice'
 import { CircleSidebar } from './CircleSidebar'
 import { CircleMapLayer } from './CircleMapLayer'
 import { AlertBanner } from './AlertBanner'
@@ -38,7 +38,7 @@ export function FamilyCircleDashboard() {
 
   const handleLeave = useCallback(() => {
     if (window.confirm('Leave this circle? Your local circle key will be removed.')) {
-      dispatch({ type: 'circles/circleLeft' })
+      dispatch(circleLeft())
     }
   }, [dispatch])
 
