@@ -67,6 +67,8 @@ export interface SentinelError {
 
 export type MemberStatus = 'ONLINE' | 'GHOST' | 'OFFLINE'
 
+export type PresenceMode = 'GHOST' | 'OFFLINE'
+
 export interface Circle {
   circle_id: string
   owner_pubkey: string
@@ -93,4 +95,4 @@ export interface ProximityAlert {
 
 export type CircleWsMessage =
   | { type: 'CIRCLE_LOCATION_BLOB'; payload: { sender_pubkey: string; encrypted_payload: string; sent_at: string } }
-  | { type: 'CIRCLE_PRESENCE';      payload: { sender_pubkey: string; mode: 'GHOST' | 'OFFLINE' } }
+  | { type: 'CIRCLE_PRESENCE';      payload: { sender_pubkey: string; mode: PresenceMode } }
