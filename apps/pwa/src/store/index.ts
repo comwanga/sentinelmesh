@@ -1,12 +1,14 @@
 import { configureStore } from '@reduxjs/toolkit'
 import eventsReducer from './eventsSlice'
 import acousticReducer from './acousticSlice'
+import circlesReducer from './circlesSlice'
 import { useSelector, TypedUseSelectorHook, useDispatch } from 'react-redux'
 
 export const store = configureStore({
   reducer: {
     events: eventsReducer,
     acoustic: acousticReducer,
+    circles: circlesReducer,
   },
 })
 
