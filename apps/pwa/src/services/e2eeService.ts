@@ -22,7 +22,7 @@ export function clearCircleKey(circleId: string): void {
 }
 
 export async function generateEphemeralKeypair(): Promise<{ publicKey: Uint8Array; privateKey: CryptoKey }> {
-  const pair = await crypto.subtle.generateKey({ name: 'X25519' } as AlgorithmIdentifier, true, ['deriveKey', 'deriveBits'])
+  const pair = await crypto.subtle.generateKey({ name: 'X25519' } as AlgorithmIdentifier, false, ['deriveBits'])
   const rawPub = await crypto.subtle.exportKey('raw', (pair as CryptoKeyPair).publicKey)
   return { publicKey: new Uint8Array(rawPub), privateKey: (pair as CryptoKeyPair).privateKey }
 }
@@ -43,7 +43,7 @@ function encodeB64(iv: Uint8Array, data: ArrayBuffer): string {
 function decodeB64(b64: string): { iv: Uint8Array; data: Uint8Array } | null {
   try {
     const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
-    if (bytes.length < 13) return null
+    if (bytes.length < 28) return null
     return { iv: bytes.slice(0, 12), data: bytes.slice(12) }
   } catch {
     return null
@@ -62,6 +62,9 @@ export async function wrapCircleKey(
   return encodeB64(iv, wrapped)
 }
 
+/**
+ * @throws {Error} if the wrapped key encoding is invalid or decryption fails (wrong keypair)
+ */
 export async function unwrapCircleKey(
   wrappedB64: string,
   myPrivKey: CryptoKey,
