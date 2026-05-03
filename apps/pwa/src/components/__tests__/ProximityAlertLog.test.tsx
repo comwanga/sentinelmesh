@@ -24,4 +24,12 @@ describe('ProximityAlertLog', () => {
     render(<ProximityAlertLog alerts={[]} />)
     expect(screen.getByText('No proximity alerts')).toBeInTheDocument()
   })
+
+  it('renders --:-- for invalid triggered_at', () => {
+    const badAlert: ProximityAlert[] = [
+      { id: 'a3', member_pubkey: 'npub1bad', zone_name: 'Zone X', event_id: null, severity: 'LOW', triggered_at: 'not-a-date' },
+    ]
+    render(<ProximityAlertLog alerts={badAlert} />)
+    expect(screen.getByText('--:--')).toBeInTheDocument()
+  })
 })

@@ -8,8 +8,9 @@ const SEV_STYLE: Record<Severity, { color: string; border: string; bg: string }>
 }
 
 function formatTime(iso: string): string {
-  try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
-  catch { return '--:--' }
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '--:--'
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 interface ProximityAlertLogProps {
