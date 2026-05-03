@@ -4,16 +4,18 @@ import cors from 'cors'
 import { config } from './config'
 import { eventsRouter } from './routes/events'
 import { zapRouter } from './routes/zap'
+import { circlesRouter } from './routes/circles'
+import { createLocationBlobsRouter } from './routes/locationBlobs'
 import { initPool } from './db/pool'
 import { startEventSubscriber } from './subscribers/eventSubscriber'
 import { createWsHub } from './ws/hub'
+import { createCircleHub } from './ws/circleHub'
 import { createServer } from 'http'
 
 const app = express()
 
 app.use(helmet())
 app.use(cors())
-// Keep webhook body as raw bytes for HMAC verification before JSON parsing.
 app.use('/api/zaps/webhook', express.raw({ type: 'application/json' }))
 app.use(express.json())
 
@@ -23,9 +25,13 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/events', eventsRouter)
 app.use('/api/zaps', zapRouter)
+app.use('/api/circles', circlesRouter)
 
 const server = createServer(app)
 const wsHub = createWsHub(server)
+const circleHub = createCircleHub(server)
+
+app.use('/api/circles', createLocationBlobsRouter(circleHub))
 
 initPool()
   .then(() => startEventSubscriber(wsHub))
