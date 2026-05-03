@@ -6,6 +6,7 @@ import { eventsRouter } from './routes/events'
 import { zapRouter } from './routes/zap'
 import { circlesRouter } from './routes/circles'
 import { createLocationBlobsRouter } from './routes/locationBlobs'
+import { createReportsRouter } from './routes/reports'
 import { initPool } from './db/pool'
 import { startEventSubscriber } from './subscribers/eventSubscriber'
 import { createWsHub } from './ws/hub'
@@ -32,6 +33,9 @@ const wsHub = createWsHub(server)
 const circleHub = createCircleHub(server)
 
 app.use('/api/circles', createLocationBlobsRouter(circleHub))
+
+// Mount reports router after hub is created — it needs hub to broadcast
+app.use('/api/reports', createReportsRouter(wsHub))
 
 initPool()
   .then(() => startEventSubscriber(wsHub))
