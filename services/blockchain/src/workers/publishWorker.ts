@@ -189,7 +189,7 @@ async function processJob(pool: Pool, job: PublishJob): Promise<void> {
   )
 }
 
-export async function startPublishWorker(): Promise<void> {
+export function startPublishWorker(): { triggerNudge: () => void } {
   const pool = getPool()
   const workerId = `worker-${randomUUID()}`
   let orphanTick = 0
@@ -199,16 +199,13 @@ export async function startPublishWorker(): Promise<void> {
     if (orphanTick % 30 === 0) {
       await reclaimOrphans(pool).catch(err => console.error('[worker] orphan reclaim error:', err))
     }
-
     try {
       const job = await claimNextJob(pool, workerId)
       if (!job) return
-
       if (job.retry_count >= MAX_RETRIES) {
         await markDead(pool, job.id)
         return
       }
-
       await processJob(pool, job)
     } catch (err) {
       console.error('[worker] tick error:', err)
@@ -217,4 +214,6 @@ export async function startPublishWorker(): Promise<void> {
 
   setInterval(() => tick().catch(console.error), config.pollIntervalMs)
   tick().catch(console.error)
+
+  return { triggerNudge: () => tick().catch(console.error) }
 }
