@@ -1,6 +1,5 @@
 // apps/pwa/src/App.tsx
 import { useEffect, useCallback, useState } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
 import SafetyMap from './components/SafetyMap'
 import { AcousticAlert } from './components/AcousticAlert'
 import { FamilyCircleDashboard } from './components/FamilyCircleDashboard'
@@ -9,14 +8,14 @@ import { AudioCapture } from './services/audioCapture'
 import { AcousticDetectionService } from './services/acousticDetectionService'
 import { autoSubmitAcousticReport } from './services/reportAutoSubmit'
 import { detectionReceived, alertDismissed, detectionStarted, detectionStopped } from './store/acousticSlice'
-import type { RootState } from './store'
+import { useAppDispatch, useAppSelector } from './store'
 
 type View = 'map' | 'circles'
 
 export default function App() {
   useWsConnection()
-  const dispatch = useDispatch()
-  const currentAlert = useSelector((s: RootState) => s.acoustic.currentAlert)
+  const dispatch = useAppDispatch()
+  const currentAlert = useAppSelector(s => s.acoustic.currentAlert)
   const [view, setView] = useState<View>('map')
 
   const handleDismiss = useCallback(() => dispatch(alertDismissed()), [dispatch])
