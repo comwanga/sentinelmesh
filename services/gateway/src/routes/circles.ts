@@ -90,29 +90,39 @@ circlesRouter.delete('/:id/members/:pubkey', requireNostrAuth, async (req: Reque
   const pool = getPool()
   const { id, pubkey } = req.params as { id: string; pubkey: string }
   const isSelf = req.nostrPubkey === pubkey
-  if (!isSelf) {
-    const circleResult = await pool.query('SELECT owner_pubkey FROM circles WHERE circle_id = $1', [id])
-    if (circleResult.rowCount === 0 || circleResult.rows[0].owner_pubkey !== req.nostrPubkey) {
-      res.status(403).json({ code: 'FORBIDDEN', message: 'Only owner or self can remove members', retryable: false })
-      return
+  try {
+    if (!isSelf) {
+      const circleResult = await pool.query('SELECT owner_pubkey FROM circles WHERE circle_id = $1', [id])
+      if (circleResult.rowCount === 0 || circleResult.rows[0].owner_pubkey !== req.nostrPubkey) {
+        res.status(403).json({ code: 'FORBIDDEN', message: 'Only owner or self can remove members', retryable: false })
+        return
+      }
     }
+    await pool.query('DELETE FROM circle_members WHERE circle_id = $1 AND member_pubkey = $2', [id, pubkey])
+    res.status(204).send()
+  } catch (err) {
+    console.error('DELETE /api/circles/:id/members/:pubkey error:', err)
+    res.status(500).json({ code: 'DB_ERROR', message: 'Could not remove member', retryable: true })
   }
-  await pool.query('DELETE FROM circle_members WHERE circle_id = $1 AND member_pubkey = $2', [id, pubkey])
-  res.status(204).send()
 })
 
 // DELETE /api/circles/:id
 circlesRouter.delete('/:id', requireNostrAuth, async (req: Request, res: Response) => {
   const pool = getPool()
-  const circleResult = await pool.query('SELECT owner_pubkey FROM circles WHERE circle_id = $1', [req.params['id']])
-  if (circleResult.rowCount === 0) {
-    res.status(404).json({ code: 'NOT_FOUND', message: 'Circle not found', retryable: false })
-    return
+  try {
+    const circleResult = await pool.query('SELECT owner_pubkey FROM circles WHERE circle_id = $1', [req.params['id']])
+    if (circleResult.rowCount === 0) {
+      res.status(404).json({ code: 'NOT_FOUND', message: 'Circle not found', retryable: false })
+      return
+    }
+    if (circleResult.rows[0].owner_pubkey !== req.nostrPubkey) {
+      res.status(403).json({ code: 'FORBIDDEN', message: 'Only owner can delete circle', retryable: false })
+      return
+    }
+    await pool.query('DELETE FROM circles WHERE circle_id = $1', [req.params['id']])
+    res.status(204).send()
+  } catch (err) {
+    console.error('DELETE /api/circles/:id error:', err)
+    res.status(500).json({ code: 'DB_ERROR', message: 'Could not delete circle', retryable: true })
   }
-  if (circleResult.rows[0].owner_pubkey !== req.nostrPubkey) {
-    res.status(403).json({ code: 'FORBIDDEN', message: 'Only owner can delete circle', retryable: false })
-    return
-  }
-  await pool.query('DELETE FROM circles WHERE circle_id = $1', [req.params['id']])
-  res.status(204).send()
 })

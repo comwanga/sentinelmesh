@@ -19,6 +19,17 @@ export function createLocationBlobsRouter(circleHub: CircleHub): Router {
 
     const pool = getPool()
     try {
+      const memberCheck = await pool.query(
+        `SELECT 1 FROM circle_members WHERE circle_id = $1 AND member_pubkey = $2
+         UNION
+         SELECT 1 FROM circles WHERE circle_id = $1 AND owner_pubkey = $2
+         LIMIT 1`,
+        [circleId, req.nostrPubkey],
+      )
+      if (memberCheck.rowCount === 0) {
+        res.status(403).json({ code: 'FORBIDDEN', message: 'Not a circle member', retryable: false })
+        return
+      }
       const result = await pool.query(
         `INSERT INTO location_blobs (blob_id, circle_id, sender_pubkey, encrypted_payload, expires_at)
          VALUES ($1, $2, $3, $4, NOW() + INTERVAL '10 minutes')
@@ -39,14 +50,26 @@ export function createLocationBlobsRouter(circleHub: CircleHub): Router {
 
   // GET /api/circles/:id/location
   router.get('/:id/location', requireNostrAuth, async (req: Request, res: Response) => {
+    const circleId = (req.params as { id: string }).id
     const pool = getPool()
     try {
+      const memberCheck = await pool.query(
+        `SELECT 1 FROM circle_members WHERE circle_id = $1 AND member_pubkey = $2
+         UNION
+         SELECT 1 FROM circles WHERE circle_id = $1 AND owner_pubkey = $2
+         LIMIT 1`,
+        [circleId, req.nostrPubkey],
+      )
+      if (memberCheck.rowCount === 0) {
+        res.status(403).json({ code: 'FORBIDDEN', message: 'Not a circle member', retryable: false })
+        return
+      }
       const result = await pool.query(
         `SELECT sender_pubkey, encrypted_payload, sent_at
          FROM location_blobs
          WHERE circle_id = $1 AND expires_at > NOW()
          ORDER BY sent_at DESC`,
-        [(req.params as { id: string }).id],
+        [circleId],
       )
       res.json({ blobs: result.rows })
     } catch (err) {

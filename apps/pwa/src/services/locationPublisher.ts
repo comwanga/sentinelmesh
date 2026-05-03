@@ -8,7 +8,6 @@ export interface LocationPublisher {
 
 export function startLocationPublisher(
   circleId: string,
-  nostrPubkey: string,
   authEventJson: string,
 ): LocationPublisher {
   let active = true
@@ -28,7 +27,7 @@ export function startLocationPublisher(
             'Content-Type': 'application/json',
             'X-Nostr-Auth': authEventJson,
           },
-          body: JSON.stringify({ sender_pubkey: nostrPubkey, encrypted_payload: encrypted }),
+          body: JSON.stringify({ encrypted_payload: encrypted }),
         })
       } catch {
         console.warn('[location-publisher] publish failed')

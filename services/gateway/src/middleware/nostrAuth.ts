@@ -30,6 +30,11 @@ export function requireNostrAuth(req: Request, res: Response, next: NextFunction
     return
   }
 
+  if ((event['kind'] as number) !== 27235) {
+    res.status(401).json({ code: 'INVALID_AUTH', message: 'Auth event must be kind 27235', retryable: false })
+    return
+  }
+
   if (!verifyEvent(event as Parameters<typeof verifyEvent>[0])) {
     res.status(401).json({ code: 'INVALID_SIG', message: 'Signature verification failed', retryable: false })
     return
