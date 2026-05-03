@@ -108,3 +108,35 @@ export interface SentinelError {
   retryable: boolean
   context?: Record<string, unknown>
 }
+
+export type MemberStatus = 'ONLINE' | 'GHOST' | 'OFFLINE'
+
+export type PresenceMode = 'GHOST' | 'OFFLINE'
+
+export interface Circle {
+  circle_id: string
+  owner_pubkey: string
+  name: string
+  created_at: string
+}
+
+export interface CircleMember {
+  circle_id: string
+  member_pubkey: string
+  alert_radius_km: number
+  alert_severity: Severity
+  joined_at: string
+}
+
+export interface ProximityAlert {
+  id: string
+  member_pubkey: string
+  zone_name: string
+  event_id: string | null
+  severity: Severity
+  triggered_at: string
+}
+
+export type CircleWsMessage =
+  | { type: 'CIRCLE_LOCATION_BLOB'; payload: { sender_pubkey: string; encrypted_payload: string; sent_at: string } }
+  | { type: 'CIRCLE_PRESENCE';      payload: { sender_pubkey: string; mode: PresenceMode } }
