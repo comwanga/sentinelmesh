@@ -12,3 +12,10 @@ export async function initPool(): Promise<void> {
   _pool = new Pool({ connectionString: config.databaseUrl })
   await _pool.query('SELECT 1')
 }
+
+export async function closePool(): Promise<void> {
+  if (_pool) {
+    await _pool.end()
+    _pool = null
+  }
+}
