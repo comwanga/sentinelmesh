@@ -161,9 +161,11 @@ CREATE INDEX idx_zaps_hash       ON lightning_zaps(payment_hash);
 -- Blockchain anchoring job queue and audit trail
 CREATE TABLE publish_jobs (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  source_type     VARCHAR(20) NOT NULL,
+  source_type     VARCHAR(20) NOT NULL
+                  CHECK (source_type IN ('SAFETY_EVENT','COMMUNITY_REPORT')),
   source_id       UUID NOT NULL,
-  status          VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  status          VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+                  CHECK (status IN ('PENDING','PROCESSING','NOSTR_PUBLISHED','BITCOIN_ANCHORED','COMPLETE','FAILED','DEAD')),
   worker_id       VARCHAR(64),
   locked_at       TIMESTAMPTZ,
   nostr_kind1_id  VARCHAR(64),
@@ -187,7 +189,7 @@ CREATE UNIQUE INDEX idx_publish_jobs_source
 
 CREATE TABLE publish_failures (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  job_id        UUID NOT NULL REFERENCES publish_jobs(id),
+  job_id        UUID NOT NULL REFERENCES publish_jobs(id) ON DELETE RESTRICT,
   step          VARCHAR(30) NOT NULL,
   error_message TEXT NOT NULL,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
