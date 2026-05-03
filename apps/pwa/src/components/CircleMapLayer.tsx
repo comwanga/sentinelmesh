@@ -1,0 +1,53 @@
+import { Marker } from 'react-map-gl'
+import type { MemberStatus } from '../../../../shared/types'
+
+interface DecryptedLocation { lat: number; lng: number; ts: string }
+
+interface CircleMapLayerProps {
+  decryptedLocations: Record<string, DecryptedLocation>
+  memberStatuses: Record<string, MemberStatus>
+}
+
+export function CircleMapLayer({ decryptedLocations, memberStatuses }: CircleMapLayerProps) {
+  return (
+    <>
+      {Object.entries(decryptedLocations).map(([pubkey, loc]) => {
+        if (memberStatuses[pubkey] !== 'ONLINE') return null
+        const truncated = pubkey.length > 10 ? `${pubkey.slice(0, 8)}…` : pubkey
+        return (
+          <Marker key={pubkey} latitude={loc.lat} longitude={loc.lng}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{
+                width: 18, height: 18, borderRadius: '50%',
+                border: '2px solid #00E5FF',
+                boxShadow: '0 0 12px rgba(0,229,255,0.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                position: 'relative',
+              }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#00E5FF' }} />
+                <div style={{
+                  position: 'absolute', inset: -4, borderRadius: '50%',
+                  border: '1px solid rgba(0,229,255,0.2)',
+                  animation: 'node-ping 1.8s ease-out infinite',
+                }} />
+              </div>
+              <span style={{
+                fontFamily: "'Courier New', monospace", fontSize: 9, color: '#a0aec0',
+                background: 'rgba(13,17,24,0.8)', padding: '1px 4px', borderRadius: 3,
+                whiteSpace: 'nowrap',
+              }}>
+                {truncated}
+              </span>
+            </div>
+          </Marker>
+        )
+      })}
+      <style>{`
+        @keyframes node-ping {
+          0%   { opacity: 1; transform: scale(1); }
+          100% { opacity: 0; transform: scale(1.8); }
+        }
+      `}</style>
+    </>
+  )
+}
