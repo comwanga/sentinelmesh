@@ -29,8 +29,11 @@ eventsRouter.post('/', async (req: Request, res: Response) => {
     return
   }
 
+  const client = await pool.connect()
   try {
-    const result = await pool.query(
+    await client.query('BEGIN')
+
+    const result = await client.query(
       `INSERT INTO safety_events (
         event_type, severity, title, summary,
         lat, lng, place_name, county, radius_meters,
@@ -59,15 +62,24 @@ eventsRouter.post('/', async (req: Request, res: Response) => {
     const newEvent = result.rows[0]
 
     if (['AUTHORITATIVE', 'CRITICAL'].includes(body.severity)) {
-      await pool.query(
+      await client.query(
         `INSERT INTO publish_jobs (source_type, source_id) VALUES ('SAFETY_EVENT', $1)`,
         [newEvent.id],
       )
-      nudgeBlockchain()  // fire-and-forget — no await
+    }
+
+    await client.query('COMMIT')
+    client.release()
+
+    // nudge is fire-and-forget after commit, not inside transaction
+    if (['AUTHORITATIVE', 'CRITICAL'].includes(body.severity)) {
+      nudgeBlockchain()
     }
 
     res.status(201).json(newEvent)
   } catch (err) {
+    await client.query('ROLLBACK')
+    client.release()
     console.error('POST /api/events error:', err)
     res.status(500).json({ code: 'DB_ERROR', message: 'Could not create event', retryable: true })
   }

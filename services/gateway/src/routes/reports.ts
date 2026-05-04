@@ -192,18 +192,13 @@ reportsRouter.post('/:id/vote', async (req: Request, res: Response) => {
 
     // Enqueue a publish_job when consensus_score crosses 3 for the first time
     if (previousScore < 3 && newScore >= 3) {
-      // Check whether a non-DEAD job already exists to avoid inserting a duplicate
-      const existing = await pool.query(
-        `SELECT 1 FROM publish_jobs WHERE source_type = 'COMMUNITY_REPORT' AND source_id = $1 AND status != 'DEAD' LIMIT 1`,
+      await pool.query(
+        `INSERT INTO publish_jobs (source_type, source_id)
+         VALUES ('COMMUNITY_REPORT', $1)
+         ON CONFLICT DO NOTHING`,
         [reportId],
       )
-      if (existing.rows.length === 0) {
-        await pool.query(
-          `INSERT INTO publish_jobs (source_type, source_id) VALUES ('COMMUNITY_REPORT', $1)`,
-          [reportId],
-        )
-        nudgeBlockchain()  // fire-and-forget
-      }
+      nudgeBlockchain()  // fire-and-forget
     }
 
     res.json(updatedReport)
