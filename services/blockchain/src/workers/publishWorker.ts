@@ -164,25 +164,25 @@ async function processJob(pool: Pool, job: PublishJob): Promise<void> {
       nostr_event_id: kind30078_id!,
       severity: source.severity,
     })
-    // NOTE: UTXO (txid/vout/value/changeAddress) must be manually rotated after each anchor.
+    // NOTE: UTXO (txid/vout/value) must be manually rotated after each anchor.
     // The change output of the previous TX is not automatically fed back as input.
     // Monitor BITCOIN_UTXO_TXID and BITCOIN_UTXO_VALUE env vars before deploying to mainnet.
-    const txid = await broadcastAnchor({
+    const anchorResult = await broadcastAnchor({
       anchorHash: hash,
       wif: config.bitcoinWif,
       utxoTxid: process.env.BITCOIN_UTXO_TXID ?? '',
       utxoVout: parseInt(process.env.BITCOIN_UTXO_VOUT ?? '0', 10),
       utxoValue: parseInt(process.env.BITCOIN_UTXO_VALUE ?? '10000', 10),
-      changeAddress: process.env.BITCOIN_CHANGE_ADDRESS ?? '',
+      fee: parseInt(process.env.BITCOIN_FEE_SATS ?? '2000', 10),
       network: config.bitcoinNetwork,
     })
     await pool.query(
       `UPDATE publish_jobs
        SET status = 'BITCOIN_ANCHORED', bitcoin_txid = $2, anchor_hash = $3, updated_at = NOW()
        WHERE id = $1`,
-      [job.id, txid, hash],
+      [job.id, anchorResult.txid, hash],
     )
-    job.bitcoin_txid = txid
+    job.bitcoin_txid = anchorResult.txid
     job.nostr_kind1_id = kind1_id
     job.nostr_kind30078_id = kind30078_id
   }
