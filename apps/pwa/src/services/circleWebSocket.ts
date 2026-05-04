@@ -4,7 +4,8 @@ import { memberStatusUpdated, locationReceived } from '../store/circlesSlice'
 import { decryptLocation, loadCircleKey } from './e2eeService'
 import type { CircleWsMessage } from '../../../../shared/types'
 
-const WS_BASE = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/circles`
+const WS_HOST = import.meta.env.DEV ? 'localhost:3000' : window.location.host
+const WS_BASE = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${WS_HOST}/ws/circles`
 
 export function useCircleWsConnection(circleId: string | null, nostrAuthEvent?: Record<string, unknown>): void {
   const dispatch = useAppDispatch()

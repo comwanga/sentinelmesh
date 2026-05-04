@@ -4,7 +4,10 @@ import { eventReceived, eventResolved, setConnected } from '../store/eventsSlice
 import { reportReceived } from '../store/reportSlice'
 import type { WsMessage, SafetyEvent, CommunityReport } from '../../../../shared/types'
 
-const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws?county=global`
+// In dev, connect directly to the gateway to avoid Vite WS proxy issues on Windows.
+// In production, the PWA and gateway share the same origin behind nginx.
+const WS_HOST = import.meta.env.DEV ? 'localhost:3000' : window.location.host
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${WS_HOST}/ws?county=global`
 
 export function useWsConnection(): void {
   const dispatch = useDispatch()

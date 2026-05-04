@@ -13,12 +13,13 @@ import { useProximityAlerts } from '../hooks/useProximityAlerts'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 const MAPBOX_TOKEN = import.meta.env['VITE_MAPBOX_TOKEN'] as string
+const EMPTY_MEMBERS: never[] = []
 
 export function FamilyCircleDashboard() {
   const dispatch = useAppDispatch()
   const activeCircleId = useAppSelector(s => s.circles.activeCircleId)
   const circles = useAppSelector(s => s.circles.circles)
-  const members = useAppSelector(s => activeCircleId ? (s.circles.members[activeCircleId] ?? []) : [])
+  const members = useAppSelector(s => activeCircleId ? (s.circles.members[activeCircleId] ?? EMPTY_MEMBERS) : EMPTY_MEMBERS)
   const memberStatuses = useAppSelector(s => s.circles.memberStatuses)
   const decryptedLocations = useAppSelector(s => s.circles.decryptedLocations)
   const proximityAlerts = useAppSelector(s => s.circles.proximityAlerts)
