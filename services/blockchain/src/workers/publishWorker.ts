@@ -3,8 +3,10 @@ import { randomUUID } from 'crypto'
 import { config } from '../config'
 import { getPool } from '../db/pool'
 import { publishNostrEvents } from './nostrPublisher'
-import { broadcastAnchor } from './bitcoinAnchor'
+import { broadcastAnchor, AnchorResult, PreBroadcastError, PostBroadcastError } from './bitcoinAnchor'
 import { buildAnchorHash } from '../utils/canonicalHash'
+import { estimateFee } from '../utils/feeEstimator'
+import { claimUtxo, releaseUtxo, spendUtxo, reclaimStaleLocks } from '../db/utxoPool'
 
 export interface PublishJob {
   id: string
@@ -35,7 +37,7 @@ export async function claimNextJob(pool: Pool, workerId: string): Promise<Publis
         SELECT id FROM publish_jobs
         WHERE (
           status IN ('PENDING', 'FAILED') AND next_retry_at <= NOW()
-          OR status IN ('NOSTR_PUBLISHED', 'BITCOIN_ANCHORED')
+          OR status = 'NOSTR_PUBLISHED'
         )
         ORDER BY next_retry_at
         FOR UPDATE SKIP LOCKED
@@ -79,6 +81,16 @@ export async function markDead(pool: Pool, jobId: string): Promise<void> {
   )
 }
 
+export async function releaseJobForRetry(pool: Pool, jobId: string): Promise<void> {
+  await pool.query(
+    `UPDATE publish_jobs
+     SET status = 'PENDING', worker_id = NULL, locked_at = NULL,
+         next_retry_at = NOW() + INTERVAL '1 minute', updated_at = NOW()
+     WHERE id = $1`,
+    [jobId],
+  )
+}
+
 async function fetchSourceRow(pool: Pool, job: PublishJob): Promise<{
   severity: string
   event_type: string
@@ -95,20 +107,19 @@ async function fetchSourceRow(pool: Pool, job: PublishJob): Promise<{
   return result.rows[0] ?? null
 }
 
-async function updateSourceRow(pool: Pool, job: PublishJob): Promise<void> {
+async function updateSourceNostrIds(pool: Pool, job: PublishJob, kind30078_id: string): Promise<void> {
+  const table = job.source_type === 'SAFETY_EVENT' ? 'safety_events' : 'community_reports'
+  await pool.query(
+    `UPDATE ${table} SET nostr_event_id = $2 WHERE id = $1 AND nostr_event_id IS NULL`,
+    [job.source_id, kind30078_id],
+  )
+}
+
+async function updateSourceBitcoinTxid(pool: Pool, job: PublishJob, txid: string): Promise<void> {
   if (job.source_type === 'SAFETY_EVENT') {
     await pool.query(
-      `UPDATE safety_events
-       SET nostr_event_id = $2, bitcoin_txid = $3
-       WHERE id = $1 AND nostr_event_id IS NULL`,
-      [job.source_id, job.nostr_kind30078_id, job.bitcoin_txid],
-    )
-  } else {
-    await pool.query(
-      `UPDATE community_reports
-       SET nostr_event_id = $2
-       WHERE id = $1`,
-      [job.source_id, job.nostr_kind30078_id],
+      `UPDATE safety_events SET bitcoin_txid = $2 WHERE id = $1 AND bitcoin_txid IS NULL`,
+      [job.source_id, txid],
     )
   }
 }
@@ -123,9 +134,10 @@ async function reclaimOrphans(pool: Pool): Promise<void> {
         next_retry_at = NOW(),
         error_message = 'orphan reclaim after ${ORPHAN_TIMEOUT_MINUTES} minute timeout',
         updated_at = NOW()
-    WHERE status IN ('PROCESSING', 'NOSTR_PUBLISHED', 'BITCOIN_ANCHORED')
+    WHERE status IN ('PROCESSING', 'NOSTR_PUBLISHED')
       AND locked_at < NOW() - INTERVAL '${ORPHAN_TIMEOUT_MINUTES} minutes'
   `)
+  await reclaimStaleLocks(pool)
 }
 
 async function processJob(pool: Pool, job: PublishJob): Promise<void> {
@@ -156,6 +168,7 @@ async function processJob(pool: Pool, job: PublishJob): Promise<void> {
        WHERE id = $1`,
       [job.id, kind1_id, kind30078_id],
     )
+    await updateSourceNostrIds(pool, job, kind30078_id)
   }
 
   if (!job.bitcoin_txid) {
@@ -164,34 +177,58 @@ async function processJob(pool: Pool, job: PublishJob): Promise<void> {
       nostr_event_id: kind30078_id!,
       severity: source.severity,
     })
-    // NOTE: UTXO (txid/vout/value/changeAddress) must be manually rotated after each anchor.
-    // The change output of the previous TX is not automatically fed back as input.
-    // Monitor BITCOIN_UTXO_TXID and BITCOIN_UTXO_VALUE env vars before deploying to mainnet.
-    const txid = await broadcastAnchor({
-      anchorHash: hash,
-      wif: config.bitcoinWif,
-      utxoTxid: process.env.BITCOIN_UTXO_TXID ?? '',
-      utxoVout: parseInt(process.env.BITCOIN_UTXO_VOUT ?? '0', 10),
-      utxoValue: parseInt(process.env.BITCOIN_UTXO_VALUE ?? '10000', 10),
-      changeAddress: process.env.BITCOIN_CHANGE_ADDRESS ?? '',
-      network: config.bitcoinNetwork,
-    })
+
+    const fee = await estimateFee(config.bitcoinNetwork)
+    const utxo = await claimUtxo(pool, job.id)
+
+    if (!utxo) {
+      console.warn('[worker] no CONFIRMED UTXOs available, requeueing job', job.id)
+      await releaseJobForRetry(pool, job.id)
+      return
+    }
+
+    let anchorResult: AnchorResult
+    try {
+      anchorResult = await broadcastAnchor({
+        anchorHash: hash,
+        wif: config.bitcoinWif,
+        utxoTxid: utxo.txid,
+        utxoVout: utxo.vout,
+        utxoValue: utxo.value_sats,
+        fee,
+        network: config.bitcoinNetwork,
+      })
+    } catch (err) {
+      if (err instanceof PreBroadcastError) {
+        await releaseUtxo(pool, utxo.id)
+        throw err  // outer handler calls markFailed
+      }
+      if (err instanceof PostBroadcastError) {
+        await spendUtxo(pool, utxo.id, err.txid, err.changeVout, err.changeValue, job.id)
+        await pool.query(
+          `UPDATE publish_jobs
+           SET status = 'BITCOIN_ANCHORED', bitcoin_txid = $2, anchor_hash = $3,
+               locked_at = NULL, worker_id = NULL, updated_at = NOW()
+           WHERE id = $1`,
+          [job.id, err.txid, hash],
+        )
+        await updateSourceBitcoinTxid(pool, job, err.txid)
+        return  // poller advances to COMPLETE
+      }
+      throw err
+    }
+
+    await spendUtxo(pool, utxo.id, anchorResult.txid, anchorResult.changeVout, anchorResult.changeValue, job.id)
     await pool.query(
       `UPDATE publish_jobs
-       SET status = 'BITCOIN_ANCHORED', bitcoin_txid = $2, anchor_hash = $3, updated_at = NOW()
+       SET status = 'BITCOIN_ANCHORED', bitcoin_txid = $2, anchor_hash = $3,
+           locked_at = NULL, worker_id = NULL, updated_at = NOW()
        WHERE id = $1`,
-      [job.id, txid, hash],
+      [job.id, anchorResult.txid, hash],
     )
-    job.bitcoin_txid = txid
-    job.nostr_kind1_id = kind1_id
-    job.nostr_kind30078_id = kind30078_id
+    await updateSourceBitcoinTxid(pool, job, anchorResult.txid)
   }
-
-  await updateSourceRow(pool, job)
-  await pool.query(
-    `UPDATE publish_jobs SET status = 'COMPLETE', updated_at = NOW() WHERE id = $1`,
-    [job.id],
-  )
+  // Job is now BITCOIN_ANCHORED — confirmationPoller advances it to COMPLETE
 }
 
 export function startPublishWorker(): { triggerNudge: () => void } {

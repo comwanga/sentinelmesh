@@ -1,8 +1,9 @@
 import express from 'express'
 import { createServer } from 'http'
 import { config } from './config'
-import { initPool, closePool } from './db/pool'
+import { initPool, closePool, getPool } from './db/pool'
 import { startPublishWorker } from './workers/publishWorker'
+import { startConfirmationPoller } from './workers/confirmationPoller'
 import { internalRouter, setNudgeCallback } from './routes/internal'
 
 const app = express()
@@ -22,18 +23,21 @@ async function main(): Promise<void> {
   const { triggerNudge } = startPublishWorker()
   setNudgeCallback(triggerNudge)
 
+  const poller = startConfirmationPoller(getPool(), config.bitcoinNetwork)
+
   server.listen(config.port, () => {
     console.log(`[blockchain] listening on port ${config.port}`)
   })
+
+  process.on('SIGTERM', () => shutdown(poller).then(() => process.exit(0)).catch(() => process.exit(1)))
+  process.on('SIGINT', () => shutdown(poller).then(() => process.exit(0)).catch(() => process.exit(1)))
 }
 
-async function shutdown(): Promise<void> {
+async function shutdown(poller: { stop: () => void }): Promise<void> {
+  poller.stop()
   server.close()
   await closePool()
 }
-
-process.on('SIGTERM', () => shutdown().then(() => process.exit(0)).catch(() => process.exit(1)))
-process.on('SIGINT', () => shutdown().then(() => process.exit(0)).catch(() => process.exit(1)))
 
 main().catch(err => {
   console.error('[blockchain] startup failed:', err)
