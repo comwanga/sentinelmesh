@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useAppSelector } from '../store'
 import { loadOrCreateKeypair, signReport } from '../services/nostrService'
+import { VerificationBadges } from './VerificationBadges'
 import type { CommunityReport } from '../../../../shared/types'
 
 const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
@@ -97,6 +98,11 @@ export function ReportList() {
               Deny
             </button>
           </div>
+
+          <VerificationBadges
+            nostrEventId={report.nostr_event_id}
+            bitcoinTxid={null}
+          />
         </div>
       ))}
     </div>

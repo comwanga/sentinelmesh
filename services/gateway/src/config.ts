@@ -15,4 +15,5 @@ export const config = {
   jwtSecret: require_env('JWT_SECRET'),
   internalSecret: require_env('INTERNAL_SERVICE_SECRET'),
   zapWebhookSecret: require_env('ZAP_WEBHOOK_SECRET'),
+  blockchainServiceUrl: process.env['BLOCKCHAIN_SERVICE_URL'] ?? '',
 } as const

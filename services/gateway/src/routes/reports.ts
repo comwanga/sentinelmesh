@@ -3,6 +3,8 @@ import rateLimit from 'express-rate-limit'
 import { verifyNostrSignature } from '../nostr/verifier'
 import { createReport, castVote, listReports, applyStatusTransition } from '../reports/reportService'
 import { computeNewStatus } from '../reports/consensusEngine'
+import { getPool } from '../db/pool'
+import { nudgeBlockchain } from '../utils/nudge'
 import type { WsHub } from '../ws/hub'
 import type { ReportType } from '../../../../shared/types'
 
@@ -109,6 +111,13 @@ export function createReportsRouter(hub: WsHub): Router {
     }
 
     try {
+      const pool = getPool()
+      const pre = await pool.query<{ consensus_score: number }>(
+        'SELECT consensus_score FROM community_reports WHERE id = $1',
+        [req.params['id']!],
+      )
+      const previousScore = pre.rows[0]?.consensus_score ?? 0
+
       const report = await castVote({
         report_id: req.params['id']!,
         voter_pubkey,
@@ -123,6 +132,17 @@ export function createReportsRouter(hub: WsHub): Router {
       }
       const finalReport = newStatus ? { ...report, status: newStatus } : report
       hub.broadcast(null, { type: 'REPORT_UPDATED', payload: finalReport })
+
+      if (previousScore < 3 && finalReport.consensus_score >= 3) {
+        await pool.query(
+          `INSERT INTO publish_jobs (source_type, source_id)
+           VALUES ('COMMUNITY_REPORT', $1)
+           ON CONFLICT DO NOTHING`,
+          [req.params['id']!],
+        )
+        nudgeBlockchain()
+      }
+
       res.json(finalReport)
     } catch (err: unknown) {
       if (err instanceof Error && err.message === 'report not found') {

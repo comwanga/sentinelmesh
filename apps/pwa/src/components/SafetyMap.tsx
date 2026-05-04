@@ -5,6 +5,7 @@ import EventMarker from './EventMarker'
 import { fetchSafeRoutes, SafeRoute } from '../services/routingService'
 import { SafeRouteOverlay } from './SafeRouteOverlay'
 import { ZapButton } from './ZapButton'
+import { VerificationBadges } from './VerificationBadges'
 import type { SafetyEvent } from '../../../../shared/types'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
@@ -91,6 +92,10 @@ export default function SafetyMap({ proximityAlert }: { proximityAlert?: Proximi
                 {selected.location.place_name} · {selected.severity} · {Math.round(selected.confidence * 100)}% confidence
               </p>
               <ZapButton reportId={selected.event_id} />
+              <VerificationBadges
+                nostrEventId={selected.nostr_event_id}
+                bitcoinTxid={selected.bitcoin_txid}
+              />
             </div>
           </Popup>
         )}
