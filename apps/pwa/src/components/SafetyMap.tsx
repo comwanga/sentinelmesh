@@ -1,6 +1,8 @@
 import Map, { Marker, Popup } from 'react-map-gl'
 import { useState, useEffect, useCallback } from 'react'
+import { createSelector } from '@reduxjs/toolkit'
 import { useAppSelector } from '../store'
+import type { RootState } from '../store'
 import EventMarker from './EventMarker'
 import { fetchSafeRoutes, SafeRoute } from '../services/routingService'
 import { SafeRouteOverlay } from './SafeRouteOverlay'
@@ -11,6 +13,11 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 
 const MAPBOX_TOKEN = import.meta.env['VITE_MAPBOX_TOKEN'] as string
 
+const selectActiveEvents = createSelector(
+  (state: RootState) => state.events.items,
+  items => items.filter(e => e.is_active && e.location)
+)
+
 interface ProximityAlert {
   event_id: string
   event_lat: number
@@ -19,7 +26,7 @@ interface ProximityAlert {
 }
 
 export default function SafetyMap({ proximityAlert }: { proximityAlert?: ProximityAlert | null }) {
-  const events = useAppSelector(state => state.events.items.filter(e => e.is_active && e.location))
+  const events = useAppSelector(selectActiveEvents)
   const connected = useAppSelector(state => state.events.connected)
   const [selected, setSelected] = useState<SafetyEvent | null>(null)
   const [escapeRoutes, setEscapeRoutes] = useState<SafeRoute[]>([])
