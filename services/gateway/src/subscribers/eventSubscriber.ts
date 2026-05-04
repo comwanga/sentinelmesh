@@ -13,7 +13,8 @@ const schema = JSON.parse(
 )
 const ajv = new Ajv({ allErrors: true })
 addFormats(ajv)
-const validateEvent = ajv.compile(schema.definitions.SafetyEvent)
+ajv.addSchema(schema, 'events')
+const validateEvent = ajv.getSchema('events#/definitions/SafetyEvent')!
 
 // Events that fail PostgreSQL persist go here so they can be replayed manually.
 // In production this would write to a file or dead-letter queue.

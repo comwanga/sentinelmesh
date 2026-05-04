@@ -20,6 +20,7 @@ services:
       - "3000:3000"
     volumes:
       - ./services/gateway/src:/app/src
+      - ./shared:/shared:ro
     environment:
       NODE_ENV: development
       CHOKIDAR_USEPOLLING: "true"
