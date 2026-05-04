@@ -1,274 +1,232 @@
 # SentinelMesh
 
-> A privacy-first, blockchain-verified public safety intelligence layer for Kenya.
-
-SentinelMesh aggregates open signals and opt-in community data to give ordinary Kenyans the situational awareness that only governments and corporations currently have — without trading away their privacy to get it.
+A public safety app for Kenya. It shows live threats on a map, lets communities report incidents, and helps families stay safe — without collecting personal data.
 
 ---
 
-## The Problem
+## What it does
 
-During the Westgate attack (2013), Mathare floods (recurring), and every election cycle since 2007, ordinary Kenyans faced the same three failures:
-
-- **Information fog** — WhatsApp rumours, no verified source of truth
-- **Location anxiety** — no way to confirm a family member's safety in real time
-- **Decision paralysis** — no alternative routes, no safe zones, no ground truth
-
-Existing tools are either siloed, exploitative, state-controlled, or unverifiable. None of them are owned by communities. None of them are cryptographically trustworthy.
-
-## What SentinelMesh Does
-
-| Feature | How |
+| Feature | Description |
 |---|---|
-| **Live threat map** | Aggregates public signals (news RSS, Twitter/X, radio) → NLP classification → verified safety events on a real-time map |
-| **Community reports** | Nostr-signed reports from the ground, consensus-scored, IPFS photo storage with on-device EXIF strip + face blur |
-| **Family circles** | X25519 + AES-256-GCM end-to-end encrypted location sharing — server never stores decryptable coordinates |
-| **Blockchain anchoring** | Every verified event published to Nostr; weekly digest anchored to Bitcoin via OP_RETURN — immutable, censor-proof record |
-| **Acoustic detection** | On-device YAMNet via TensorFlow.js detects gunshots, explosions, and screaming — no audio ever leaves the browser |
-| **Escape routes** | When a threat fires, Mapbox Directions calculates 2–3 walking routes that avoid the event radius |
-| **Lightning tips** | Community reporters receive Bitcoin Lightning zaps (Nostr Kind 9735) for verified, high-quality reports |
+| **Live threat map** | Pulls public signals from news, Twitter/X, and radio. Classifies them with NLP. Shows verified safety events on a real-time map. |
+| **Community reports** | Anyone can submit a ground report. Reports are signed with a Nostr key, verified by the server, and scored by community votes. Photos are processed on-device — EXIF stripped, faces blurred — before upload. |
+| **Family circles** | Share your location with trusted people. Location data is encrypted on your device before it's sent. The server only stores an encrypted blob it can never read. |
+| **Blockchain anchoring** | Every verified event is published to Nostr relays. A weekly digest is written to Bitcoin (OP_RETURN) as a permanent, tamper-proof record. |
+| **Acoustic detection** | The browser listens for gunshots, explosions, and screaming using a YAMNet model. All inference runs locally — no audio ever leaves your device. |
+| **Escape routes** | When a threat is near, the app calculates 2–3 walking routes that avoid the danger zone using Mapbox Directions. |
+| **Lightning tips** | Users can tip reporters with Bitcoin Lightning (sats). Payment receipts are published as Nostr Kind 9735 zap events. |
+
+---
+
+## Privacy rules (never broken)
+
+- The server never stores readable location data. All family circle coordinates are encrypted on-device with AES-256-GCM.
+- No personal data is collected at sign-up. Your identity is a Nostr keypair generated on your device. No email, no phone number, no name.
+- All photo processing (EXIF strip, face blur) happens on-device before upload.
+- Every community report has a cryptographic signature. The server verifies it.
+- Acoustic detection never sends audio off-device. Only the detection label and confidence score are transmitted.
+- Bitcoin is on testnet until the project maintainers explicitly switch to mainnet.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        CLIENT LAYER                             │
-│              React + Vite PWA  ·  Android (React Native)        │
-└──────────────────────┬──────────────────────┬───────────────────┘
-                       │                      │
-                       ▼                      ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       API GATEWAY                               │
-│              Node.js + Express · WebSockets · Redis             │
-└──────┬──────────────┬──────────────┬──────────────┬────────────┘
-       │              │              │              │
-       ▼              ▼              ▼              ▼
-┌──────────┐  ┌──────────────┐ ┌─────────┐  ┌────────────────┐
-│  Signal  │  │  Community   │ │ Family  │  │  Blockchain    │
-│  Ingest  │  │  Reports     │ │ Circles │  │  Anchor        │
-│  Python  │  │  Node.js     │ │ Node.js │  │  Nostr+Bitcoin │
-│  FastAPI │  │              │ │  E2EE   │  │  OP_RETURN     │
-└──────┬───┘  └──────┬───────┘ └────┬────┘  └───────┬────────┘
-       │              │              │               │
-       └──────────────┴──────────────┴───────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       DATA LAYER                                │
-│         PostgreSQL · Redis · IPFS (report media)                │
-└─────────────────────────────────────────────────────────────────┘
-       │                                            │
-       ▼                                            ▼
-┌──────────────────┐                    ┌───────────────────────┐
-│   Nostr Relays   │                    │  Bitcoin Testnet/     │
-│  (event record)  │                    │  Mainnet (OP_RETURN)  │
-└──────────────────┘                    └───────────────────────┘
+┌───────────────────────────────────┐
+│           Browser (PWA)           │
+│   React + Vite · TensorFlow.js    │
+└────────────────┬──────────────────┘
+                 │ HTTP + WebSocket
+                 ▼
+┌───────────────────────────────────┐
+│          API Gateway              │
+│   Node.js + Express + TypeScript  │
+│   WebSocket hub · Lightning zaps  │
+└──┬──────────┬──────────┬──────────┘
+   │          │          │
+   ▼          ▼          ▼
+Postgres   Redis     Nostr/Bitcoin
 ```
 
-### Service Map
+### Services
 
-| Service | Language | Path | Role |
+| Service | Language | Path | What it does |
 |---|---|---|---|
-| API Gateway | Node.js + Express + TypeScript | `services/gateway/` | Auth, routing, WebSocket hub, Lightning zaps |
-| Signal Ingest | Python + FastAPI | `services/signal/` | RSS/Twitter/radio → NLP → safety events |
-| PWA | React + Vite + TypeScript | `apps/pwa/` | Browser client — map, acoustic detection, reports |
-| Database | PostgreSQL | `infra/postgres/` | Persistent structured storage |
-| Cache / Pub-Sub | Redis | (compose service) | Real-time event delivery, session state |
+| API Gateway | Node.js + TypeScript | `services/gateway/` | Auth, REST routes, WebSocket hub, Lightning zaps |
+| Signal Ingest | Python + FastAPI | `services/signal/` | RSS / Twitter / radio → NLP → safety events |
+| PWA | React + Vite | `apps/pwa/` | Map, acoustic detection, reports, family circles |
+| Database | PostgreSQL 16 | `infra/postgres/` | All persistent data |
+| Cache / Pub-Sub | Redis 7 | Docker service | Real-time event delivery |
 
 ---
 
-## Tech Stack
+## Getting started
 
-- **Backend:** Node.js 20 · Express · TypeScript · Python 3.11 · FastAPI
-- **Frontend:** React 18 · Vite · Redux Toolkit · react-map-gl · TensorFlow.js
-- **Data:** PostgreSQL 16 · Redis 7
-- **Protocols:** Nostr (nostr-tools v2) · Bitcoin OP_RETURN · Lightning Network (LND REST)
-- **AI / NLP:** Whisper (faster-whisper) · spaCy · YAMNet (TF.js browser inference)
-- **Mapping:** Mapbox GL JS · Mapbox Directions API
-- **Infrastructure:** Docker · Docker Compose · nginx
-
----
-
-## Non-Negotiable Privacy Principles
-
-1. **Server never stores decryptable user locations.** Family circle coordinates are encrypted on-device with AES-256-GCM before transmission. The server receives and stores opaque blobs.
-2. **No personal data at registration.** Identity is a Nostr keypair generated on-device. No email, no phone number, no name required.
-3. **All media processing happens on-device.** EXIF stripping and face blurring occur in the browser/app before any upload.
-4. **Every community report carries a verifiable cryptographic signature.** Reports are signed with the reporter's Nostr private key. Signatures are verified server-side and stored.
-5. **Acoustic detection never sends audio off-device.** YAMNet inference runs entirely in the browser via TensorFlow.js. Only the detection label and confidence score are transmitted.
-6. **Bitcoin network is testnet** until an explicit mainnet switch is made by the project maintainers.
-
----
-
-## Getting Started
-
-### Prerequisites
+### What you need
 
 - Docker 24+ and Docker Compose v2
-- Node.js 20+ (for local gateway development)
-- Python 3.11+ (for local signal service development)
-- A Mapbox public token (`VITE_MAPBOX_TOKEN`)
-- A Nostr private key hex (`NOSTR_PRIVATE_KEY`) for event signing
+- A Mapbox public token — [get one free at mapbox.com](https://mapbox.com)
+- Node.js 20+ (for running the PWA locally)
 
-### Quick Start (Docker Compose)
+### Step 1 — Clone and configure
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/comwanga/sentinelmesh.git
 cd sentinelmesh
 
-# 2. Copy environment template and fill in your values
 cp .env.example .env
-# Edit .env with your Mapbox token, Nostr key, and database credentials
-
-# 3. Start all services
-docker compose -f docker-compose.dev.yml up --build
-
-# 4. Open the PWA
-open http://localhost:5173
+# Open .env and fill in: POSTGRES_PASSWORD, REDIS_PASSWORD,
+# JWT_SECRET, INTERNAL_SERVICE_SECRET, ZAP_WEBHOOK_SECRET,
+# and VITE_MAPBOX_TOKEN
 ```
 
-Services start on:
+### Step 2 — Start the backend (Docker)
+
+```bash
+# Start Postgres, Redis, and the API Gateway
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis gateway
+```
+
+Check it's running:
+```bash
+curl http://localhost:3000/health
+# → {"ok":true,"service":"gateway"}
+```
+
+### Step 3 — Start the PWA
+
+```bash
+cd apps/pwa
+npm install
+npm run dev
+```
+
+Open **http://localhost:5173** in your browser.
+
+The PWA automatically proxies `/api` requests to the gateway on port 3000.
+
+### All service URLs
+
 | Service | URL |
 |---|---|
 | PWA | http://localhost:5173 |
 | API Gateway | http://localhost:3000 |
-| Signal Service | http://localhost:8000 |
+| Signal Service | http://localhost:8000 (optional, needs Docker build) |
 | PostgreSQL | localhost:5432 |
 | Redis | localhost:6379 |
 
-### Local Development (without Docker)
+---
 
-**Gateway (Node.js):**
-```bash
-cd services/gateway
-npm install
-cp .env.example .env
-npm run dev
-```
-
-**Signal Service (Python):**
-```bash
-cd services/signal
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn main:app --reload
-```
-
-**PWA:**
-```bash
-cd apps/pwa
-npm install
-cp .env.example .env.local
-npm run dev
-```
-
-### Running Tests
+## Running tests
 
 ```bash
-# Gateway (Vitest)
+# Gateway (54 tests)
 cd services/gateway && npm test
 
-# Signal service (pytest)
-cd services/signal && pytest
-
-# PWA (Vitest)
+# PWA (99 tests)
 cd apps/pwa && npm test
+
+# Signal service
+cd services/signal && pytest
 ```
 
 ---
 
-## Environment Variables
+## Environment variables
 
-### Gateway (`services/gateway/.env`)
+All variables go in the root `.env` file. Copy `.env.example` to get started.
 
-| Variable | Required | Description |
-|---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `REDIS_URL` | Yes | Redis connection string |
-| `NOSTR_PRIVATE_KEY` | Yes | Hex private key for event signing |
-| `NOSTR_RELAY_URL` | Yes | Nostr relay WebSocket URL |
-| `LND_REST_URL` | Optional | LND node REST endpoint (for Lightning zaps) |
-| `LND_MACAROON_HEX` | Optional | LND invoice macaroon (hex) |
-| `ZAP_WEBHOOK_SECRET` | Optional | HMAC secret for LND payment webhook |
-| `LND_TLS_SKIP_VERIFY` | Optional | `true` for self-signed certs in dev |
+### Required for everything to start
 
-### Signal Service (`services/signal/.env`)
+| Variable | Description |
+|---|---|
+| `POSTGRES_PASSWORD` | Password for the PostgreSQL `sentinel` user |
+| `DATABASE_URL` | Full Postgres connection string — must match `POSTGRES_PASSWORD` |
+| `REDIS_PASSWORD` | Password for Redis |
+| `REDIS_URL` | Full Redis connection string — must match `REDIS_PASSWORD` |
+| `JWT_SECRET` | At least 64 random characters |
+| `INTERNAL_SERVICE_SECRET` | Random string for service-to-service calls |
+| `ZAP_WEBHOOK_SECRET` | Random string for verifying LND payment webhooks |
+| `VITE_MAPBOX_TOKEN` | Your Mapbox public access token |
 
-| Variable | Required | Description |
-|---|---|---|
-| `DATABASE_URL` | Yes (API) | PostgreSQL connection string |
-| `REDIS_URL` | Yes | Redis connection string |
-| `LOG_LEVEL` | No | Logging level (default: `INFO`) |
+### Optional
 
-### PWA (`apps/pwa/.env.local`)
-
-| Variable | Required | Description |
-|---|---|---|
-| `VITE_MAPBOX_TOKEN` | Yes | Mapbox public access token |
-| `VITE_API_BASE_URL` | No | Gateway URL (default: proxied via Vite) |
+| Variable | Description |
+|---|---|
+| `NOSTR_PRIVATE_KEY` | Hex private key for signing Nostr events and zap receipts. Without this, zap receipts are skipped. |
+| `LND_REST_URL` | LND node REST URL (e.g. `https://localhost:8080`). Needed for Lightning zaps. |
+| `LND_MACAROON_HEX` | LND admin macaroon in hex |
+| `TWITTER_BEARER_TOKEN` | For pulling Twitter/X signals. Skipped if empty. |
+| `SENTRY_DSN` | Sentry error tracking URL. Optional in dev, recommended in production. |
 
 ---
 
-## Repository Structure
+## Testing Lightning zaps locally
+
+Zap payments need a running LND node. For local development, use [Polar](https://lightningpolar.com/) — it spins up a local Lightning network in a few clicks.
+
+1. Install Polar and create a network with two LND nodes
+2. Copy the admin macaroon hex and REST URL from one node into `.env`
+3. Restart the gateway: `docker compose ... restart gateway`
+4. The ⚡ button on event popups will now generate real invoices
+
+---
+
+## Repository layout
 
 ```
 sentinelmesh/
 ├── apps/
-│   └── pwa/                    # React + Vite PWA
-│       ├── public/
-│       │   └── audio-processor.js  # AudioWorklet (runs in audio thread)
+│   └── pwa/                    # React + Vite browser app
 │       └── src/
-│           ├── components/     # Map, alerts, overlays, ZapButton
-│           ├── constants/      # YAMNet threat class map
+│           ├── components/     # Map, alerts, ZapButton, circles
 │           ├── services/       # Audio capture, routing, report submit
-│           └── store/          # Redux slices (events, acoustic)
+│           └── store/          # Redux slices
 ├── services/
-│   ├── gateway/                # Node.js API + WebSocket hub
+│   ├── gateway/                # Node.js API + WebSocket
 │   │   └── src/
-│   │       ├── lightning/      # LND client + zap service
-│   │       └── routes/         # REST endpoints
+│   │       ├── lightning/      # LND client and zap service
+│   │       ├── routes/         # REST endpoints
+│   │       └── subscribers/    # Redis event subscriber
 │   └── signal/                 # Python signal ingest + NLP
-│       └── worker/             # Radio transcription + audio capture
 ├── infra/
 │   └── postgres/
-│       └── init.sql            # Single-source schema
+│       └── init.sql            # Database schema
 ├── shared/
 │   ├── contracts/              # JSON Schema for events
-│   └── types/                  # Generated TypeScript types
-├── docs/
-│   └── superpowers/plans/      # Implementation plans
-├── docker-compose.yml          # Production compose
-└── docker-compose.dev.yml      # Development compose
+│   └── types/                  # Shared TypeScript types
+├── docker-compose.yml          # Production
+└── docker-compose.dev.yml      # Local development
 ```
+
+---
+
+## What's been built
+
+- [x] Signal ingestion — RSS, Twitter/X, radio transcription → NLP → safety events
+- [x] Community reports — Nostr signing, server verification, consensus voting, IPFS photos
+- [x] Family circles — E2EE location sharing, proximity alerts, WebSocket presence
+- [x] Blockchain anchoring — Nostr relay publishing, Bitcoin OP_RETURN weekly digest
+- [x] Acoustic detection — YAMNet browser inference, auto-submit on detection
+- [x] Escape routes — Mapbox Directions avoiding threat zones
+- [x] Lightning zaps — LND invoice generation, HMAC webhook, Kind 9735 receipt
+
+## What's coming next
+
+- [ ] Production hardening — circuit breakers, structured logging, metrics
+- [ ] Android app — React Native, offline maps, Android Keystore
+- [ ] Testnet → Mainnet switch
 
 ---
 
 ## Contributing
 
-1. Fork the repository and create a feature branch off `main`
-2. Follow the existing code style — TypeScript strict mode, Python type hints
-3. Write tests first (TDD): Vitest for TypeScript, pytest for Python
-4. Keep commits atomic and descriptive
-5. Open a pull request with a clear description of what changed and why
+1. Fork the repo and create a branch from `main`
+2. Write tests before writing code
+3. Keep commits small and descriptive
+4. Open a pull request — describe what changed and why
 
-All contributions must respect the privacy principles listed above. PRs that compromise user privacy (storing unencrypted locations, adding tracking, removing signature verification) will not be merged.
-
----
-
-## Roadmap
-
-- [x] Phase 1 — Core signal layer (RSS ingest, NLP classification, WebSocket events)
-- [x] Phase 5 — Acoustic detection, escape routes, Lightning zaps (PWA)
-- [ ] Phase 2 — Community reports (Nostr signing, consensus scoring, IPFS)
-- [ ] Phase 3 — Family circles (E2EE location sharing, proximity alerts)
-- [ ] Phase 4 — Blockchain anchoring (Nostr publish, Bitcoin OP_RETURN)
-- [ ] Production hardening (Docker optimisation, faster-whisper, queue retry)
-- [ ] Android APK (React Native, offline tile packs, Android Keystore)
-- [ ] Testnet → Mainnet Bitcoin switch
+PRs that break any of the privacy rules listed above will not be merged.
 
 ---
 
@@ -276,4 +234,4 @@ All contributions must respect the privacy principles listed above. PRs that com
 
 MIT — see [LICENSE](LICENSE).
 
-Built with ❤️ for Kenyan communities.
+Built for Kenyan communities.
