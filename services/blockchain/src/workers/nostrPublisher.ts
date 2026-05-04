@@ -36,6 +36,9 @@ export async function publishNostrEvents(
   payload: PublishPayload,
   nowSec?: number,
 ): Promise<PublishResult> {
+  if (privkeyHex.length !== 64) {
+    throw new Error(`Invalid NOSTR_PRIVKEY: expected 64 hex chars, got ${privkeyHex.length}`)
+  }
   // Buffer is a Uint8Array subclass — compatible with finalizeEvent's privkey param.
   const privkey = Buffer.from(privkeyHex, 'hex') as unknown as Uint8Array
   const location = payload.place_name ?? `${payload.lat},${payload.lng}`

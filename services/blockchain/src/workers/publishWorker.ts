@@ -33,8 +33,10 @@ export async function claimNextJob(pool: Pool, workerId: string): Promise<Publis
           updated_at = NOW()
       WHERE id = (
         SELECT id FROM publish_jobs
-        WHERE status IN ('PENDING', 'FAILED')
-          AND next_retry_at <= NOW()
+        WHERE (
+          status IN ('PENDING', 'FAILED') AND next_retry_at <= NOW()
+          OR status IN ('NOSTR_PUBLISHED', 'BITCOIN_ANCHORED')
+        )
         ORDER BY next_retry_at
         FOR UPDATE SKIP LOCKED
         LIMIT 1
@@ -121,7 +123,7 @@ async function reclaimOrphans(pool: Pool): Promise<void> {
         next_retry_at = NOW(),
         error_message = 'orphan reclaim after ${ORPHAN_TIMEOUT_MINUTES} minute timeout',
         updated_at = NOW()
-    WHERE status = 'PROCESSING'
+    WHERE status IN ('PROCESSING', 'NOSTR_PUBLISHED', 'BITCOIN_ANCHORED')
       AND locked_at < NOW() - INTERVAL '${ORPHAN_TIMEOUT_MINUTES} minutes'
   `)
 }
@@ -162,6 +164,9 @@ async function processJob(pool: Pool, job: PublishJob): Promise<void> {
       nostr_event_id: kind30078_id!,
       severity: source.severity,
     })
+    // NOTE: UTXO (txid/vout/value/changeAddress) must be manually rotated after each anchor.
+    // The change output of the previous TX is not automatically fed back as input.
+    // Monitor BITCOIN_UTXO_TXID and BITCOIN_UTXO_VALUE env vars before deploying to mainnet.
     const txid = await broadcastAnchor({
       anchorHash: hash,
       wif: config.bitcoinWif,
@@ -199,16 +204,24 @@ export function startPublishWorker(): { triggerNudge: () => void } {
     if (orphanTick % 30 === 0) {
       await reclaimOrphans(pool).catch(err => console.error('[worker] orphan reclaim error:', err))
     }
+
+    let job: PublishJob | null = null
     try {
-      const job = await claimNextJob(pool, workerId)
+      job = await claimNextJob(pool, workerId)
       if (!job) return
+
       if (job.retry_count >= MAX_RETRIES) {
         await markDead(pool, job.id)
         return
       }
+
       await processJob(pool, job)
     } catch (err) {
       console.error('[worker] tick error:', err)
+      if (job) {
+        await markFailed(pool, job.id, (err as Error).message ?? String(err), job.retry_count)
+          .catch(e => console.error('[worker] markFailed error:', e))
+      }
     }
   }
 
