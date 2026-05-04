@@ -1,209 +1,195 @@
 import { Router, Request, Response } from 'express'
+import rateLimit from 'express-rate-limit'
+import { verifyNostrSignature } from '../nostr/verifier'
+import { createReport, castVote, listReports, applyStatusTransition } from '../reports/reportService'
+import { computeNewStatus } from '../reports/consensusEngine'
 import { getPool } from '../db/pool'
 import { nudgeBlockchain } from '../utils/nudge'
+import type { WsHub } from '../ws/hub'
+import type { ReportType } from '../../../../shared/types'
 
-export const reportsRouter = Router()
+const VALID_REPORT_TYPES: ReportType[] = [
+  'ROAD_BLOCKED', 'FLOODING', 'SECURITY_INCIDENT', 'FIRE',
+  'PROTEST_MARCH', 'ACCIDENT', 'INFRASTRUCTURE', 'ALL_CLEAR', 'OTHER',
+]
 
-// GET /api/reports — list community reports
-reportsRouter.get('/', async (req: Request, res: Response) => {
-  const pool = getPool()
-  const { lat, lng, radius_km = '10', limit = '50' } = req.query
-  const params: unknown[] = []
-  const conditions: string[] = []
+const EVENT_STALENESS_SECS = 300
 
-  if (lat && lng) {
-    const latNum = parseFloat(String(lat))
-    const lngNum = parseFloat(String(lng))
-    const radiusMeters = parseFloat(String(radius_km)) * 1000
-    params.push(latNum, lngNum, radiusMeters)
-    conditions.push(
-      `earth_distance(ll_to_earth($${params.length - 2}, $${params.length - 1}), ll_to_earth(lat, lng)) <= $${params.length}`
-    )
-  }
-
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-  params.push(parseInt(String(limit), 10))
-
-  try {
-    const result = await pool.query(
-      `SELECT * FROM community_reports ${where} ORDER BY created_at DESC LIMIT $${params.length}`,
-      params
-    )
-    res.json({ reports: result.rows, total: result.rowCount })
-  } catch (err) {
-    console.error('GET /api/reports error:', err)
-    res.status(500).json({ code: 'DB_ERROR', message: 'Could not fetch reports', retryable: true })
-  }
+const reportLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => String(req.body?.nostr_pubkey ?? req.ip ?? 'unknown'),
+  message: { code: 'RATE_LIMITED', message: 'Max 10 reports per hour', retryable: true },
 })
 
-// GET /api/reports/:id
-reportsRouter.get('/:id', async (req: Request, res: Response) => {
-  const pool = getPool()
-  try {
-    const result = await pool.query(
-      'SELECT * FROM community_reports WHERE id = $1',
-      [req.params['id']]
-    )
-    if (result.rowCount === 0) {
-      res.status(404).json({ code: 'NOT_FOUND', message: 'Report not found', retryable: false })
+const voteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: (req) => String(req.body?.voter_pubkey ?? req.ip ?? 'unknown'),
+  message: { code: 'RATE_LIMITED', message: 'Max 30 votes per minute', retryable: true },
+})
+
+export function createReportsRouter(hub: WsHub): Router {
+  const router = Router()
+
+  router.post('/', reportLimiter, async (req: Request, res: Response) => {
+    const { report_type, description, lat, lng, place_name,
+            nostr_pubkey, nostr_event, photo_ipfs_cid, linked_event_id } = req.body
+
+    const parsedLat = parseFloat(String(lat))
+    const parsedLng = parseFloat(String(lng))
+    if (!report_type || lat == null || lng == null || !nostr_pubkey || !nostr_event) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Missing required fields', retryable: false })
       return
     }
-    res.json(result.rows[0])
-  } catch (err) {
-    console.error('GET /api/reports/:id error:', err)
-    res.status(500).json({ code: 'DB_ERROR', message: 'Could not fetch report', retryable: true })
-  }
-})
-
-// POST /api/reports — submit a new community report
-reportsRouter.post('/', async (req: Request, res: Response) => {
-  const pool = getPool()
-  const body = req.body as {
-    report_type?: string
-    description?: string
-    lat?: number
-    lng?: number
-    place_name?: string
-    nostr_pubkey?: string
-    nostr_signature?: string
-    nostr_event_id?: string
-    reporter_tier?: string
-    photo_ipfs_cid?: string
-    linked_event_id?: string
-  }
-
-  if (!body.report_type || !body.lat || !body.lng || !body.nostr_pubkey || !body.nostr_signature) {
-    res.status(400).json({
-      code: 'VALIDATION_ERROR',
-      message: 'Missing required fields: report_type, lat, lng, nostr_pubkey, nostr_signature',
-      retryable: false,
-    })
-    return
-  }
-
-  try {
-    const result = await pool.query(
-      `INSERT INTO community_reports (
-        report_type, description, lat, lng, place_name,
-        nostr_pubkey, nostr_signature, nostr_event_id,
-        reporter_tier, photo_ipfs_cid, linked_event_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-      RETURNING *`,
-      [
-        body.report_type,
-        body.description ?? null,
-        body.lat,
-        body.lng,
-        body.place_name ?? null,
-        body.nostr_pubkey,
-        body.nostr_signature,
-        body.nostr_event_id ?? null,
-        body.reporter_tier ?? 'NEWCOMER',
-        body.photo_ipfs_cid ?? null,
-        body.linked_event_id ?? null,
-      ]
-    )
-    res.status(201).json(result.rows[0])
-  } catch (err) {
-    console.error('POST /api/reports error:', err)
-    res.status(500).json({ code: 'DB_ERROR', message: 'Could not create report', retryable: true })
-  }
-})
-
-// POST /api/reports/:id/vote — cast a vote on a community report
-reportsRouter.post('/:id/vote', async (req: Request, res: Response) => {
-  const pool = getPool()
-  const reportId = req.params['id']
-  const body = req.body as {
-    voter_pubkey?: string
-    vote?: string
-    voter_lat?: number
-    voter_lng?: number
-  }
-
-  if (!body.voter_pubkey || !body.vote) {
-    res.status(400).json({
-      code: 'VALIDATION_ERROR',
-      message: 'Missing required fields: voter_pubkey, vote',
-      retryable: false,
-    })
-    return
-  }
-
-  if (!['CONFIRM', 'DENY'].includes(String(body.vote).toUpperCase())) {
-    res.status(400).json({
-      code: 'VALIDATION_ERROR',
-      message: 'vote must be CONFIRM or DENY',
-      retryable: false,
-    })
-    return
-  }
-
-  try {
-    // Fetch the report to get current consensus_score before the vote
-    const reportResult = await pool.query(
-      'SELECT * FROM community_reports WHERE id = $1',
-      [reportId]
-    )
-    if (reportResult.rowCount === 0) {
-      res.status(404).json({ code: 'NOT_FOUND', message: 'Report not found', retryable: false })
+    if (isNaN(parsedLat) || isNaN(parsedLng)) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: 'lat and lng must be valid numbers', retryable: false })
+      return
+    }
+    if (!VALID_REPORT_TYPES.includes(String(report_type) as ReportType)) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: `Invalid report_type`, retryable: false })
+      return
+    }
+    if (!verifyNostrSignature(nostr_event)) {
+      res.status(401).json({ code: 'INVALID_SIGNATURE', message: 'Nostr signature verification failed', retryable: false })
+      return
+    }
+    if (nostr_event.pubkey !== nostr_pubkey) {
+      res.status(401).json({ code: 'PUBKEY_MISMATCH', message: 'Event pubkey does not match nostr_pubkey', retryable: false })
+      return
+    }
+    const nowSecs = Math.floor(Date.now() / 1000)
+    if (Math.abs(nowSecs - Number(nostr_event.created_at)) > EVENT_STALENESS_SECS) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Nostr event is stale or too far in the future', retryable: false })
       return
     }
 
-    const existingReport = reportResult.rows[0] as { id: string; consensus_score: number; confirmation_count: number; denial_count: number }
-    const previousScore = existingReport.consensus_score
-
-    // Insert the vote (unique constraint on report_id + voter_pubkey prevents duplicates)
     try {
-      await pool.query(
-        `INSERT INTO report_votes (report_id, voter_pubkey, vote, voter_lat, voter_lng)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [reportId, body.voter_pubkey, body.vote.toUpperCase(), body.voter_lat ?? null, body.voter_lng ?? null]
+      const report = await createReport({
+        report_type: report_type as ReportType,
+        description: description ?? null,
+        lat: parsedLat,
+        lng: parsedLng,
+        place_name: place_name ?? null,
+        nostr_pubkey,
+        nostr_signature: nostr_event.sig as string,
+        nostr_event_id: (nostr_event.id as string | undefined) ?? null,
+        photo_ipfs_cid: photo_ipfs_cid ?? null,
+        linked_event_id: linked_event_id ?? null,
+      })
+      hub.broadcast(null, { type: 'NEW_REPORT', payload: report })
+      res.status(201).json(report)
+    } catch (err) {
+      console.error('POST /api/reports error:', err)
+      res.status(500).json({ code: 'DB_ERROR', message: 'Could not create report', retryable: true })
+    }
+  })
+
+  router.post('/:id/vote', voteLimiter, async (req: Request, res: Response) => {
+    const { voter_pubkey, vote, voter_nostr_event, voter_lat, voter_lng } = req.body
+
+    if (!voter_pubkey || !vote || !voter_nostr_event) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Missing required fields', retryable: false })
+      return
+    }
+    if (!['CONFIRM', 'DENY'].includes(String(vote).toUpperCase())) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: 'vote must be CONFIRM or DENY', retryable: false })
+      return
+    }
+    if (!verifyNostrSignature(voter_nostr_event)) {
+      res.status(401).json({ code: 'INVALID_SIGNATURE', message: 'Nostr signature verification failed', retryable: false })
+      return
+    }
+    if (voter_nostr_event.pubkey !== voter_pubkey) {
+      res.status(401).json({ code: 'PUBKEY_MISMATCH', message: 'Event pubkey does not match voter_pubkey', retryable: false })
+      return
+    }
+    const nowSecs = Math.floor(Date.now() / 1000)
+    if (Math.abs(nowSecs - Number(voter_nostr_event.created_at)) > EVENT_STALENESS_SECS) {
+      res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Nostr event is stale or too far in the future', retryable: false })
+      return
+    }
+
+    try {
+      const pool = getPool()
+      const pre = await pool.query<{ consensus_score: number }>(
+        'SELECT consensus_score FROM community_reports WHERE id = $1',
+        [req.params['id']!],
       )
-    } catch (voteErr: unknown) {
-      // Unique constraint violation means duplicate vote
-      if ((voteErr as { code?: string }).code === '23505') {
-        res.status(409).json({ code: 'DUPLICATE_VOTE', message: 'Already voted on this report', retryable: false })
+      const previousScore = pre.rows[0]?.consensus_score ?? 0
+
+      const report = await castVote({
+        report_id: req.params['id']!,
+        voter_pubkey,
+        vote: String(vote).toUpperCase() as 'CONFIRM' | 'DENY',
+        voter_lat: voter_lat != null ? parseFloat(String(voter_lat)) : null,
+        voter_lng: voter_lng != null ? parseFloat(String(voter_lng)) : null,
+      })
+
+      const newStatus = computeNewStatus(report)
+      if (newStatus && newStatus !== report.status) {
+        await applyStatusTransition(report, newStatus)
+      }
+      const finalReport = newStatus ? { ...report, status: newStatus } : report
+      hub.broadcast(null, { type: 'REPORT_UPDATED', payload: finalReport })
+
+      if (previousScore < 3 && finalReport.consensus_score >= 3) {
+        await pool.query(
+          `INSERT INTO publish_jobs (source_type, source_id)
+           VALUES ('COMMUNITY_REPORT', $1)
+           ON CONFLICT DO NOTHING`,
+          [req.params['id']!],
+        )
+        nudgeBlockchain()
+      }
+
+      res.json(finalReport)
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'report not found') {
+        res.status(404).json({ code: 'NOT_FOUND', message: 'Report not found', retryable: false })
         return
       }
-      throw voteErr
+      if (err instanceof Error && err.message === 'cannot vote on own report') {
+        res.status(403).json({ code: 'FORBIDDEN', message: 'Cannot vote on your own report', retryable: false })
+        return
+      }
+      if ((err as { code?: string })?.code === '23505') {
+        res.status(409).json({ code: 'ALREADY_VOTED', message: 'Already voted on this report', retryable: false })
+        return
+      }
+      console.error('POST /api/reports/:id/vote error:', err)
+      res.status(500).json({ code: 'DB_ERROR', message: 'Could not cast vote', retryable: true })
     }
+  })
 
-    // Update confirmation/denial counts and consensus_score
-    const isConfirm = body.vote.toUpperCase() === 'CONFIRM'
-    const updatedResult = await pool.query(
-      `UPDATE community_reports
-       SET confirmation_count = confirmation_count + $1,
-           denial_count = denial_count + $2,
-           consensus_score = consensus_score + $3,
-           updated_at = NOW()
-       WHERE id = $4
-       RETURNING *`,
-      [
-        isConfirm ? 1 : 0,
-        isConfirm ? 0 : 1,
-        isConfirm ? 1 : -1,
-        reportId,
-      ]
-    )
-
-    const updatedReport = updatedResult.rows[0] as { id: string; consensus_score: number }
-    const newScore = updatedReport.consensus_score
-
-    // Enqueue a publish_job when consensus_score crosses 3 for the first time
-    if (previousScore < 3 && newScore >= 3) {
-      await pool.query(
-        `INSERT INTO publish_jobs (source_type, source_id)
-         VALUES ('COMMUNITY_REPORT', $1)
-         ON CONFLICT DO NOTHING`,
-        [reportId],
-      )
-      nudgeBlockchain()  // fire-and-forget
+  router.get('/', async (req: Request, res: Response) => {
+    const { lat, lng, radius_km, status, reporter_tier, linked_event_id, limit } = req.query
+    try {
+      const reports = await listReports({
+        lat:             lat            ? parseFloat(String(lat))            : undefined,
+        lng:             lng            ? parseFloat(String(lng))            : undefined,
+        radius_km:       radius_km      ? parseFloat(String(radius_km))      : undefined,
+        status:          status         ? String(status)                     : undefined,
+        reporter_tier:   reporter_tier  ? String(reporter_tier)              : undefined,
+        linked_event_id: linked_event_id ? String(linked_event_id)          : undefined,
+        limit:           limit          ? parseInt(String(limit), 10)        : undefined,
+      })
+      res.json({ reports, total: reports.length })
+    } catch (err) {
+      console.error('GET /api/reports error:', err)
+      res.status(500).json({ code: 'DB_ERROR', message: 'Could not fetch reports', retryable: true })
     }
+  })
 
-    res.json(updatedReport)
-  } catch (err) {
-    console.error('POST /api/reports/:id/vote error:', err)
-    res.status(500).json({ code: 'DB_ERROR', message: 'Could not process vote', retryable: true })
-  }
-})
+  router.get('/by-event/:event_id', async (req: Request, res: Response) => {
+    try {
+      const reports = await listReports({ linked_event_id: req.params['event_id'] })
+      res.json({ reports, total: reports.length })
+    } catch (err) {
+      console.error('GET /api/reports/by-event error:', err)
+      res.status(500).json({ code: 'DB_ERROR', message: 'Could not fetch reports', retryable: true })
+    }
+  })
+
+  return router
+}

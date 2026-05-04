@@ -38,7 +38,7 @@ export function pointToLineDistance(point: LatLng, lineCoords: [number, number][
   return minDist
 }
 
-function haversineKm(a: LatLng, b: LatLng): number {
+export function haversineKm(a: LatLng, b: LatLng): number {
   const dLat = (b.lat - a.lat) * DEG_TO_RAD
   const dLng = (b.lng - a.lng) * DEG_TO_RAD
   const sinDLat = Math.sin(dLat / 2)

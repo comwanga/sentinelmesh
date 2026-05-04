@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useDispatch } from 'react-redux'
 import { eventReceived, eventResolved, setConnected } from '../store/eventsSlice'
-import type { WsMessage, SafetyEvent } from '../../../../shared/types'
+import { reportReceived } from '../store/reportSlice'
+import type { WsMessage, SafetyEvent, CommunityReport } from '../../../../shared/types'
 
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws?county=global`
 
@@ -26,6 +27,8 @@ export function useWsConnection(): void {
           dispatch(eventReceived(msg.payload as SafetyEvent))
         } else if (msg.type === 'EVENT_RESOLVED') {
           dispatch(eventResolved(msg.payload as { event_id: string }))
+        } else if (msg.type === 'NEW_REPORT' || msg.type === 'REPORT_UPDATED') {
+          dispatch(reportReceived(msg.payload as CommunityReport))
         }
       } catch {
         console.warn('Invalid WebSocket message received')
@@ -34,7 +37,6 @@ export function useWsConnection(): void {
 
     ws.onclose = () => {
       dispatch(setConnected(false))
-      // Reconnect after 3 seconds
       reconnectTimer.current = setTimeout(connect, 3000)
     }
 

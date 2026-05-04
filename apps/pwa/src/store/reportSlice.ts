@@ -1,23 +1,13 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+import type { CommunityReport } from '../../../../shared/types'
 
-export interface CommunityReport {
-  report_id: string
-  event_type: string
-  severity: string
-  description: string | null
-  submitted_at: string
-  nostr_event_id?: string | null
-}
-
-interface ReportState {
+interface ReportsState {
   items: CommunityReport[]
 }
 
-const initialState: ReportState = {
-  items: [],
-}
+const initialState: ReportsState = { items: [] }
 
-const reportSlice = createSlice({
+const reportsSlice = createSlice({
   name: 'reports',
   initialState,
   reducers: {
@@ -33,5 +23,5 @@ const reportSlice = createSlice({
   },
 })
 
-export const { reportReceived } = reportSlice.actions
-export default reportSlice.reducer
+export const { reportReceived } = reportsSlice.actions
+export default reportsSlice.reducer
