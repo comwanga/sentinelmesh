@@ -26,9 +26,35 @@ jest.mock('../workers/nostrPublisher', () => ({
 // Mock bitcoinAnchor to avoid bitcoinjs-lib native deps in unit tests.
 jest.mock('../workers/bitcoinAnchor', () => ({
   broadcastAnchor: jest.fn(),
+  PreBroadcastError: class PreBroadcastError extends Error {
+    constructor(msg: string) { super(msg); this.name = 'PreBroadcastError' }
+  },
+  PostBroadcastError: class PostBroadcastError extends Error {
+    constructor(msg: string, public txid: string, public changeVout: number, public changeValue: number) {
+      super(msg); this.name = 'PostBroadcastError'
+    }
+  },
+}))
+
+jest.mock('../db/utxoPool', () => ({
+  claimUtxo: jest.fn(),
+  releaseUtxo: jest.fn(),
+  spendUtxo: jest.fn(),
+  reclaimStaleLocks: jest.fn(),
+}))
+
+jest.mock('../utils/feeEstimator', () => ({
+  estimateFee: jest.fn().mockResolvedValue(3080),
 }))
 
 import { claimNextJob, markFailed, markDead, PublishJob } from '../workers/publishWorker'
+import { releaseJobForRetry } from '../workers/publishWorker'
+import { claimUtxo, releaseUtxo, spendUtxo } from '../db/utxoPool'
+import { PreBroadcastError, PostBroadcastError } from '../workers/bitcoinAnchor'
+
+const mockClaimUtxo = claimUtxo as jest.Mock
+const mockReleaseUtxo = releaseUtxo as jest.Mock
+const mockSpendUtxo = spendUtxo as jest.Mock
 
 // Minimal mock of pg Pool
 function makePool(queryResults: Array<{ rows: unknown[] }>): Pool {
@@ -116,5 +142,17 @@ describe('markDead', () => {
       expect.stringContaining('DEAD'),
       ['job-uuid'],
     )
+  })
+})
+
+describe('releaseJobForRetry', () => {
+  it('sets job back to PENDING with 1-minute delay without touching retry_count', async () => {
+    const mockQuery = jest.fn().mockResolvedValue({ rows: [] })
+    const pool = { query: mockQuery } as unknown as Pool
+    await releaseJobForRetry(pool, 'job-uuid')
+    const sql = mockQuery.mock.calls[0][0] as string
+    expect(sql).toContain("status = 'PENDING'")
+    expect(sql).toContain('1 minute')
+    expect(sql).not.toContain('retry_count')
   })
 })
