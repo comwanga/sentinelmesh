@@ -111,14 +111,7 @@ export function createReportsRouter(hub: WsHub): Router {
     }
 
     try {
-      const pool = getPool()
-      const pre = await pool.query<{ consensus_score: number }>(
-        'SELECT consensus_score FROM community_reports WHERE id = $1',
-        [req.params['id']!],
-      )
-      const previousScore = pre.rows[0]?.consensus_score ?? 0
-
-      const report = await castVote({
+      const { report, oldScore } = await castVote({
         report_id: req.params['id']!,
         voter_pubkey,
         vote: String(vote).toUpperCase() as 'CONFIRM' | 'DENY',
@@ -133,7 +126,8 @@ export function createReportsRouter(hub: WsHub): Router {
       const finalReport = newStatus ? { ...report, status: newStatus } : report
       hub.broadcast(null, { type: 'REPORT_UPDATED', payload: finalReport })
 
-      if (previousScore < 3 && finalReport.consensus_score >= 3) {
+      if (oldScore < 3 && finalReport.consensus_score >= 3) {
+        const pool = getPool()
         await pool.query(
           `INSERT INTO publish_jobs (source_type, source_id)
            VALUES ('COMMUNITY_REPORT', $1)

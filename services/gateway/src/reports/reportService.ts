@@ -63,36 +63,57 @@ export interface CastVoteInput {
   voter_lng: number | null
 }
 
-export async function castVote(input: CastVoteInput): Promise<CommunityReport> {
+export async function castVote(input: CastVoteInput): Promise<{ report: CommunityReport; oldScore: number }> {
   const pool = getPool()
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
 
-  const reportRes = await pool.query(
-    'SELECT * FROM community_reports WHERE id = $1',
-    [input.report_id]
-  )
-  if (reportRes.rows.length === 0) throw new Error('report not found')
-  if (reportRes.rows[0].nostr_pubkey === input.voter_pubkey) throw new Error('cannot vote on own report')
+    // FOR UPDATE serialises concurrent votes on the same report, making oldScore
+    // an atomic pre-update snapshot used to detect the consensus threshold crossing.
+    const reportRes = await client.query(
+      'SELECT * FROM community_reports WHERE id = $1 FOR UPDATE',
+      [input.report_id]
+    )
+    if (reportRes.rows.length === 0) throw new Error('report not found')
+    if (reportRes.rows[0].nostr_pubkey === input.voter_pubkey) throw new Error('cannot vote on own report')
+    const oldScore = Number(reportRes.rows[0].consensus_score)
 
-  await pool.query(
-    `INSERT INTO report_votes (report_id, voter_pubkey, vote, voter_lat, voter_lng)
-     VALUES ($1,$2,$3,$4,$5)`,
-    [input.report_id, input.voter_pubkey, input.vote, input.voter_lat, input.voter_lng]
-  )
+    await client.query(
+      `INSERT INTO report_votes (report_id, voter_pubkey, vote, voter_lat, voter_lng)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [input.report_id, input.voter_pubkey, input.vote, input.voter_lat, input.voter_lng]
+    )
 
-  const nearby = await isNearby(pool, input, reportRes.rows[0])
-  const { scoreDelta, confirmDelta, denyDelta } = voteDeltas(input.vote, nearby)
+    let nearby = false
+    if (input.voter_lat != null && input.voter_lng != null) {
+      const nearbyRes = await client.query(
+        'SELECT earth_distance(ll_to_earth($1,$2), ll_to_earth($3,$4)) <= 1000 AS nearby',
+        [input.voter_lat, input.voter_lng, reportRes.rows[0]['lat'], reportRes.rows[0]['lng']]
+      )
+      nearby = nearbyRes.rows[0]?.nearby ?? false
+    }
 
-  const updated = await pool.query(
-    `UPDATE community_reports
-     SET consensus_score    = consensus_score    + $1,
-         confirmation_count = confirmation_count + $2,
-         denial_count       = denial_count       + $3,
-         updated_at         = NOW()
-     WHERE id = $4
-     RETURNING *`,
-    [scoreDelta, confirmDelta, denyDelta, input.report_id]
-  )
-  return rowToReport(updated.rows[0])
+    const { scoreDelta, confirmDelta, denyDelta } = voteDeltas(input.vote, nearby)
+    const updated = await client.query(
+      `UPDATE community_reports
+       SET consensus_score    = consensus_score    + $1,
+           confirmation_count = confirmation_count + $2,
+           denial_count       = denial_count       + $3,
+           updated_at         = NOW()
+       WHERE id = $4
+       RETURNING *`,
+      [scoreDelta, confirmDelta, denyDelta, input.report_id]
+    )
+
+    await client.query('COMMIT')
+    return { report: rowToReport(updated.rows[0]), oldScore }
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
 }
 
 export async function applyStatusTransition(report: CommunityReport, newStatus: string): Promise<void> {
@@ -197,15 +218,6 @@ export function rowToReport(row: Record<string, unknown>): CommunityReport {
     created_at:         (row['created_at'] as Date).toISOString(),
     updated_at:         (row['updated_at'] as Date).toISOString(),
   }
-}
-
-async function isNearby(pool: ReturnType<typeof getPool>, input: CastVoteInput, reportRow: Record<string, unknown>): Promise<boolean> {
-  if (input.voter_lat == null || input.voter_lng == null) return false
-  const res = await pool.query(
-    'SELECT earth_distance(ll_to_earth($1,$2), ll_to_earth($3,$4)) <= 1000 AS nearby',
-    [input.voter_lat, input.voter_lng, reportRow['lat'], reportRow['lng']]
-  )
-  return res.rows[0]?.nearby ?? false
 }
 
 function voteDeltas(vote: string, nearby: boolean) {
