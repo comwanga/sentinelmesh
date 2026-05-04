@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status: COMPLETE** — All tasks implemented in TypeScript at `services/gateway/src/lightning/` and `apps/pwa/src/components/ZapButton.tsx`. All 16 gateway tests and 30 PWA tests passing as of 2026-05-04. Actual paths differ from plan (adapted to monorepo structure).
+
 **Goal:** Allow any SentinelMesh user to tip a community reporter with Bitcoin Lightning (sats) when a report helped them. Reporters receive a Nostr Kind 9735 zap receipt on their Nostr identity, creating a portable, censorship-resistant record of community appreciation.
 
 **Architecture:** A user taps "Zap" on a community report. The mobile app calls `POST /api/zaps/request` with the report ID and a chosen amount. The backend looks up the reporter's Nostr pubkey, calls LND (via its REST API) to generate a BOLT11 invoice, and returns it to the client. The user pays the invoice from any Lightning wallet (displayed as a QR code and deep-link). LND fires a payment webhook to `POST /api/zaps/webhook`. The backend verifies the payment, publishes a Nostr Kind 9735 zap receipt to the reporter's relays, and updates the `lightning_zaps` table. Reporters see their earned sats on their report cards. No in-app Lightning wallet is built in this plan — that scope belongs to a future plan.
