@@ -107,7 +107,7 @@ async function updateSourceRow(pool: Pool, job: PublishJob): Promise<void> {
     await pool.query(
       `UPDATE community_reports
        SET nostr_event_id = $2
-       WHERE id = $1 AND nostr_event_id IS NULL`,
+       WHERE id = $1`,
       [job.source_id, job.nostr_kind30078_id],
     )
   }

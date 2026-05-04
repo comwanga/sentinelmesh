@@ -90,7 +90,7 @@ describe('POST /api/reports/:id/vote', () => {
       report_id: 'r1', status: 'PENDING', consensus_score: 3,
       confirmation_count: 1, denial_count: 0, nostr_pubkey: 'pk1',
     }
-    mockVote.mockResolvedValueOnce(fakeReport)
+    mockVote.mockResolvedValueOnce({ report: fakeReport, oldScore: 3 })
     mockCompute.mockReturnValueOnce('UNVERIFIED')
     mockApply.mockResolvedValueOnce(undefined)
     const res = await request(app).post('/api/reports/r1/vote')
