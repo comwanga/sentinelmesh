@@ -41,12 +41,13 @@ function makeEvent(overrides: Partial<SafetyEvent> = {}): SafetyEvent {
 }
 
 // Geo mock helpers
-type GeoCallback = (pos: GeolocationPosition) => void
+type GeoSuccessCallback = (pos: GeolocationPosition) => void
+type GeoErrorCallback = (err: GeolocationPositionError) => void
 
 function mockGeo(watchId = 42) {
-  let storedCallback: GeoCallback | null = null
+  let storedCallback: GeoSuccessCallback | null = null
   const clearWatch = vi.fn()
-  const watchPosition = vi.fn((cb: GeoCallback) => {
+  const watchPosition = vi.fn((cb: GeoSuccessCallback, _errCb?: GeoErrorCallback) => {
     storedCallback = cb
     return watchId
   })
@@ -73,7 +74,7 @@ describe('useNearestThreat', () => {
     mockGeo()
     const store = makeStore([makeEvent()])
     const { result } = renderHook(() => useNearestThreat(), { wrapper: makeWrapper(store) })
-    expect(result.current).toBeNull()
+    expect(result.current.nearest).toBeNull()
   })
 
   it('returns null when there are no high-risk events', () => {
@@ -81,7 +82,7 @@ describe('useNearestThreat', () => {
     const store = makeStore([])
     const { result } = renderHook(() => useNearestThreat(), { wrapper: makeWrapper(store) })
     act(() => { firePosition(-1.286, 36.817) })
-    expect(result.current).toBeNull()
+    expect(result.current.nearest).toBeNull()
   })
 
   it('returns the nearest event when multiple high-risk events exist', () => {
@@ -92,7 +93,7 @@ describe('useNearestThreat', () => {
     const store = makeStore([close, far])
     const { result } = renderHook(() => useNearestThreat(), { wrapper: makeWrapper(store) })
     act(() => { firePosition(user.lat, user.lng) })
-    expect(result.current?.event_id).toBe('close')
+    expect(result.current.nearest?.event_id).toBe('close')
   })
 
   it('ignores low-confidence events (confidence < 0.7)', () => {
@@ -101,7 +102,7 @@ describe('useNearestThreat', () => {
     const store = makeStore([lowConf])
     const { result } = renderHook(() => useNearestThreat(), { wrapper: makeWrapper(store) })
     act(() => { firePosition(-1.286, 36.817) })
-    expect(result.current).toBeNull()
+    expect(result.current.nearest).toBeNull()
   })
 
   it('ignores inactive events (is_active = false)', () => {
@@ -110,31 +111,40 @@ describe('useNearestThreat', () => {
     const store = makeStore([inactive])
     const { result } = renderHook(() => useNearestThreat(), { wrapper: makeWrapper(store) })
     act(() => { firePosition(-1.286, 36.817) })
-    expect(result.current).toBeNull()
+    expect(result.current.nearest).toBeNull()
   })
 
   it('throttles position updates — does not recompute within 1000ms', () => {
-    // Use a controlled clock so we can verify the throttle without real time
     vi.useFakeTimers()
     const { firePosition } = mockGeo()
+
+    // eventA is close to the initial position; eventB is close to the second position
     const eventA = makeEvent({ event_id: 'a', title: 'Event A', location: { place_name: null, lat: -1.3, lng: 36.8, county: null } })
-    const store = makeStore([eventA])
+    const eventB = makeEvent({ event_id: 'b', title: 'Event B', location: { place_name: null, lat: -2.5, lng: 37.9, county: null } })
+    const store = makeStore([eventA, eventB])
     const { result } = renderHook(() => useNearestThreat(), { wrapper: makeWrapper(store) })
 
-    // Fire the first position update — should be accepted
+    // Fire first position at t=1000 — accepted, nearest is eventA
     act(() => {
       vi.setSystemTime(1000)
       firePosition(-1.3, 36.8)
     })
-    expect(result.current?.event_id).toBe('a')
+    expect(result.current.nearest?.event_id).toBe('a')
 
-    // Fire again within 1000ms — should be ignored (state should not change)
+    // Fire second position at t=1500 (only 500ms later, within throttle window) — should be ignored
     act(() => {
-      vi.setSystemTime(1500) // only 500ms later
-      firePosition(-2.0, 37.5)
+      vi.setSystemTime(1500)
+      firePosition(-2.5, 37.9)
     })
-    // Still returns event 'a' because the position did not update
-    expect(result.current?.event_id).toBe('a')
+    // Still returns eventA because the position update was throttled
+    expect(result.current.nearest?.event_id).toBe('a')
+
+    // Advance past the 1000ms window and fire again — now the position should update
+    act(() => {
+      vi.setSystemTime(2100)
+      firePosition(-2.5, 37.9)
+    })
+    expect(result.current.nearest?.event_id).toBe('b')
 
     vi.useRealTimers()
   })
@@ -146,5 +156,26 @@ describe('useNearestThreat', () => {
     const { unmount } = renderHook(() => useNearestThreat(), { wrapper: makeWrapper(store) })
     unmount()
     expect(clearWatch).toHaveBeenCalledWith(watchId)
+  })
+
+  it('exposes geoError when geolocation fails', () => {
+    let storedErrorCb: GeoErrorCallback | null = null
+    const clearWatch = vi.fn()
+    const watchPosition = vi.fn((_cb: GeoSuccessCallback, errCb?: GeoErrorCallback) => {
+      storedErrorCb = errCb ?? null
+      return 1
+    })
+    Object.defineProperty(global.navigator, 'geolocation', {
+      writable: true,
+      value: { watchPosition, clearWatch },
+    })
+    const store = makeStore([])
+    const { result } = renderHook(() => useNearestThreat(), { wrapper: makeWrapper(store) })
+    expect(result.current.geoError).toBeNull()
+    act(() => {
+      storedErrorCb?.({ code: 1, message: 'Permission denied', PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 } as GeolocationPositionError)
+    })
+    expect(result.current.geoError).not.toBeNull()
+    expect(result.current.geoError?.code).toBe(1)
   })
 })

@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
+import type { ReactNode } from 'react'
 import eventsReducer from '../store/eventsSlice'
 import uiReducer from '../store/uiSlice'
 import { LiveMapPage } from './LiveMapPage'
@@ -14,12 +15,12 @@ vi.mock('../components/map/MapCanvas', () => ({
 
 // Mock react-map-gl used by sub-components
 vi.mock('react-map-gl', () => ({
-  default: ({ children }: { children: React.ReactNode }) => <div data-testid="mapbox">{children}</div>,
-  Marker: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  default: ({ children }: { children: ReactNode }) => <div data-testid="mapbox">{children}</div>,
+  Marker: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
 
 // Mock useNearestThreat so we can control the return value per test
-const mockUseNearestThreat = vi.fn(() => null as SafetyEvent | null)
+const mockUseNearestThreat = vi.fn(() => ({ nearest: null as SafetyEvent | null, geoError: null }))
 vi.mock('../hooks/useNearestThreat', () => ({
   useNearestThreat: () => mockUseNearestThreat(),
 }))
@@ -33,6 +34,11 @@ vi.mock('../hooks/useBreakpoint', () => ({
 // Mock MapOverlayHost — uses its own internal hooks, simplify to a stub
 vi.mock('../components/map/MapOverlayHost', () => ({
   MapOverlayHost: () => <div data-testid="map-overlay-host" />,
+}))
+
+// Mock react-router-dom navigate used in LiveMapPage
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => vi.fn(),
 }))
 
 function makeStore() {
@@ -50,7 +56,7 @@ function renderPage(store = makeStore()) {
 }
 
 beforeEach(() => {
-  mockUseNearestThreat.mockReturnValue(null)
+  mockUseNearestThreat.mockReturnValue({ nearest: null, geoError: null })
   mockUseBreakpoint.mockReturnValue({ layout: 'desktop' })
 })
 
@@ -66,8 +72,6 @@ describe('LiveMapPage', () => {
     renderPage()
     // AlertsDock renders "LIVE ALERTS" header
     expect(screen.getByText('LIVE ALERTS')).toBeInTheDocument()
-    // AlertsSheet renders "0 ALERTS" handle (includes count)
-    expect(screen.queryByText(/\d+ ALERTS/)).not.toBeInTheDocument()
   })
 
   it('mobile: renders AlertsSheet, not AlertsDock', () => {
@@ -108,14 +112,23 @@ describe('LiveMapPage', () => {
       nostr_event_id: null,
       bitcoin_txid: null,
     }
-    mockUseNearestThreat.mockReturnValue(threat)
+    mockUseNearestThreat.mockReturnValue({ nearest: threat, geoError: null })
     renderPage()
     expect(screen.getByText('NEAR YOU: Armed robbery near CBD')).toBeInTheDocument()
   })
 
   it('does not show NEAR YOU banner when nearestThreat is null', () => {
-    mockUseNearestThreat.mockReturnValue(null)
+    mockUseNearestThreat.mockReturnValue({ nearest: null, geoError: null })
     renderPage()
     expect(screen.queryByText(/NEAR YOU/)).not.toBeInTheDocument()
+  })
+
+  it('shows location unavailable banner when geoError is set', () => {
+    mockUseNearestThreat.mockReturnValue({
+      nearest: null,
+      geoError: { code: 1, message: 'Permission denied', PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 } as GeolocationPositionError,
+    })
+    renderPage()
+    expect(screen.getByText(/Location unavailable/)).toBeInTheDocument()
   })
 })

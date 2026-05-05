@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { useNearestThreat } from '../hooks/useNearestThreat'
 import { useAppSelector, useAppDispatch } from '../store'
@@ -12,23 +13,10 @@ import { MapOverlayHost } from '../components/map/MapOverlayHost'
 
 export function LiveMapPage() {
   const { layout } = useBreakpoint()
-  const nearestThreat = useNearestThreat()
+  const { nearest: nearestThreat, geoError } = useNearestThreat()
   const dispatch = useAppDispatch()
+  const navigate = useNavigate()
   const { activeAlerts, verified, verifiedPct, communityScore, sources } = useAppSelector(selectMapStats)
-
-  // Desktop layout:
-  // - MapStatsBar pinned above map
-  // - MapCanvas fills remaining space
-  // - AlertsDock fixed right 320px
-  // - MapFeatureStrip pinned below map
-  // - MapOverlayHost renders over map
-
-  // Mobile layout:
-  // - MapCanvas fills full height
-  // - MapStatsBar collapses (layout passed to it)
-  // - AlertsSheet slides up from bottom
-  // - MapFeatureStrip hidden
-  // - MapOverlayHost renders over map
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -39,6 +27,11 @@ export function LiveMapPage() {
         communityScore={communityScore}
         sources={sources}
       />
+      {geoError && (
+        <div style={{ background: '#1a2035', color: '#BB86FC', fontFamily: "'Courier New', monospace", fontSize: 10, padding: '2px 8px', textAlign: 'center' }}>
+          Location unavailable — enable GPS for nearest threat detection
+        </div>
+      )}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         <MapCanvas />
         {layout === 'desktop' && <AlertsDock />}
@@ -64,11 +57,11 @@ export function LiveMapPage() {
       </div>
       {layout === 'desktop' && (
         <MapFeatureStrip
-          onReport={() => {}}
+          onReport={() => navigate('/reports')}
           onAcoustic={() => dispatch(setOverlayIntent({ name: 'acoustic' }))}
-          onCircles={() => {}}
+          onCircles={() => navigate('/circles')}
           onRoutes={() => dispatch(setOverlayIntent({ name: 'routes' }))}
-          onZaps={() => {}}
+          onZaps={() => navigate('/zaps')}
         />
       )}
     </div>
