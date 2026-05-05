@@ -8,7 +8,6 @@ export function CirclesPage() {
 
   return (
     <div style={{ height: '100%', overflow: 'auto', background: '#0B0E14', display: 'flex', flexDirection: 'column' }}>
-      {/* E2EE notice */}
       <div style={{
         background: '#1B5E20', color: '#4CAF50',
         fontFamily: "'Courier New', monospace", fontSize: 10,

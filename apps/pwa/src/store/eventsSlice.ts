@@ -39,6 +39,8 @@ const eventsSlice = createSlice({
 export const { eventReceived, eventResolved, setConnected } = eventsSlice.actions
 export default eventsSlice.reducer
 
+export const selectEventItems = (state: RootState) => state.events.items
+
 export const selectMapStats = createSelector(
   (state: RootState) => state.events.items,
   items => {

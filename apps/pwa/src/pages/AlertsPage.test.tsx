@@ -3,13 +3,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import eventsReducer, { eventReceived } from '../store/eventsSlice'
+import acousticReducer from '../store/acousticSlice'
+import reportsReducer from '../store/reportSlice'
+import circlesReducer from '../store/circlesSlice'
 import uiReducer from '../store/uiSlice'
 import { AlertsPage } from './AlertsPage'
 import type { SafetyEvent } from '../../../../shared/types'
 
 function makeStore(events: SafetyEvent[] = []) {
   const store = configureStore({
-    reducer: { events: eventsReducer, ui: uiReducer },
+    reducer: {
+      events: eventsReducer,
+      acoustic: acousticReducer,
+      reports: reportsReducer,
+      circles: circlesReducer,
+      ui: uiReducer,
+    },
   })
   events.forEach(e => store.dispatch(eventReceived(e)))
   return store

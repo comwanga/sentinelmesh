@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import type { EventType } from '../../../../shared/types'
 import { useAppSelector } from '../store'
+import { selectEventItems } from '../store/eventsSlice'
 import { AlertCard, safetyEventToCardProps } from '../components/shared/AlertCard'
 
 const ALL_EVENT_TYPES: EventType[] = [
@@ -36,7 +37,7 @@ const TIME_RANGE_MS: Record<TimeRange, number | null> = {
 }
 
 export function AlertsPage() {
-  const items = useAppSelector(s => s.events.items)
+  const items = useAppSelector(selectEventItems)
 
   const [selectedTypes, setSelectedTypes] = useState<Set<EventType>>(new Set())
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
@@ -45,15 +46,12 @@ export function AlertsPage() {
   const filtered = useMemo(() => {
     const now = Date.now()
     return items.filter(e => {
-      // Type filter — if nothing selected, show all
       if (selectedTypes.size > 0 && !selectedTypes.has(e.event_type)) return false
 
-      // Status filter
       const isVerified = e.confidence >= 0.7
       if (statusFilter === 'VERIFIED' && !isVerified) return false
       if (statusFilter === 'PENDING' && isVerified) return false
 
-      // Time range filter
       const rangeMs = TIME_RANGE_MS[timeRange]
       if (rangeMs !== null) {
         const eventTs = new Date(e.last_updated).getTime()
@@ -78,7 +76,6 @@ export function AlertsPage() {
 
   const filtersActive = selectedTypes.size > 0 || statusFilter !== 'ALL' || timeRange !== 'ALL'
 
-  // no-op bookmark handler
   function handleBookmark(_eventId: string) {
     // TODO: wire to bookmarks slice when implemented
   }
@@ -88,7 +85,6 @@ export function AlertsPage() {
       display: 'flex', flexDirection: 'column', height: '100%',
       background: '#0B0E14', overflow: 'hidden',
     }}>
-      {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '12px 16px 8px',
@@ -111,13 +107,11 @@ export function AlertsPage() {
         )}
       </div>
 
-      {/* Filter bar — horizontally scrollable */}
       <div style={{
         display: 'flex', gap: 6, padding: '8px 16px',
         overflowX: 'auto', borderBottom: '1px solid #1a2035',
         scrollbarWidth: 'none',
       }}>
-        {/* Type chips */}
         {ALL_EVENT_TYPES.map(type => {
           const active = selectedTypes.has(type)
           return (
@@ -139,10 +133,8 @@ export function AlertsPage() {
           )
         })}
 
-        {/* Divider */}
         <div style={{ width: 1, background: '#1a2035', flexShrink: 0, margin: '0 4px' }} />
 
-        {/* Status toggle */}
         {(['ALL', 'VERIFIED', 'PENDING'] as StatusFilter[]).map(s => (
           <button
             key={s}
@@ -161,10 +153,8 @@ export function AlertsPage() {
           </button>
         ))}
 
-        {/* Divider */}
         <div style={{ width: 1, background: '#1a2035', flexShrink: 0, margin: '0 4px' }} />
 
-        {/* Time range */}
         {(['1h', '6h', '24h', 'ALL'] as TimeRange[]).map(t => (
           <button
             key={t}
@@ -184,7 +174,6 @@ export function AlertsPage() {
         ))}
       </div>
 
-      {/* Scrollable event list */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px' }}>
         {filtered.length === 0 ? (
           <div style={{
