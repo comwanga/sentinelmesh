@@ -42,8 +42,7 @@ export function computeProximityAlerts(
 
 export function useProximityAlerts(): void {
   const dispatch = useAppDispatch()
-  const activeCircleId = useAppSelector(s => s.circles.activeCircleId)
-  const members = useAppSelector(s => activeCircleId ? (s.circles.members[activeCircleId] ?? EMPTY_MEMBERS) : EMPTY_MEMBERS)
+  const members = useAppSelector(s => { const id = s.circles.activeCircleId; return id ? (s.circles.members[id] ?? EMPTY_MEMBERS) : EMPTY_MEMBERS })
   const locations = useAppSelector(s => s.circles.decryptedLocations)
   const proximityAlerts = useAppSelector(s => s.circles.proximityAlerts)
   const existingAlertKeys = useMemo(

@@ -19,7 +19,7 @@ export function FamilyCircleDashboard() {
   const dispatch = useAppDispatch()
   const activeCircleId = useAppSelector(s => s.circles.activeCircleId)
   const circles = useAppSelector(s => s.circles.circles)
-  const members = useAppSelector(s => activeCircleId ? (s.circles.members[activeCircleId] ?? EMPTY_MEMBERS) : EMPTY_MEMBERS)
+  const members = useAppSelector(s => { const id = s.circles.activeCircleId; return id ? (s.circles.members[id] ?? EMPTY_MEMBERS) : EMPTY_MEMBERS })
   const memberStatuses = useAppSelector(s => s.circles.memberStatuses)
   const decryptedLocations = useAppSelector(s => s.circles.decryptedLocations)
   const proximityAlerts = useAppSelector(s => s.circles.proximityAlerts)
