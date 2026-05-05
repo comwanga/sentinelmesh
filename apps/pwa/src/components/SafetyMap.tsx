@@ -8,7 +8,7 @@ import { fetchSafeRoutes, SafeRoute } from '../services/routingService'
 import { SafeRouteOverlay } from './SafeRouteOverlay'
 import { ZapButton } from './ZapButton'
 import { VerificationBadges } from './VerificationBadges'
-import type { SafetyEvent } from '../../../../shared/types'
+import type { SafetyEvent, EventType } from '../../../../shared/types'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 const MAPBOX_TOKEN = import.meta.env['VITE_MAPBOX_TOKEN'] as string
@@ -25,8 +25,17 @@ interface ProximityAlert {
   event_radius_meters: number
 }
 
-export default function SafetyMap({ proximityAlert }: { proximityAlert?: ProximityAlert | null }) {
-  const events = useAppSelector(selectActiveEvents)
+interface SafetyMapProps {
+  proximityAlert?: ProximityAlert | null
+  activeFilters?: EventType[]
+}
+
+export default function SafetyMap({ proximityAlert, activeFilters }: SafetyMapProps) {
+  const allEvents = useAppSelector(selectActiveEvents)
+  // If activeFilters is provided and non-empty, show only matching event types
+  const events = activeFilters && activeFilters.length > 0
+    ? allEvents.filter(e => activeFilters.includes(e.event_type))
+    : allEvents
   const connected = useAppSelector(state => state.events.connected)
   const [selected, setSelected] = useState<SafetyEvent | null>(null)
   const [escapeRoutes, setEscapeRoutes] = useState<SafeRoute[]>([])
