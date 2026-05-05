@@ -3,14 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useAppSelector, useAppDispatch } from '../../store'
 import { consumeOverlayIntent } from '../../store/uiSlice'
-import { alertDismissed } from '../../store/acousticSlice'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { AcousticAlert } from '../AcousticAlert'
 
 export function MapOverlayHost() {
   const dispatch = useAppDispatch()
   const uiIntent = useAppSelector(s => s.ui.uiIntent)
-  const currentAlert = useAppSelector(s => s.acoustic.currentAlert)
   const { layout } = useBreakpoint()
 
   const [overlay, setOverlay] = useState<'routes' | 'acoustic' | null>(null)
@@ -34,13 +32,7 @@ export function MapOverlayHost() {
           ? { position: 'fixed', inset: 0, zIndex: 200, pointerEvents: 'none' }
           : { position: 'absolute', inset: 0, zIndex: 200, pointerEvents: 'none' }
       }>
-        <AcousticAlert
-          detection={currentAlert}
-          onDismiss={() => {
-            dispatch(alertDismissed())
-            setOverlay(null)
-          }}
-        />
+        <AcousticAlert onClose={() => setOverlay(null)} />
       </div>
     )
   }

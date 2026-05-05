@@ -1,6 +1,9 @@
 // apps/pwa/src/components/AcousticAlert.tsx
+// Self-contained: reads currentAlert from Redux and dispatches alertDismissed on dismiss.
+// Host only needs to pass onClose to clear the overlay state.
 import { useEffect } from 'react'
-import { ThreatDetection } from '../constants/acousticThreats'
+import { useAppSelector, useAppDispatch } from '../store'
+import { alertDismissed } from '../store/acousticSlice'
 
 const CATEGORY_COLOUR: Record<string, string> = {
   SECURITY_INCIDENT: '#FF2D2D',
@@ -10,16 +13,25 @@ const CATEGORY_COLOUR: Record<string, string> = {
 }
 
 interface Props {
-  detection: ThreatDetection | null
-  onDismiss: () => void
+  onClose: () => void
 }
 
-export function AcousticAlert({ detection, onDismiss }: Props) {
+export function AcousticAlert({ onClose }: Props) {
+  const dispatch = useAppDispatch()
+  const detection = useAppSelector(s => s.acoustic.currentAlert)
+
+  function dismiss() {
+    dispatch(alertDismissed())
+    onClose()
+  }
+
   useEffect(() => {
     if (!detection) return
-    const timer = setTimeout(onDismiss, 30_000)
+    const timer = setTimeout(dismiss, 30_000)
     return () => clearTimeout(timer)
-  }, [detection, onDismiss])
+  // dismiss is stable enough for this effect; detection is the real dependency
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detection])
 
   if (!detection) return null
 
@@ -45,7 +57,7 @@ export function AcousticAlert({ detection, onDismiss }: Props) {
       </div>
       <button
         data-testid="acoustic-dismiss"
-        onClick={onDismiss}
+        onClick={dismiss}
         style={{
           background: 'none', border: 'none', color: '#fff',
           fontSize: 20, fontWeight: 700, cursor: 'pointer', padding: 0,
