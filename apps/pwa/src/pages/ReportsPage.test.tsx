@@ -25,6 +25,9 @@ describe('ReportsPage', () => {
 
     expect(screen.getByTestId('report-submit')).toBeInTheDocument()
     expect(screen.getByTestId('report-list')).toBeInTheDocument()
+
+    const container = screen.getByTestId('reports-container')
+    expect(container).toHaveStyle({ flexDirection: 'row' })
   })
 
   it('renders in mobile layout — components stacked', () => {
@@ -33,5 +36,8 @@ describe('ReportsPage', () => {
 
     expect(screen.getByTestId('report-submit')).toBeInTheDocument()
     expect(screen.getByTestId('report-list')).toBeInTheDocument()
+
+    const container = screen.getByTestId('reports-container')
+    expect(container).toHaveStyle({ flexDirection: 'column' })
   })
 })

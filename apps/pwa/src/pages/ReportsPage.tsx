@@ -6,7 +6,7 @@ export function ReportsPage() {
   const { layout } = useBreakpoint()
 
   return (
-    <div style={{
+    <div data-testid="reports-container" style={{
       display: 'flex',
       flexDirection: layout === 'desktop' ? 'row' : 'column',
       gap: 16,
