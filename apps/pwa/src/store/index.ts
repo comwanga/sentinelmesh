@@ -3,6 +3,7 @@ import eventsReducer from './eventsSlice'
 import acousticReducer from './acousticSlice'
 import reportsReducer from './reportSlice'
 import circlesReducer from './circlesSlice'
+import uiReducer from './uiSlice'
 import { useSelector, TypedUseSelectorHook, useDispatch } from 'react-redux'
 
 export const store = configureStore({
@@ -11,6 +12,7 @@ export const store = configureStore({
     acoustic: acousticReducer,
     reports: reportsReducer,
     circles: circlesReducer,
+    ui: uiReducer,
   },
 })
 
