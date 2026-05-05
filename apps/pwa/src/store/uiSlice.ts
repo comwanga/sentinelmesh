@@ -2,7 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
 export interface UiIntent {
   type: 'overlay' | 'modal'
-  name: string | null
+  name: 'routes' | 'acoustic' | null
 }
 
 interface UiState {

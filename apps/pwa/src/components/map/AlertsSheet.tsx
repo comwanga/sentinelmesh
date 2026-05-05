@@ -32,45 +32,42 @@ export function AlertsSheet() {
           background: 'none',
           border: 'none',
           cursor: 'pointer',
-          padding: '10px 16px',
+          padding: '8px 16px 6px',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
-          gap: 10,
+          gap: 4,
           flexShrink: 0,
         }}
       >
         {/* Drag handle indicator */}
         <div style={{
-          width: 36,
+          width: 32,
           height: 4,
           borderRadius: 2,
-          background: '#1a2035',
-          margin: '0 auto 0',
-          position: 'absolute',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          top: 8,
+          background: '#4a5568',
         }} />
 
-        <span style={{
-          fontFamily: "'Courier New', monospace",
-          fontSize: 12,
-          fontWeight: 700,
-          color: '#00E5FF',
-          letterSpacing: '0.08em',
-          marginTop: 4,
-        }}>
-          {events.length} ALERTS
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 10 }}>
+          <span style={{
+            fontFamily: "'Courier New', monospace",
+            fontSize: 12,
+            fontWeight: 700,
+            color: '#00E5FF',
+            letterSpacing: '0.08em',
+          }}>
+            {events.length} ALERTS
+          </span>
 
-        <span style={{
-          marginLeft: 'auto',
-          fontFamily: "'Courier New', monospace",
-          fontSize: 12,
-          color: '#4a5568',
-        }}>
-          {open ? '▼' : '▲'}
-        </span>
+          <span style={{
+            marginLeft: 'auto',
+            fontFamily: "'Courier New', monospace",
+            fontSize: 12,
+            color: '#4a5568',
+          }}>
+            {open ? '▼' : '▲'}
+          </span>
+        </div>
       </button>
 
       {/* Scrollable alert list — only visible when open */}
@@ -94,6 +91,7 @@ export function AlertsSheet() {
             events.map(event => (
               <AlertCard
                 key={event.event_id}
+                // TODO: wire to bookmarks slice when implemented
                 {...safetyEventToCardProps(event, () => {})}
               />
             ))

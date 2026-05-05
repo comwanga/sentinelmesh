@@ -55,6 +55,7 @@ export function AlertsDock() {
           events.map(event => (
             <AlertCard
               key={event.event_id}
+              // TODO: wire to bookmarks slice when implemented
               {...safetyEventToCardProps(event, () => {})}
             />
           ))

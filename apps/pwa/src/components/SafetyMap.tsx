@@ -1,5 +1,5 @@
 import Map, { Marker, Popup } from 'react-map-gl'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createSelector } from '@reduxjs/toolkit'
 import { useAppSelector } from '../store'
 import type { RootState } from '../store'
@@ -33,9 +33,13 @@ interface SafetyMapProps {
 export default function SafetyMap({ proximityAlert, activeFilters }: SafetyMapProps) {
   const allEvents = useAppSelector(selectActiveEvents)
   // If activeFilters is provided and non-empty, show only matching event types
-  const events = activeFilters && activeFilters.length > 0
-    ? allEvents.filter(e => activeFilters.includes(e.event_type))
-    : allEvents
+  const events = useMemo(
+    () =>
+      activeFilters && activeFilters.length > 0
+        ? allEvents.filter(e => activeFilters.includes(e.event_type))
+        : allEvents,
+    [allEvents, activeFilters]
+  )
   const connected = useAppSelector(state => state.events.connected)
   const [selected, setSelected] = useState<SafetyEvent | null>(null)
   const [escapeRoutes, setEscapeRoutes] = useState<SafeRoute[]>([])

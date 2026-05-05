@@ -15,7 +15,7 @@ export function MapOverlayHost() {
 
   useEffect(() => {
     if (uiIntent.name === 'routes' || uiIntent.name === 'acoustic') {
-      setOverlay(uiIntent.name as 'routes' | 'acoustic')
+      setOverlay(uiIntent.name)
       dispatch(consumeOverlayIntent())
     }
   }, [uiIntent.name, dispatch])
