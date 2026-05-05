@@ -2,10 +2,7 @@ import { Outlet } from 'react-router-dom'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
-
-function BottomNavStub() {
-  return <div style={{ height: 56, background: '#0B0E14', borderTop: '1px solid #1a2035', flexShrink: 0 }} />
-}
+import { BottomNav } from './BottomNav'
 
 export function AppShell() {
   const { layout } = useBreakpoint()
@@ -18,7 +15,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
-      {layout === 'mobile' && <BottomNavStub />}
+      {layout === 'mobile' && <BottomNav />}
     </div>
   )
 }
