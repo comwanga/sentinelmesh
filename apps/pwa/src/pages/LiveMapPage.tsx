@@ -2,6 +2,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint'
 import { useNearestThreat } from '../hooks/useNearestThreat'
 import { useAppSelector, useAppDispatch } from '../store'
 import { setOverlayIntent } from '../store/uiSlice'
+import { selectMapStats } from '../store/eventsSlice'
 import { MapCanvas } from '../components/map/MapCanvas'
 import { MapStatsBar } from '../components/map/MapStatsBar'
 import { MapFeatureStrip } from '../components/map/MapFeatureStrip'
@@ -13,15 +14,7 @@ export function LiveMapPage() {
   const { layout } = useBreakpoint()
   const nearestThreat = useNearestThreat()
   const dispatch = useAppDispatch()
-  const events = useAppSelector(s => s.events.items)
-
-  const activeAlerts = events.filter(e => e.is_active).length
-  const verified = events.filter(e => e.confidence >= 0.7).length
-  const verifiedPct = events.length > 0 ? Math.round((verified / events.length) * 100) : 0
-  const communityScore = Math.round(
-    events.reduce((sum, e) => sum + e.confidence, 0) / Math.max(events.length, 1) * 100
-  )
-  const sources = events.reduce((sum, e) => sum + e.source_count, 0)
+  const { activeAlerts, verified, verifiedPct, communityScore, sources } = useAppSelector(selectMapStats)
 
   // Desktop layout:
   // - MapStatsBar pinned above map
