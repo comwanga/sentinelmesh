@@ -1,9 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useMemo } from 'react'
 import { useAppDispatch, useAppSelector } from '../store'
 import { proximityAlertAdded } from '../store/circlesSlice'
 import { haversineKm } from '../utils/geo'
 import { randomUUID } from '../utils/uuid'
 import type { CircleMember, SafetyEvent, ProximityAlert, Severity } from '../../../../shared/types'
+
+const EMPTY_MEMBERS: CircleMember[] = []
 
 const SEVERITY_RANK: Record<Severity, number> = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 }
 
@@ -41,9 +43,13 @@ export function computeProximityAlerts(
 export function useProximityAlerts(): void {
   const dispatch = useAppDispatch()
   const activeCircleId = useAppSelector(s => s.circles.activeCircleId)
-  const members = useAppSelector(s => activeCircleId ? (s.circles.members[activeCircleId] ?? []) : [])
+  const members = useAppSelector(s => activeCircleId ? (s.circles.members[activeCircleId] ?? EMPTY_MEMBERS) : EMPTY_MEMBERS)
   const locations = useAppSelector(s => s.circles.decryptedLocations)
-  const existingAlertKeys = useAppSelector(s => new Set(s.circles.proximityAlerts.map(a => `${a.member_pubkey}:${a.event_id}`)))
+  const proximityAlerts = useAppSelector(s => s.circles.proximityAlerts)
+  const existingAlertKeys = useMemo(
+    () => new Set(proximityAlerts.map(a => `${a.member_pubkey}:${a.event_id}`)),
+    [proximityAlerts],
+  )
   const events = useAppSelector(s => s.events.items)
   const prevLocationsRef = useRef<typeof locations>({})
 

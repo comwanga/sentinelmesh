@@ -29,8 +29,19 @@ app.use('/api/zaps', zapRouter)
 app.use('/api/circles', circlesRouter)
 
 const server = createServer(app)
-const wsHub = createWsHub(server)
-const circleHub = createCircleHub(server)
+const wsHub = createWsHub()
+const circleHub = createCircleHub()
+
+server.on('upgrade', (req, socket, head) => {
+  const pathname = new URL(req.url ?? '', 'http://localhost').pathname
+  if (pathname === '/ws/circles') {
+    circleHub.handleUpgrade(req, socket, head)
+  } else if (pathname === '/ws') {
+    wsHub.handleUpgrade(req, socket, head)
+  } else {
+    socket.destroy()
+  }
+})
 
 app.use('/api/circles', createLocationBlobsRouter(circleHub))
 

@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws'
-import { IncomingMessage, Server } from 'http'
+import { IncomingMessage } from 'http'
+import { Duplex } from 'stream'
 import type { WsMessage } from '../../../../shared/types'
 
 // Each client subscribes to a county. When an event arrives for that county,
@@ -8,10 +9,11 @@ type CountySubscribers = Map<string, Set<WebSocket>>
 
 export interface WsHub {
   broadcast: (county: string | null, message: WsMessage) => void
+  handleUpgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void
 }
 
-export function createWsHub(server: Server): WsHub {
-  const wss = new WebSocketServer({ server, path: '/ws' })
+export function createWsHub(): WsHub {
+  const wss = new WebSocketServer({ noServer: true })
   const subscribers: CountySubscribers = new Map()
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
@@ -30,6 +32,12 @@ export function createWsHub(server: Server): WsHub {
     })
   })
 
+  function handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req)
+    })
+  }
+
   function broadcast(county: string | null, message: WsMessage): void {
     const payload = JSON.stringify(message)
     const targets = new Set<WebSocket>()
@@ -47,5 +55,5 @@ export function createWsHub(server: Server): WsHub {
   }
 
   console.log('WebSocket hub ready on /ws')
-  return { broadcast }
+  return { broadcast, handleUpgrade }
 }

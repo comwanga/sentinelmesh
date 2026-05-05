@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws'
-import { Server } from 'http'
+import { IncomingMessage } from 'http'
+import { Duplex } from 'stream'
 import { verifyEvent } from 'nostr-tools'
 import { getPool } from '../db/pool'
 import type { CircleWsMessage } from '../../../../shared/types'
@@ -8,10 +9,11 @@ type CircleRooms = Map<string, Set<WebSocket>>
 
 export interface CircleHub {
   broadcast: (circleId: string, message: CircleWsMessage) => void
+  handleUpgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void
 }
 
-export function createCircleHub(server: Server): CircleHub {
-  const wss = new WebSocketServer({ server, path: '/ws/circles' })
+export function createCircleHub(): CircleHub {
+  const wss = new WebSocketServer({ noServer: true })
   const rooms: CircleRooms = new Map()
 
   wss.on('connection', (ws: WebSocket) => {
@@ -72,6 +74,12 @@ export function createCircleHub(server: Server): CircleHub {
     })
   })
 
+  function handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req)
+    })
+  }
+
   function broadcast(circleId: string, message: CircleWsMessage): void {
     const payload = JSON.stringify(message)
     rooms.get(circleId)?.forEach(ws => {
@@ -80,5 +88,5 @@ export function createCircleHub(server: Server): CircleHub {
   }
 
   console.log('Circle WebSocket hub ready on /ws/circles')
-  return { broadcast }
+  return { broadcast, handleUpgrade }
 }
