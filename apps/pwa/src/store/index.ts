@@ -5,16 +5,22 @@ import reportsReducer from './reportSlice'
 import circlesReducer from './circlesSlice'
 import uiReducer from './uiSlice'
 import zapsReducer from './zapsSlice'
+import insightsEventsReducer from './insightsEventsSlice'
+import communityStatsReducer from './communityStatsSlice'
+import safetyLogReducer from './safetyLogSlice'
 import { useSelector, TypedUseSelectorHook, useDispatch } from 'react-redux'
 
 export const store = configureStore({
   reducer: {
-    events: eventsReducer,
-    acoustic: acousticReducer,
-    reports: reportsReducer,
-    circles: circlesReducer,
-    ui: uiReducer,
-    zaps: zapsReducer,
+    events:         eventsReducer,
+    acoustic:       acousticReducer,
+    reports:        reportsReducer,
+    circles:        circlesReducer,
+    ui:             uiReducer,
+    zaps:           zapsReducer,
+    insightsEvents: insightsEventsReducer,
+    communityStats: communityStatsReducer,
+    safetyLog:      safetyLogReducer,
   },
 })
 

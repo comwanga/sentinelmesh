@@ -10,10 +10,10 @@ const TABS: Tab[] = ['Overview', 'Heatmap', 'Personal Safety']
 export function InsightsPage() {
   const [tab, setTab] = useState<Tab>('Overview')
   const dispatch = useAppDispatch()
-  const reporters = useAppSelector(s => ((s as any).communityStats?.reporters ?? []) as ReporterStat[])
-  const totalVerified = useAppSelector(s => ((s as any).communityStats?.totalVerified ?? 0) as number)
-  const safetyLog = useAppSelector(s => ((s as any).safetyLog?.entries ?? []) as SafetyLogEntry[])
-  const statsLoading = useAppSelector(s => ((s as any).communityStats?.loading ?? false) as boolean)
+  const reporters = useAppSelector(s => s.communityStats.reporters)
+  const totalVerified = useAppSelector(s => s.communityStats.totalVerified)
+  const safetyLog = useAppSelector(s => s.safetyLog.entries)
+  const statsLoading = useAppSelector(s => s.communityStats.loading)
 
   useEffect(() => {
     const now = new Date()
