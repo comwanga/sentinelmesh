@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAppSelector, useAppDispatch } from '../store'
 import { fetchInsightsEvents } from '../store/insightsEventsSlice'
-import { fetchCommunityStats } from '../store/communityStatsSlice'
+import { fetchCommunityStats, ReporterStat } from '../store/communityStatsSlice'
+import { SafetyLogEntry } from '../store/safetyLogSlice'
 
 type Tab = 'Overview' | 'Heatmap' | 'Personal Safety'
 const TABS: Tab[] = ['Overview', 'Heatmap', 'Personal Safety']
@@ -9,10 +10,10 @@ const TABS: Tab[] = ['Overview', 'Heatmap', 'Personal Safety']
 export function InsightsPage() {
   const [tab, setTab] = useState<Tab>('Overview')
   const dispatch = useAppDispatch()
-  const reporters = useAppSelector(s => (s as any).communityStats?.reporters ?? [])
-  const totalVerified = useAppSelector(s => (s as any).communityStats?.totalVerified ?? 0)
-  const safetyLog = useAppSelector(s => (s as any).safetyLog?.entries ?? [])
-  const statsLoading = useAppSelector(s => (s as any).communityStats?.loading ?? false)
+  const reporters = useAppSelector(s => ((s as any).communityStats?.reporters ?? []) as ReporterStat[])
+  const totalVerified = useAppSelector(s => ((s as any).communityStats?.totalVerified ?? 0) as number)
+  const safetyLog = useAppSelector(s => ((s as any).safetyLog?.entries ?? []) as SafetyLogEntry[])
+  const statsLoading = useAppSelector(s => ((s as any).communityStats?.loading ?? false) as boolean)
 
   useEffect(() => {
     const now = new Date()
@@ -71,7 +72,7 @@ export function InsightsPage() {
         )}
 
         {tab === 'Heatmap' && (
-          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#4a5568', textAlign: 'center' as const, marginTop: 40 }}>
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#4a5568', textAlign: 'center', marginTop: 40 }}>
             Heatmap requires the /api/events/history backend endpoint.<br />
             Integrate Mapbox heatmap layer once endpoint is live.
           </div>
@@ -82,8 +83,8 @@ export function InsightsPage() {
             {safetyLog.length === 0 ? (
               <p style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: '#4a5568' }}>No personal safety events logged yet.</p>
             ) : (
-              safetyLog.map((entry: any, i: number) => (
-                <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #1a2035' }}>
+              safetyLog.map((entry: SafetyLogEntry) => (
+                <div key={entry.timestamp} style={{ padding: '8px 0', borderBottom: '1px solid #1a2035' }}>
                   <span style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: '#e2e8f0' }}>{entry.label}</span>
                   <span style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', marginLeft: 12 }}>
                     {new Date(entry.timestamp).toLocaleTimeString()}
