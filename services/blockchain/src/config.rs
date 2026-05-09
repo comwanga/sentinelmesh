@@ -67,7 +67,7 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         let database_url = required("DATABASE_URL")?;
         let nostr_privkey = required("NOSTR_PRIVKEY")?;
-        if nostr_privkey.len() != 64 {
+        if nostr_privkey.len() != 64 || !nostr_privkey.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err(anyhow!("NOSTR_PRIVKEY must be 64 hex chars"));
         }
         let bitcoin_wif = required("BITCOIN_WIF")?;
