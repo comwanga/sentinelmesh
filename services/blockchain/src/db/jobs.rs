@@ -51,8 +51,10 @@ pub async fn claim_next_job(pool: &PgPool, worker_id: &str) -> Result<Option<Pub
 }
 
 /// Marks job FAILED with exponential backoff. Inserts a publish_failures row.
+/// Both writes are in a single transaction — failure row must not appear without the status update.
 pub async fn mark_failed(pool: &PgPool, job_id: Uuid, error_message: &str, retry_count: i32) -> Result<()> {
     let backoff_minutes = 2i64.pow(retry_count as u32);
+    let mut tx = pool.begin().await?;
     sqlx::query(
         r#"
         UPDATE publish_jobs
@@ -69,7 +71,7 @@ pub async fn mark_failed(pool: &PgPool, job_id: Uuid, error_message: &str, retry
     .bind(job_id)
     .bind(error_message)
     .bind(backoff_minutes)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     sqlx::query(
@@ -77,8 +79,9 @@ pub async fn mark_failed(pool: &PgPool, job_id: Uuid, error_message: &str, retry
     )
     .bind(job_id)
     .bind(error_message)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
     Ok(())
 }
 
