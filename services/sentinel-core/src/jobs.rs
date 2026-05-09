@@ -1,5 +1,3 @@
-#[allow(unused_imports)]
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
