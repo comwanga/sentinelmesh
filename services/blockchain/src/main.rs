@@ -1,6 +1,7 @@
 // services/blockchain/src/main.rs
 mod config;
 mod db;
+mod utils;
 
 fn main() {
     let _config = config::Config::from_env().unwrap_or_else(|e| {
