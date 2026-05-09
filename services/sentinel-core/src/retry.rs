@@ -13,7 +13,7 @@ impl RetryPolicy {
     pub fn default_publish() -> Self {
         Self {
             max_attempts: 5,
-            max_delay: Duration::from_secs(60 * 32), // 2^5 = 32 minutes cap
+            max_delay: Duration::from_secs(60 * 32), // cap above the max natural delay at attempt 4 (2^4 = 16 min)
         }
     }
 
@@ -21,7 +21,7 @@ impl RetryPolicy {
     /// Matches TypeScript: `Math.pow(2, currentRetryCount)` minutes.
     pub fn delay_for(&self, attempt: u32) -> Duration {
         let minutes = 2u64.saturating_pow(attempt);
-        let raw = Duration::from_secs(minutes * 60);
+        let raw = Duration::from_secs(minutes.saturating_mul(60));
         raw.min(self.max_delay)
     }
 
