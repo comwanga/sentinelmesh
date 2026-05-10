@@ -17,22 +17,29 @@ pub struct LocationBlob {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use chrono::DateTime;
 
     #[test]
     fn location_blob_serde_round_trip() {
+        let id = uuid::Uuid::new_v4();
+        let cid = uuid::Uuid::new_v4();
+        let created = DateTime::from_timestamp(0, 0).unwrap();
+        let expires = DateTime::from_timestamp(600, 0).unwrap();
         let b = LocationBlob {
-            id: Uuid::nil(),
-            circle_id: Uuid::nil(),
+            id,
+            circle_id: cid,
             sender_pubkey: "pubkey".into(),
             encrypted_payload: "cipher".into(),
-            created_at: Utc::now(),
-            expires_at: Utc::now(),
+            created_at: created,
+            expires_at: expires,
         };
         let json = serde_json::to_string(&b).unwrap();
         let back: LocationBlob = serde_json::from_str(&json).unwrap();
-        assert_eq!(b.id, back.id);
-        assert_eq!(b.sender_pubkey, back.sender_pubkey);
-        assert_eq!(b.encrypted_payload, back.encrypted_payload);
+        assert_eq!(back.id, id);
+        assert_eq!(back.circle_id, cid);
+        assert_eq!(back.sender_pubkey, "pubkey");
+        assert_eq!(back.encrypted_payload, "cipher");
+        assert_eq!(back.created_at, created);
+        assert_eq!(back.expires_at, expires);
     }
 }
