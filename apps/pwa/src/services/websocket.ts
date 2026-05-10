@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useDispatch } from 'react-redux'
 import { eventReceived, eventResolved, setConnected } from '../store/eventsSlice'
 import { reportReceived } from '../store/reportSlice'
-import type { WsMessage, SafetyEvent, CommunityReport } from '../../../../shared/types'
+import type { WsMessage } from '../../../../shared/types'
 
 // In dev, connect directly to the gateway to avoid Vite WS proxy issues on Windows.
 // In production, the PWA and gateway share the same origin behind nginx.
@@ -27,11 +27,11 @@ export function useWsConnection(): void {
       try {
         const msg: WsMessage = JSON.parse(event.data)
         if (msg.type === 'NEW_EVENT' || msg.type === 'EVENT_UPDATED') {
-          dispatch(eventReceived(msg.payload as SafetyEvent))
+          dispatch(eventReceived(msg.payload))
         } else if (msg.type === 'EVENT_RESOLVED') {
-          dispatch(eventResolved(msg.payload as { id: string }))
+          dispatch(eventResolved(msg.payload))
         } else if (msg.type === 'NEW_REPORT' || msg.type === 'REPORT_UPDATED') {
-          dispatch(reportReceived(msg.payload as CommunityReport))
+          dispatch(reportReceived(msg.payload))
         }
       } catch {
         console.warn('Invalid WebSocket message received')
