@@ -21,7 +21,7 @@ export function AlertsSheet({ events, open, onClose, onSelect }: Props) {
         <span style={{ color: '#e2e8f0', fontSize: 14, fontFamily: 'sans-serif', fontWeight: 600 }}>
           Active Alerts
         </span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#4a5568', cursor: 'pointer', fontSize: 18 }}>
+        <button onClick={onClose} aria-label="Close alerts" style={{ background: 'none', border: 'none', color: '#4a5568', cursor: 'pointer', fontSize: 18 }}>
           ×
         </button>
       </div>
