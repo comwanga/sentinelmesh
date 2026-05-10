@@ -39,6 +39,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/health", get(health))
         .route("/ws", get(ws::ws_handler))
+        .route("/ws/circles", get(ws::ws_circles_handler))
         .with_state(state);
 
     let addr = "0.0.0.0:3000";

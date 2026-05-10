@@ -1,4 +1,3 @@
-// placeholder — implemented in Task 5
 use bytes::Bytes;
 use dashmap::DashMap;
 use std::sync::Arc;
@@ -33,4 +32,29 @@ impl CircleHub {
 
 impl Default for CircleHub {
     fn default() -> Self { Self::new() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn circle_subscriber_receives_broadcast() {
+        let hub = CircleHub::new();
+        let id = Uuid::new_v4();
+        let mut rx = hub.subscribe(id);
+        hub.broadcast(id, Bytes::from_static(b"location"));
+        let msg = rx.recv().await.unwrap();
+        assert_eq!(&msg[..], b"location");
+    }
+
+    #[tokio::test]
+    async fn different_circles_are_isolated() {
+        let hub = CircleHub::new();
+        let id_a = Uuid::new_v4();
+        let id_b = Uuid::new_v4();
+        let mut rx_a = hub.subscribe(id_a);
+        hub.broadcast(id_b, Bytes::from_static(b"other"));
+        assert!(rx_a.try_recv().is_err());
+    }
 }
