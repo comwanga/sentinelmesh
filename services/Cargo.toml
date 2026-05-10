@@ -1,5 +1,5 @@
 [workspace]
-members = ["blockchain", "sentinel-core"]
+members = ["blockchain", "sentinel-core", "gateway"]
 resolver = "2"
 
 [workspace.package]
