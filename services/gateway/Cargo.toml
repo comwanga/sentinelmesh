@@ -21,6 +21,7 @@ nostr-sdk    = { workspace = true }
 sha2         = { workspace = true }
 hex          = { workspace = true }
 
+jsonschema   = "0.22"
 redis        = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
 dashmap      = "6"
 bytes        = "1"
