@@ -25,9 +25,14 @@ pub async fn run(
     hub: Arc<WsHub>,
     redis_healthy: Arc<AtomicBool>,
 ) {
+    let schema: serde_json::Value = serde_json::from_str(SCHEMA_JSON)
+        .expect("event_schema.json is invalid JSON — regenerate with export_schema binary");
+    let validator = jsonschema::validator_for(&schema)
+        .expect("event_schema.json is not a valid JSON Schema — regenerate with export_schema binary");
+
     let mut backoff_ms = BASE_BACKOFF_MS;
     loop {
-        match subscribe_loop(&redis_url, &pool, &hub, &redis_healthy).await {
+        match subscribe_loop(&redis_url, &pool, &hub, &redis_healthy, &validator).await {
             Ok(()) => break,
             Err(e) => {
                 let was_healthy = redis_healthy.swap(false, Ordering::Relaxed);
@@ -49,12 +54,8 @@ async fn subscribe_loop(
     pool: &PgPool,
     hub: &Arc<WsHub>,
     redis_healthy: &Arc<AtomicBool>,
+    validator: &jsonschema::Validator,
 ) -> Result<()> {
-    let schema: serde_json::Value = serde_json::from_str(SCHEMA_JSON)
-        .expect("event_schema.json is invalid JSON — regenerate with export_schema binary");
-    let validator = jsonschema::validator_for(&schema)
-        .expect("event_schema.json is not a valid JSON Schema — regenerate with export_schema binary");
-
     let client = redis::Client::open(redis_url)?;
     let mut pubsub = client.get_async_pubsub().await?;
     pubsub.subscribe(CHANNEL).await?;
@@ -134,7 +135,7 @@ async fn handle_message(
 
     let ws_msg = serde_json::json!({
         "type": "NEW_EVENT",
-        "payload": sentinel_core::Event::from(event.clone())
+        "payload": sentinel_core::Event::from(event)
     });
     hub.broadcast(
         county.as_deref(),

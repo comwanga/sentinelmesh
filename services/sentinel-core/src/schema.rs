@@ -39,6 +39,25 @@ impl From<RedisEventPayload> for crate::Event {
     }
 }
 
+impl From<&RedisEventPayload> for crate::Event {
+    fn from(p: &RedisEventPayload) -> Self {
+        Self {
+            id: p.id,
+            event_type: p.event_type.clone(),
+            severity: p.severity.clone(),
+            title: p.title.clone(),
+            lat: p.lat,
+            lng: p.lng,
+            started_at: p.started_at,
+            summary: p.summary.clone(),
+            place_name: p.place_name.clone(),
+            county: p.county.clone(),
+            is_active: p.is_active,
+            created_at: p.created_at,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
