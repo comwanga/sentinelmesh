@@ -20,7 +20,7 @@ pub async fn run(pool: Arc<PgPool>, config: Arc<Config>) {
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
-        .unwrap_or_default();
+        .expect("failed to build reqwest client for publish worker");
     let mut ticker = interval(Duration::from_millis(config.poll_interval_ms));
     let mut orphan_tick = 0u32;
 

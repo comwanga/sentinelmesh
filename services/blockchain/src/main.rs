@@ -34,11 +34,9 @@ async fn main() {
 
     tracing::info!("blockchain starting on port {}", config.port);
 
-    // Spawn worker tasks — each runs independently; a panic in one does not kill others.
-    tokio::spawn(workers::publish_worker::run(Arc::clone(&pool), Arc::clone(&config)));
-    tokio::spawn(workers::confirmation_poller::run(Arc::clone(&pool), Arc::clone(&config)));
+    let publish_task = tokio::spawn(workers::publish_worker::run(Arc::clone(&pool), Arc::clone(&config)));
+    let poller_task = tokio::spawn(workers::confirmation_poller::run(Arc::clone(&pool), Arc::clone(&config)));
 
-    // Health server
     let app = Router::new().route("/health", get(health));
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port))
         .await
@@ -47,10 +45,21 @@ async fn main() {
             std::process::exit(1);
         });
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .unwrap_or_else(|e| tracing::error!("server error: {}", e));
+    // Run until the server receives a shutdown signal OR a worker exits unexpectedly.
+    // Dropping a JoinHandle aborts the task, so workers stop when the select exits.
+    tokio::select! {
+        result = publish_task => {
+            tracing::error!("publish worker exited unexpectedly: {:?}", result);
+            std::process::exit(1);
+        }
+        result = poller_task => {
+            tracing::error!("confirmation poller exited unexpectedly: {:?}", result);
+            std::process::exit(1);
+        }
+        result = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()) => {
+            result.unwrap_or_else(|e| tracing::error!("server error: {}", e));
+        }
+    }
 
     tracing::info!("blockchain shutdown complete");
 }
