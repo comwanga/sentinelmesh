@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import AsyncMock, patch
 
@@ -30,7 +31,10 @@ async def test_valid_event_is_published():
     with patch("publisher.get_client", return_value=mock_client):
         import publisher
         await publisher.emit_event(VALID_EVENT.copy())
-    mock_client.publish.assert_awaited_once()
+    mock_client.publish.assert_awaited_once_with(
+        "sentinel:events:new",
+        json.dumps(VALID_EVENT),
+    )
 
 
 @pytest.mark.asyncio

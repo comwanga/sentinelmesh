@@ -52,6 +52,9 @@ def build_event(signals: list[dict]) -> dict:
 
     loc = best.get("location") or {}
 
+    if loc.get("lat") is None or loc.get("lng") is None:
+        raise ValueError(f"cannot build event: signal has no coordinates (location={loc!r})")
+
     return {
         "schema_version": 1,
         "id": str(uuid.uuid4()),

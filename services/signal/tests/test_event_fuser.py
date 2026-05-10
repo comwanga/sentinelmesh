@@ -77,3 +77,8 @@ def test_build_event_no_extra_fields():
     allowed = {"schema_version", "id", "event_type", "severity", "title", "lat", "lng",
                "started_at", "summary", "place_name", "county", "is_active", "created_at"}
     assert set(event.keys()) == allowed
+
+def test_build_event_raises_when_location_missing():
+    no_loc = {**SIGNAL_A, "location": None}
+    with pytest.raises(ValueError, match="no coordinates"):
+        build_event([no_loc])
