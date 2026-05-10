@@ -170,3 +170,77 @@ pub fn router() -> Router<AppState> {
         .route("/", get(list_events).post(create_event))
         .route("/:id", get(get_event))
 }
+
+impl From<SafetyEvent> for sentinel_core::Event {
+    fn from(row: SafetyEvent) -> Self {
+        Self {
+            id: row.id,
+            event_type: row.event_type,
+            severity: row.severity,
+            title: row.title,
+            lat: row.lat,
+            lng: row.lng,
+            started_at: row.started_at,
+            summary: row.summary,
+            place_name: row.place_name,
+            county: row.county,
+            is_active: row.is_active,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    fn sample_db_row() -> SafetyEvent {
+        let now = Utc::now();
+        SafetyEvent {
+            id: Uuid::nil(),
+            event_type: "FLOOD".into(),
+            severity: "CRITICAL".into(),
+            title: "Flooding downtown".into(),
+            lat: -1.2921,
+            lng: 36.8219,
+            started_at: now,
+            summary: Some("Roads impassable".into()),
+            place_name: Some("CBD".into()),
+            county: Some("Nairobi".into()),
+            radius_meters: Some(2000),
+            confidence: Some(0.95),
+            source_count: Some(3),
+            source_breakdown: None,
+            is_active: true,
+            nostr_event_id: Some("nevent1abc".into()),
+            bitcoin_txid: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn from_safety_event_maps_core_fields() {
+        let row = sample_db_row();
+        let e = sentinel_core::Event::from(row);
+        assert_eq!(e.id, Uuid::nil());
+        assert_eq!(e.event_type, "FLOOD");
+        assert_eq!(e.severity, "CRITICAL");
+        assert_eq!(e.lat, -1.2921);
+        assert_eq!(e.county, Some("Nairobi".into()));
+        assert!(e.is_active);
+    }
+
+    #[test]
+    fn from_safety_event_drops_db_only_fields() {
+        let row = sample_db_row();
+        let e = sentinel_core::Event::from(row);
+        // These fields exist on the domain type (compile-time check):
+        let _: Uuid = e.id;
+        let _: String = e.event_type;
+        let _: String = e.severity;
+        let _: bool = e.is_active;
+    }
+}

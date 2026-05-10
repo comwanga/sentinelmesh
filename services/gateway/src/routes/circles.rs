@@ -185,3 +185,77 @@ pub fn router() -> Router<AppState> {
         .route("/:id/members", post(add_member))
         .route("/:id/members/:pubkey", delete(remove_member))
 }
+
+impl From<Circle> for sentinel_core::domain::circle::Circle {
+    fn from(row: Circle) -> Self {
+        Self {
+            id: row.id,
+            owner_pubkey: row.owner_pubkey,
+            name: row.name,
+            created_at: row.created_at,
+        }
+    }
+}
+
+impl From<CircleMember> for sentinel_core::domain::circle::CircleMember {
+    fn from(row: CircleMember) -> Self {
+        Self {
+            circle_id: row.circle_id,
+            member_pubkey: row.member_pubkey,
+            alert_radius_km: row.alert_radius_km,
+            alert_severity: row.alert_severity,
+            joined_at: row.joined_at,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    #[test]
+    fn circle_converts_to_domain() {
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+        let row = Circle { id, owner_pubkey: "pk".into(), name: "Home".into(), created_at: now };
+        let d = sentinel_core::domain::circle::Circle::from(row);
+        assert_eq!(d.id, id);
+        assert_eq!(d.name, "Home");
+        assert_eq!(d.owner_pubkey, "pk");
+    }
+
+    #[test]
+    fn circle_member_converts_to_domain() {
+        let cid = Uuid::new_v4();
+        let now = Utc::now();
+        let row = CircleMember {
+            circle_id: cid,
+            member_pubkey: "mpk".into(),
+            alert_radius_km: Some(5.0),
+            alert_severity: Some("HIGH".into()),
+            joined_at: now,
+        };
+        let d = sentinel_core::domain::circle::CircleMember::from(row);
+        assert_eq!(d.circle_id, cid);
+        assert_eq!(d.member_pubkey, "mpk");
+        assert_eq!(d.alert_radius_km, Some(5.0));
+        assert_eq!(d.alert_severity, Some("HIGH".into()));
+    }
+
+    #[test]
+    fn circle_member_no_alerts_converts_to_domain() {
+        let now = Utc::now();
+        let row = CircleMember {
+            circle_id: Uuid::nil(),
+            member_pubkey: "anon".into(),
+            alert_radius_km: None,
+            alert_severity: None,
+            joined_at: now,
+        };
+        let d = sentinel_core::domain::circle::CircleMember::from(row);
+        assert_eq!(d.alert_radius_km, None);
+        assert_eq!(d.alert_severity, None);
+    }
+}
