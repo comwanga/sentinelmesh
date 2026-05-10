@@ -1,6 +1,7 @@
 mod config;
 mod db;
 mod error;
+mod middleware;
 
 use std::sync::Arc;
 use axum::{http::StatusCode, response::Json, routing::get, Router};
