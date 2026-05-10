@@ -29,7 +29,7 @@ export function useWsConnection(): void {
         if (msg.type === 'NEW_EVENT' || msg.type === 'EVENT_UPDATED') {
           dispatch(eventReceived(msg.payload as SafetyEvent))
         } else if (msg.type === 'EVENT_RESOLVED') {
-          dispatch(eventResolved(msg.payload as { event_id: string }))
+          dispatch(eventResolved(msg.payload as { id: string }))
         } else if (msg.type === 'NEW_REPORT' || msg.type === 'REPORT_UPDATED') {
           dispatch(reportReceived(msg.payload as CommunityReport))
         }

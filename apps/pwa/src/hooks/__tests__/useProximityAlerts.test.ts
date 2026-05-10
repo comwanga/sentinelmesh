@@ -11,18 +11,18 @@ const member: CircleMember = {
 }
 
 const nearbyEvent: SafetyEvent = {
-  event_id: 'e1',
+  id: 'e1',
   event_type: 'CIVIL_UNREST',
   severity: 'CRITICAL',
   title: 'Crisis Zone B',
   summary: null,
-  location: { lat: -1.2921, lng: 36.8219, place_name: 'Nairobi CBD', county: 'Nairobi' },
-  confidence: 0.9,
-  source_count: 3,
-  source_breakdown: {},
+  lat: -1.2921,
+  lng: 36.8219,
+  place_name: 'Nairobi CBD',
+  county: 'Nairobi',
   is_active: true,
   started_at: '',
-  last_updated: '',
+  created_at: '',
   nostr_event_id: null,
   bitcoin_txid: null,
 }
