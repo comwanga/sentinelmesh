@@ -2,6 +2,7 @@
 mod config;
 mod db;
 mod utils;
+mod workers;
 
 fn main() {
     let _config = config::Config::from_env().unwrap_or_else(|e| {
