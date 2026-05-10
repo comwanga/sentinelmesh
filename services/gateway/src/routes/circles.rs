@@ -186,7 +186,7 @@ pub fn router() -> Router<AppState> {
         .route("/:id/members/:pubkey", delete(remove_member))
 }
 
-impl From<Circle> for sentinel_core::domain::circle::Circle {
+impl From<Circle> for sentinel_core::Circle {
     fn from(row: Circle) -> Self {
         Self {
             id: row.id,
@@ -197,7 +197,7 @@ impl From<Circle> for sentinel_core::domain::circle::Circle {
     }
 }
 
-impl From<CircleMember> for sentinel_core::domain::circle::CircleMember {
+impl From<CircleMember> for sentinel_core::CircleMember {
     fn from(row: CircleMember) -> Self {
         Self {
             circle_id: row.circle_id,
@@ -220,7 +220,7 @@ mod tests {
         let id = Uuid::new_v4();
         let now = Utc::now();
         let row = Circle { id, owner_pubkey: "pk".into(), name: "Home".into(), created_at: now };
-        let d = sentinel_core::domain::circle::Circle::from(row);
+        let d = sentinel_core::Circle::from(row);
         assert_eq!(d.id, id);
         assert_eq!(d.name, "Home");
         assert_eq!(d.owner_pubkey, "pk");
@@ -237,7 +237,7 @@ mod tests {
             alert_severity: Some("HIGH".into()),
             joined_at: now,
         };
-        let d = sentinel_core::domain::circle::CircleMember::from(row);
+        let d = sentinel_core::CircleMember::from(row);
         assert_eq!(d.circle_id, cid);
         assert_eq!(d.member_pubkey, "mpk");
         assert_eq!(d.alert_radius_km, Some(5.0));
@@ -254,7 +254,7 @@ mod tests {
             alert_severity: None,
             joined_at: now,
         };
-        let d = sentinel_core::domain::circle::CircleMember::from(row);
+        let d = sentinel_core::CircleMember::from(row);
         assert_eq!(d.alert_radius_km, None);
         assert_eq!(d.alert_severity, None);
     }
