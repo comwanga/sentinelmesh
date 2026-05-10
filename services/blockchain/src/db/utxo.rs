@@ -1,6 +1,5 @@
 // services/blockchain/src/db/utxo.rs
 use anyhow::Result;
-use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -10,10 +9,6 @@ pub struct Utxo {
     pub txid: String,
     pub vout: i32,
     pub value_sats: i64,
-    pub status: String,
-    pub spending_job_id: Option<Uuid>,
-    pub creating_job_id: Option<Uuid>,
-    pub locked_at: Option<DateTime<Utc>>,
 }
 
 /// Claims the highest-value CONFIRMED UTXO for a job. Returns None if pool is empty.
@@ -32,7 +27,7 @@ pub async fn claim_utxo(pool: &PgPool, job_id: Uuid) -> Result<Option<Utxo>> {
           FOR UPDATE SKIP LOCKED
           LIMIT 1
         )
-        RETURNING id, txid, vout, value_sats, status, spending_job_id, creating_job_id, locked_at
+        RETURNING id, txid, vout, value_sats
         "#,
     )
     .bind(job_id)
@@ -101,39 +96,3 @@ pub async fn reclaim_stale_locks(pool: &PgPool) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug)]
-pub struct PoolDepth {
-    pub available: i64,
-    pub locked: i64,
-    pub unconfirmed: i64,
-}
-
-pub async fn get_pool_depth(pool: &PgPool) -> Result<PoolDepth> {
-    let row = sqlx::query_as::<_, (i64, i64, i64)>(
-        r#"
-        SELECT
-          COUNT(*) FILTER (WHERE status = 'CONFIRMED')   AS available,
-          COUNT(*) FILTER (WHERE status = 'LOCKED')      AS locked,
-          COUNT(*) FILTER (WHERE status = 'UNCONFIRMED') AS unconfirmed
-        FROM utxos
-        "#,
-    )
-    .fetch_one(pool)
-    .await?;
-    Ok(PoolDepth { available: row.0, locked: row.1, unconfirmed: row.2 })
-}
-
-pub async fn seed_utxo(pool: &PgPool, txid: &str, vout: u32, value_sats: i64) -> Result<Utxo> {
-    let row = sqlx::query_as::<_, Utxo>(
-        r#"INSERT INTO utxos (txid, vout, value_sats, status)
-           VALUES ($1, $2, $3, 'CONFIRMED')
-           ON CONFLICT (txid, vout) DO UPDATE SET value_sats = EXCLUDED.value_sats, updated_at = NOW()
-           RETURNING id, txid, vout, value_sats, status, spending_job_id, creating_job_id, locked_at"#,
-    )
-    .bind(txid)
-    .bind(vout as i32)
-    .bind(value_sats)
-    .fetch_one(pool)
-    .await?;
-    Ok(row)
-}

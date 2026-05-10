@@ -140,16 +140,6 @@ pub async fn set_bitcoin_anchored(pool: &PgPool, job_id: Uuid, txid: &str, ancho
     Ok(())
 }
 
-pub async fn set_complete(pool: &PgPool, job_id: Uuid) -> Result<()> {
-    sqlx::query(
-        "UPDATE publish_jobs SET status = 'COMPLETE', updated_at = NOW() WHERE id = $1",
-    )
-    .bind(job_id)
-    .execute(pool)
-    .await?;
-    Ok(())
-}
-
 /// Fetches severity/type/lat/lng/place_name from safety_events or community_reports.
 /// NOTE: community_reports has no severity column — callers handle this case.
 pub async fn fetch_source_row(pool: &PgPool, job: &PublishJob) -> Result<Option<SourceRow>> {
