@@ -1,4 +1,7 @@
 import pytest
+import json
+import jsonschema
+from pathlib import Path
 from nlp.event_fuser import should_fuse, build_event
 from datetime import datetime, timezone
 
@@ -47,21 +50,45 @@ def test_different_type_should_not_fuse():
     fire_signal = {**SIGNAL_B, "event_type": "FIRE"}
     assert should_fuse(SIGNAL_A, fire_signal) is False
 
-def test_build_event_has_required_fields():
+def test_build_event_schema_fields_present():
     event = build_event([SIGNAL_A, SIGNAL_B])
-    assert "event_id" in event
-    assert "event_type" in event
-    assert "severity" in event
-    assert "confidence" in event
-    assert "source_count" in event
-    assert event["source_count"] == 2
+    assert event["schema_version"] == 1
+    assert "id" in event
+    assert event["event_type"] == "FLOOD"
+    assert event["severity"] == "HIGH"
+    assert "title" in event
+    assert "started_at" in event
+    assert event["is_active"] is True
+    assert "created_at" in event
 
-def test_build_event_source_breakdown():
+def test_build_event_flat_location():
+    event = build_event([SIGNAL_A])
+    assert event["lat"] == -1.2572
+    assert event["lng"] == 36.8572
+    assert event["place_name"] == "mathare"
+    assert event["county"] == "Nairobi"
+    assert "location" not in event
+
+def test_build_event_started_at_is_earliest():
+    earlier = {**SIGNAL_A, "timestamp": datetime(2026, 4, 28, 8, 0, tzinfo=timezone.utc)}
+    later = {**SIGNAL_B, "timestamp": datetime(2026, 4, 28, 9, 0, tzinfo=timezone.utc)}
+    event = build_event([later, earlier])
+    assert event["started_at"] == earlier["timestamp"].isoformat()
+
+def test_build_event_no_extra_fields():
+    event = build_event([SIGNAL_A])
+    allowed = {"schema_version", "id", "event_type", "severity", "title", "lat", "lng",
+               "started_at", "summary", "place_name", "county", "is_active", "created_at"}
+    assert set(event.keys()) == allowed
+
+def test_build_event_raises_when_location_missing():
+    no_loc = {**SIGNAL_A, "location": None}
+    with pytest.raises(ValueError, match="no coordinates"):
+        build_event([no_loc])
+
+def test_build_event_output_is_valid_against_schema():
+    schema_path = Path(__file__).parent.parent / "event_schema.json"
+    schema = json.loads(schema_path.read_text())
+
     event = build_event([SIGNAL_A, SIGNAL_B])
-    assert event["source_breakdown"]["news"] == 1
-    assert event["source_breakdown"]["twitter"] == 1
-
-def test_build_event_confidence_higher_with_more_sources():
-    single = build_event([SIGNAL_A])
-    multi = build_event([SIGNAL_A, SIGNAL_B])
-    assert multi["confidence"] >= single["confidence"]
+    jsonschema.validate(instance=event, schema=schema)  # raises if invalid

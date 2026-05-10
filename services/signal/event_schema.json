@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RedisEventPayload",
+  "type": "object",
+  "required": [
+    "created_at",
+    "event_type",
+    "id",
+    "is_active",
+    "lat",
+    "lng",
+    "schema_version",
+    "severity",
+    "started_at",
+    "title"
+  ],
+  "properties": {
+    "county": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "event_type": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "is_active": {
+      "type": "boolean"
+    },
+    "lat": {
+      "type": "number",
+      "format": "double"
+    },
+    "lng": {
+      "type": "number",
+      "format": "double"
+    },
+    "place_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema_version": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "severity": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}
