@@ -83,6 +83,7 @@ mod tests {
         assert_eq!(payload.id, event.id);
         assert_eq!(payload.event_type, event.event_type);
         assert_eq!(payload.lat, event.lat);
+        assert_eq!(payload.lng, event.lng);
         assert_eq!(payload.county, event.county);
         assert_eq!(payload.is_active, event.is_active);
         assert_eq!(payload.severity, event.severity);
