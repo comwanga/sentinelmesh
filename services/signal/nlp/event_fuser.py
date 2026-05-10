@@ -1,7 +1,6 @@
 import uuid
 import math
 from datetime import datetime, timezone
-from typing import Any
 
 # Fuse signals within this radius and time window
 FUSE_RADIUS_KM = 2.0
@@ -42,9 +41,8 @@ def should_fuse(signal_a: dict, signal_b: dict) -> bool:
 
 def build_event(signals: list[dict]) -> dict:
     """
-    Merge a cluster of signals into one SafetyEvent.
-    Picks the highest severity and uses the highest-confidence signal's location.
-    Confidence increases with source count (capped at 1.0).
+    Merge a cluster of signals into one RedisEventPayload.
+    Output matches services/event_schema.json exactly.
     """
     best = max(signals, key=lambda s: s["confidence"])
     highest_severity = max(
@@ -52,30 +50,20 @@ def build_event(signals: list[dict]) -> dict:
         key=lambda sv: SEVERITY_ORDER.index(sv),
     )
 
-    source_breakdown: dict[str, int] = {}
-    for s in signals:
-        src = s.get("source_type", "unknown")
-        source_breakdown[src] = source_breakdown.get(src, 0) + 1
-
-    # Each additional corroborating source adds 0.05 confidence (max 1.0)
-    base_confidence = best["confidence"]
-    confidence = min(base_confidence + (len(signals) - 1) * 0.05, 1.0)
-
-    now = datetime.now(timezone.utc).isoformat()
+    loc = best.get("location") or {}
 
     return {
-        "event_id": str(uuid.uuid4()),
+        "schema_version": 1,
+        "id": str(uuid.uuid4()),
         "event_type": best["event_type"],
         "severity": highest_severity,
         "title": best["title"],
-        "summary": best.get("summary"),
-        "location": best.get("location"),
-        "confidence": round(confidence, 3),
-        "source_count": len(signals),
-        "source_breakdown": source_breakdown,
-        "is_active": True,
+        "lat": loc.get("lat"),
+        "lng": loc.get("lng"),
         "started_at": min(s["timestamp"] for s in signals).isoformat(),
-        "last_updated": now,
-        "nostr_event_id": None,
-        "bitcoin_txid": None,
+        "summary": best.get("summary"),
+        "place_name": loc.get("place_name"),
+        "county": loc.get("county"),
+        "is_active": True,
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
