@@ -73,6 +73,7 @@ mod tests {
         assert_eq!(payload.lat, back.lat);
         assert_eq!(payload.is_active, back.is_active);
         assert_eq!(payload.county, back.county);
+        assert_eq!(payload.schema_version, back.schema_version);
     }
 
     #[test]
@@ -84,6 +85,12 @@ mod tests {
         assert_eq!(payload.lat, event.lat);
         assert_eq!(payload.county, event.county);
         assert_eq!(payload.is_active, event.is_active);
+        assert_eq!(payload.severity, event.severity);
+        assert_eq!(payload.title, event.title);
+        assert_eq!(payload.summary, event.summary);
+        assert_eq!(payload.place_name, event.place_name);
+        assert_eq!(payload.started_at, event.started_at);
+        assert_eq!(payload.created_at, event.created_at);
     }
 
     #[test]
