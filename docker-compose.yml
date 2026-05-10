@@ -27,13 +27,25 @@ services:
       timeout: 3s
       retries: 5
 
-  gateway:
+  gateway-legacy:
     build:
       context: ./services/gateway
     restart: unless-stopped
     env_file: .env
     environment:
       NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  gateway-rs:
+    build:
+      context: ./services
+      dockerfile: gateway/Dockerfile
+    restart: unless-stopped
+    env_file: .env
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,8 +120,8 @@ services:
     depends_on:
       signal:
         condition: service_healthy
-      gateway:
-        condition: service_healthy
+      gateway-rs:
+        condition: service_started
 
 volumes:
   pgdata:
