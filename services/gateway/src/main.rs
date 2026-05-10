@@ -1,6 +1,7 @@
 mod config;
 mod db;
 mod error;
+mod lightning;
 mod middleware;
 mod nudge;
 mod reports;
