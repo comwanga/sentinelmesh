@@ -40,6 +40,23 @@ struct AddMemberBody {
     alert_severity: Option<String>,
 }
 
+async fn list_circles(
+    State(state): State<AppState>,
+    auth: NostrAuth,
+) -> Result<Json<Vec<Circle>>, AppError> {
+    let circles = sqlx::query_as::<_, Circle>(
+        "SELECT DISTINCT c.id, c.owner_pubkey, c.name, c.created_at
+         FROM circles c
+         LEFT JOIN circle_members m ON m.circle_id = c.id
+         WHERE c.owner_pubkey = $1 OR m.member_pubkey = $1
+         ORDER BY c.created_at DESC",
+    )
+    .bind(&auth.pubkey)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(circles))
+}
+
 async fn create_circle(
     State(state): State<AppState>,
     auth: NostrAuth,
@@ -163,7 +180,7 @@ async fn delete_circle(
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/", post(create_circle))
+        .route("/", get(list_circles).post(create_circle))
         .route("/:id", get(get_circle).delete(delete_circle))
         .route("/:id/members", post(add_member))
         .route("/:id/members/:pubkey", delete(remove_member))

@@ -25,7 +25,13 @@ pub async fn run(
         match subscribe_loop(&redis_url, &pool, &hub, &redis_healthy).await {
             Ok(()) => break,
             Err(e) => {
-                redis_healthy.store(false, Ordering::Relaxed);
+                // If the connection was healthy before it dropped, start backoff
+                // fresh — a brief disconnect after a long stable period should
+                // not carry over the large backoff from an earlier outage.
+                let was_healthy = redis_healthy.swap(false, Ordering::Relaxed);
+                if was_healthy {
+                    backoff_ms = BASE_BACKOFF_MS;
+                }
                 tracing::warn!(
                     "redis subscriber error: {e:#}, retrying in {backoff_ms}ms"
                 );

@@ -56,6 +56,12 @@ async fn handle_public_ws(mut socket: WebSocket, county: String, state: AppState
 
 // ---------------------------------------------------------------------------
 // Circle WebSocket handler
+//
+// Member invalidation is broadcast via in-process CircleHub only. This means
+// MEMBER_REMOVED events are not propagated across gateway instances — Phase 2
+// is deployed as a single process, so this is acceptable. If we scale to
+// multiple gateway replicas, this must be replaced with a Redis pub/sub
+// channel (e.g. circle:{id}:members) to fan out across instances.
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, serde::Deserialize)]
