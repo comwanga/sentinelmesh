@@ -1,4 +1,7 @@
 import pytest
+import json
+import jsonschema
+from pathlib import Path
 from nlp.event_fuser import should_fuse, build_event
 from datetime import datetime, timezone
 
@@ -82,3 +85,10 @@ def test_build_event_raises_when_location_missing():
     no_loc = {**SIGNAL_A, "location": None}
     with pytest.raises(ValueError, match="no coordinates"):
         build_event([no_loc])
+
+def test_build_event_output_is_valid_against_schema():
+    schema_path = Path(__file__).parent.parent / "event_schema.json"
+    schema = json.loads(schema_path.read_text())
+
+    event = build_event([SIGNAL_A, SIGNAL_B])
+    jsonschema.validate(instance=event, schema=schema)  # raises if invalid
