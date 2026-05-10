@@ -2,6 +2,7 @@ mod config;
 mod db;
 mod error;
 mod middleware;
+mod reports;
 mod ws;
 
 use std::sync::{atomic::AtomicBool, Arc};
