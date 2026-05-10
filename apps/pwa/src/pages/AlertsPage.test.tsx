@@ -24,20 +24,20 @@ function makeStore(events: SafetyEvent[] = []) {
   return store
 }
 
-function makeEvent(overrides: Partial<SafetyEvent> & { event_id: string }): SafetyEvent {
+function makeEvent(overrides: Partial<SafetyEvent> & { id: string }): SafetyEvent {
   return {
-    event_id: overrides.event_id,
+    id: overrides.id,
     event_type: overrides.event_type ?? 'SECURITY_INCIDENT',
     severity: overrides.severity ?? 'HIGH',
     title: overrides.title ?? 'Test alert',
     summary: null,
-    location: { place_name: 'Nairobi CBD', lat: -1.286, lng: 36.817, county: null },
-    confidence: overrides.confidence ?? 0.8,
-    source_count: 3,
-    source_breakdown: { NLP: 2, Radio: 1 },
+    lat: -1.286,
+    lng: 36.817,
+    place_name: 'Nairobi CBD',
+    county: null,
     is_active: true,
     started_at: new Date().toISOString(),
-    last_updated: overrides.last_updated ?? new Date().toISOString(),
+    created_at: overrides.created_at ?? new Date().toISOString(),
     nostr_event_id: null,
     bitcoin_txid: null,
     ...overrides,
@@ -82,8 +82,8 @@ describe('AlertsPage', () => {
 
   it('shows only VERIFIED events when status filter = VERIFIED', () => {
     const events = [
-      makeEvent({ event_id: 'v1', title: 'Verified alert', confidence: 0.9 }),
-      makeEvent({ event_id: 'p1', title: 'Pending alert', confidence: 0.5 }),
+      makeEvent({ id: 'v1', title: 'Verified alert', severity: 'HIGH' }),
+      makeEvent({ id: 'p1', title: 'Pending alert', severity: 'LOW' }),
     ]
     renderPage(events)
 
@@ -98,8 +98,8 @@ describe('AlertsPage', () => {
     const oldTs = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() // 3 hours ago
 
     const events = [
-      makeEvent({ event_id: 'r1', title: 'Recent event', last_updated: recentTs }),
-      makeEvent({ event_id: 'o1', title: 'Old event', last_updated: oldTs }),
+      makeEvent({ id: 'r1', title: 'Recent event', created_at: recentTs }),
+      makeEvent({ id: 'o1', title: 'Old event', created_at: oldTs }),
     ]
     renderPage(events)
 
@@ -111,9 +111,9 @@ describe('AlertsPage', () => {
 
   it('shows all events when no filters active', () => {
     const events = [
-      makeEvent({ event_id: 'e1', title: 'Alert one' }),
-      makeEvent({ event_id: 'e2', title: 'Alert two', event_type: 'FLOOD' }),
-      makeEvent({ event_id: 'e3', title: 'Alert three', confidence: 0.3 }),
+      makeEvent({ id: 'e1', title: 'Alert one' }),
+      makeEvent({ id: 'e2', title: 'Alert two', event_type: 'FLOOD' }),
+      makeEvent({ id: 'e3', title: 'Alert three' }),
     ]
     renderPage(events)
 
@@ -124,8 +124,8 @@ describe('AlertsPage', () => {
 
   it('clicking a type chip toggles that type filter', () => {
     const events = [
-      makeEvent({ event_id: 's1', title: 'Security event', event_type: 'SECURITY_INCIDENT' }),
-      makeEvent({ event_id: 'f1', title: 'Flood event', event_type: 'FLOOD' }),
+      makeEvent({ id: 's1', title: 'Security event', event_type: 'SECURITY_INCIDENT' }),
+      makeEvent({ id: 'f1', title: 'Flood event', event_type: 'FLOOD' }),
     ]
     renderPage(events)
 

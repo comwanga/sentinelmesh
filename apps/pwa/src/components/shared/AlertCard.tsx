@@ -19,15 +19,15 @@ export function safetyEventToCardProps(
   onBookmark: (id: string) => void = () => {}
 ): AlertCardProps {
   return {
-    eventId:    e.event_id,
+    eventId:    e.id,
     eventType:  e.event_type,
     title:      e.title,
-    location:   e.location?.place_name ?? 'Unknown location',
-    timestamp:  new Date(e.last_updated).getTime(),
-    confidence: e.confidence,
-    status:     e.confidence >= 0.7 ? 'VERIFIED' : 'PENDING',
-    sources:    Object.keys(e.source_breakdown) as Array<'NLP' | 'Radio' | 'Community' | 'Social'>,
-    voteCount:  e.source_count,
+    location:   e.place_name ?? 'Unknown location',
+    timestamp:  new Date(e.created_at).getTime(),
+    confidence: 0,
+    status:     (e.severity === 'CRITICAL' || e.severity === 'HIGH') ? 'VERIFIED' : 'PENDING',
+    sources:    [],
+    voteCount:  0,
     onBookmark,
   }
 }

@@ -6,6 +6,10 @@ import { configureStore } from '@reduxjs/toolkit'
 import eventsReducer from '../../store/eventsSlice'
 import acousticReducer from '../../store/acousticSlice'
 import circlesReducer from '../../store/circlesSlice'
+import uiReducer from '../../store/uiSlice'
+import insightsEventsReducer from '../../store/insightsEventsSlice'
+import communityStatsReducer from '../../store/communityStatsSlice'
+import safetyLogReducer from '../../store/safetyLogSlice'
 import { router } from '../../router'
 
 vi.mock('react-map-gl', () => ({
@@ -19,7 +23,17 @@ vi.mock('../../services/circleWebSocket', () => ({ useCircleWsConnection: () => 
 vi.mock('../../hooks/useProximityAlerts', () => ({ useProximityAlerts: () => {} }))
 
 function makeStore() {
-  return configureStore({ reducer: { events: eventsReducer, acoustic: acousticReducer, circles: circlesReducer } })
+  return configureStore({
+    reducer: {
+      events: eventsReducer,
+      acoustic: acousticReducer,
+      circles: circlesReducer,
+      ui: uiReducer,
+      insightsEvents: insightsEventsReducer,
+      communityStats: communityStatsReducer,
+      safetyLog: safetyLogReducer,
+    },
+  })
 }
 
 function renderRoute(path: string) {

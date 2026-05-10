@@ -1,146 +1,69 @@
-import { useState, useCallback } from 'react'
-import { Marker, Popup } from 'react-map-gl'
-import { createSelector } from '@reduxjs/toolkit'
-import { useAppSelector } from '../store'
-import type { RootState } from '../store'
-import { MapCanvas } from '../components/MapCanvas'
-import EventMarker from '../components/EventMarker'
-import { SafeRouteOverlay } from '../components/SafeRouteOverlay'
-import { ZapButton } from '../components/ZapButton'
-import { VerificationBadges } from '../components/VerificationBadges'
-import { ReportSubmit } from '../components/ReportSubmit'
-import { ReportList } from '../components/ReportList'
-import { MapStatsBar } from '../components/MapStatsBar'
-import { MapFeatureStrip } from '../components/MapFeatureStrip'
-import { AlertsDock } from '../components/AlertsDock'
-import { AlertsSheet } from '../components/AlertsSheet'
-import { useMediaQuery } from '../hooks/useMediaQuery'
-import type { SafetyEvent } from '../../../../shared/types'
-import type { Severity } from '../../../../shared/types'
-
-const selectActiveEvents = createSelector(
-  (state: RootState) => state.events.items,
-  items => items.filter(e => e.is_active)
-)
-
-type Panel = 'none' | 'submit' | 'list'
+import { useNavigate } from 'react-router-dom'
+import { useBreakpoint } from '../hooks/useBreakpoint'
+import { useNearestThreat } from '../hooks/useNearestThreat'
+import { useAppSelector, useAppDispatch } from '../store'
+import { setOverlayIntent } from '../store/uiSlice'
+import { selectMapStats } from '../store/eventsSlice'
+import { MapCanvas } from '../components/map/MapCanvas'
+import { MapStatsBar } from '../components/map/MapStatsBar'
+import { MapFeatureStrip } from '../components/map/MapFeatureStrip'
+import { AlertsDock } from '../components/map/AlertsDock'
+import { AlertsSheet } from '../components/map/AlertsSheet'
+import { MapOverlayHost } from '../components/map/MapOverlayHost'
 
 export function LiveMapPage() {
-  const allActive = useAppSelector(selectActiveEvents)
-  const [severityFilter, setSeverityFilter] = useState<Set<Severity>>(
-    new Set(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])
-  )
-
-  const handleToggleSeverity = useCallback((s: Severity) => {
-    setSeverityFilter(prev => {
-      const next = new Set(prev)
-      if (next.has(s)) next.delete(s)
-      else next.add(s)
-      return next
-    })
-  }, [])
-
-  const events = allActive.filter(e => severityFilter.has(e.severity))
-  const connected = useAppSelector(state => state.events.connected)
-  const [selected, setSelected] = useState<SafetyEvent | null>(null)
-  const [panel, setPanel] = useState<Panel>('none')
-  const isDesktop = useMediaQuery('(min-width: 768px)')
-  const [sheetOpen, setSheetOpen] = useState(false)
+  const { layout } = useBreakpoint()
+  const { nearest: nearestThreat, geoError } = useNearestThreat()
+  const dispatch = useAppDispatch()
+  const navigate = useNavigate()
+  const { activeAlerts, verified, verifiedPct, communityScore, sources } = useAppSelector(selectMapStats)
 
   return (
-    <div data-testid="live-map-page" style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <div style={{
-        position: 'absolute', top: 12, left: 12, zIndex: 10,
-        background: connected ? '#4CAF50' : '#FF2D2D',
-        color: 'white', padding: '4px 10px', borderRadius: 12,
-        fontSize: 12, fontFamily: 'sans-serif',
-      }}>
-        {connected ? `Live · ${events.length} events` : 'Reconnecting…'}
-      </div>
-
-      <MapStatsBar events={events} />
-
-      <MapCanvas>
-        {events.map(event => (
-          <Marker key={event.id} longitude={event.lng} latitude={event.lat} anchor="center">
-            <EventMarker event={event} onClick={setSelected} />
-          </Marker>
-        ))}
-
-        {selected && (
-          <Popup
-            longitude={selected.lng}
-            latitude={selected.lat}
-            onClose={() => setSelected(null)}
-            closeButton={true}
-            maxWidth="280px"
-          >
-            <div style={{ fontFamily: 'sans-serif', fontSize: 13 }}>
-              <strong style={{ color: '#333' }}>{selected.title}</strong>
-              {selected.summary && <p style={{ margin: '6px 0 0' }}>{selected.summary}</p>}
-              <p style={{ margin: '6px 0 0', color: '#666', fontSize: 11 }}>
-                {selected.place_name} · {selected.severity}
-              </p>
-              <ZapButton reportId={selected.id} />
-              <VerificationBadges
-                nostrEventId={selected.nostr_event_id}
-                bitcoinTxid={selected.bitcoin_txid}
-              />
-            </div>
-          </Popup>
-        )}
-
-        <SafeRouteOverlay routes={[]} />
-      </MapCanvas>
-
-      {isDesktop && <AlertsDock events={events} onSelect={setSelected} />}
-
-      <MapFeatureStrip active={severityFilter} onToggle={handleToggleSeverity} />
-
-      {!isDesktop && (
-        <>
-          <button
-            onClick={() => setSheetOpen(true)}
-            style={{
-              position: 'absolute', bottom: 80, left: 16, zIndex: 10,
-              background: '#1a2035', color: '#00E5FF', border: '1px solid #00E5FF',
-              borderRadius: 20, padding: '6px 14px', fontSize: 12,
-              fontFamily: "'Courier New', monospace", cursor: 'pointer',
-            }}
-          >
-            {events.length} alerts
-          </button>
-          <AlertsSheet
-            events={events}
-            open={sheetOpen}
-            onClose={() => setSheetOpen(false)}
-            onSelect={setSelected}
-          />
-        </>
+    <div data-testid="live-map-page" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <MapStatsBar
+        activeAlerts={activeAlerts}
+        verified={verified}
+        verifiedPct={verifiedPct}
+        communityScore={communityScore}
+        sources={sources}
+      />
+      {geoError && (
+        <div style={{ background: '#1a2035', color: '#BB86FC', fontFamily: "'Courier New', monospace", fontSize: 10, padding: '2px 8px', textAlign: 'center' }}>
+          Location unavailable — enable GPS for nearest threat detection
+        </div>
       )}
-
-      <div style={{ position: 'absolute', bottom: 24, right: 16, zIndex: 10, display: 'flex', gap: 8 }}>
-        <button onClick={() => setPanel(p => p === 'list' ? 'none' : 'list')} style={fabStyle('#1565C0')}>
-          Reports
-        </button>
-        <button onClick={() => setPanel(p => p === 'submit' ? 'none' : 'submit')} style={fabStyle('#2E7D32')}>
-          + Report
-        </button>
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <MapCanvas />
+        {layout === 'desktop' && <AlertsDock />}
+        {layout === 'mobile' && <AlertsSheet />}
+        <MapOverlayHost />
+        {nearestThreat && (
+          <div style={{
+            position: 'absolute',
+            top: 8,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#FF2D2D',
+            color: '#fff',
+            fontFamily: "'Courier New', monospace",
+            fontSize: 11,
+            padding: '4px 12px',
+            borderRadius: 4,
+            zIndex: 10,
+          }}>
+            NEAR YOU: {nearestThreat.title}
+          </div>
+        )}
       </div>
-      {panel === 'submit' && <div style={panelStyle}><ReportSubmit onClose={() => setPanel('none')} /></div>}
-      {panel === 'list' && <div style={panelStyle}><ReportList /></div>}
+      {layout === 'desktop' && (
+        <MapFeatureStrip
+          onReport={() => navigate('/reports')}
+          onAcoustic={() => dispatch(setOverlayIntent({ name: 'acoustic' }))}
+          onCircles={() => navigate('/circles')}
+          onRoutes={() => dispatch(setOverlayIntent({ name: 'routes' }))}
+          onZaps={() => navigate('/zaps')}
+        />
+      )}
     </div>
   )
-}
-
-function fabStyle(bg: string): React.CSSProperties {
-  return {
-    background: bg, color: '#fff', border: 'none', borderRadius: 20,
-    padding: '8px 18px', fontSize: 13, cursor: 'pointer',
-    fontFamily: 'sans-serif', boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-  }
-}
-
-const panelStyle: React.CSSProperties = {
-  position: 'absolute', bottom: 72, right: 16, zIndex: 10,
 }
