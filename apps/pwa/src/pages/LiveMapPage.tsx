@@ -12,6 +12,9 @@ import { ReportSubmit } from '../components/ReportSubmit'
 import { ReportList } from '../components/ReportList'
 import { MapStatsBar } from '../components/MapStatsBar'
 import { MapFeatureStrip } from '../components/MapFeatureStrip'
+import { AlertsDock } from '../components/AlertsDock'
+import { AlertsSheet } from '../components/AlertsSheet'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import type { SafetyEvent } from '../../../../shared/types'
 import type { Severity } from '../../../../shared/types'
 
@@ -41,6 +44,8 @@ export function LiveMapPage() {
   const connected = useAppSelector(state => state.events.connected)
   const [selected, setSelected] = useState<SafetyEvent | null>(null)
   const [panel, setPanel] = useState<Panel>('none')
+  const isDesktop = useMediaQuery('(min-width: 768px)')
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   return (
     <div data-testid="live-map-page" style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -88,7 +93,31 @@ export function LiveMapPage() {
         <SafeRouteOverlay routes={[]} />
       </MapCanvas>
 
+      {isDesktop && <AlertsDock events={events} onSelect={setSelected} />}
+
       <MapFeatureStrip active={severityFilter} onToggle={handleToggleSeverity} />
+
+      {!isDesktop && (
+        <>
+          <button
+            onClick={() => setSheetOpen(true)}
+            style={{
+              position: 'absolute', bottom: 80, left: 16, zIndex: 10,
+              background: '#1a2035', color: '#00E5FF', border: '1px solid #00E5FF',
+              borderRadius: 20, padding: '6px 14px', fontSize: 12,
+              fontFamily: "'Courier New', monospace", cursor: 'pointer',
+            }}
+          >
+            {events.length} alerts
+          </button>
+          <AlertsSheet
+            events={events}
+            open={sheetOpen}
+            onClose={() => setSheetOpen(false)}
+            onSelect={setSelected}
+          />
+        </>
+      )}
 
       <div style={{ position: 'absolute', bottom: 24, right: 16, zIndex: 10, display: 'flex', gap: 8 }}>
         <button onClick={() => setPanel(p => p === 'list' ? 'none' : 'list')} style={fabStyle('#1565C0')}>
