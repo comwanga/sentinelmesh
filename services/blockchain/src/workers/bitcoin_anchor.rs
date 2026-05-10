@@ -14,7 +14,8 @@ use bitcoin::{
     Witness,
 };
 
-const DUST_LIMIT: i64 = 546;
+// Bitcoin dust limit for P2WPKH outputs
+const DUST_LIMIT: u64 = 546;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AnchorError {
@@ -52,12 +53,18 @@ pub struct AnchorResult {
 
 pub async fn broadcast_anchor(input: AnchorInput) -> Result<AnchorResult, AnchorError> {
     let change_value = input.utxo_value_sats - input.fee_sats;
-    if change_value < DUST_LIMIT {
+    if change_value < DUST_LIMIT as i64 {
         return Err(AnchorError::PreBroadcast(format!(
-            "UTXO value {} sats is insufficient for fee {} + dust limit {}",
-            input.utxo_value_sats, input.fee_sats, DUST_LIMIT
+            "change {} sats is below dust limit {} (UTXO: {}, fee: {})",
+            change_value, DUST_LIMIT, input.utxo_value_sats, input.fee_sats
         )));
     }
+
+    // Client construction is a local operation — failure here means no broadcast was attempted.
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| AnchorError::PreBroadcast(e.to_string()))?;
 
     let tx = build_tx(&input).map_err(|e| AnchorError::PreBroadcast(e.to_string()))?;
     let tx_hex = bitcoin::consensus::encode::serialize_hex(&tx);
@@ -65,16 +72,6 @@ pub async fn broadcast_anchor(input: AnchorInput) -> Result<AnchorResult, Anchor
 
     // Change output is at index 1 (OP_RETURN at 0, change at 1)
     let change_vout = 1u32;
-
-    let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| AnchorError::PostBroadcast {
-            message: e.to_string(),
-            txid: txid.clone(),
-            change_vout,
-            change_value_sats: change_value,
-        })?;
 
     let broadcast_ok = broadcast_to(&http, &input.mempool_broadcast_url, &tx_hex).await
         || broadcast_to(&http, &input.blockstream_broadcast_url, &tx_hex).await;
@@ -163,7 +160,7 @@ async fn broadcast_to(client: &reqwest::Client, url: &str, tx_hex: &str) -> bool
     client
         .post(url)
         .header("Content-Type", "text/plain")
-        .body(tx_hex.to_string())
+        .body(tx_hex.to_owned())
         .send()
         .await
         .map(|r| r.status().is_success())
@@ -174,21 +171,33 @@ async fn broadcast_to(client: &reqwest::Client, url: &str, tx_hex: &str) -> bool
 mod tests {
     use super::*;
 
-    #[test]
-    fn pre_broadcast_error_on_insufficient_funds() {
-        let input = AnchorInput {
+    fn make_input(utxo_value_sats: i64, fee_sats: i64) -> AnchorInput {
+        AnchorInput {
             anchor_hash: "a".repeat(64),
             wif: "cNJFgo1driFnPcBdBX8BrJrpxchBWXwXCvNH5SoSkdcF6aFkoKqV".into(), // testnet WIF
-            utxo_txid: "0".repeat(64),
+            utxo_txid: "0000000000000000000000000000000000000000000000000000000000000000".into(),
             utxo_vout: 0,
-            utxo_value_sats: 500, // less than fee + dust
-            fee_sats: 1000,
+            utxo_value_sats,
+            fee_sats,
             network: bitcoin::Network::Testnet,
             mempool_broadcast_url: "http://localhost".into(),
             blockstream_broadcast_url: "http://localhost".into(),
-        };
+        }
+    }
+
+    #[test]
+    fn pre_broadcast_error_when_change_is_negative() {
+        // fee exceeds UTXO value → change is negative
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(broadcast_anchor(input));
+        let result = rt.block_on(broadcast_anchor(make_input(500, 1000)));
+        assert!(matches!(result, Err(AnchorError::PreBroadcast(_))));
+    }
+
+    #[test]
+    fn pre_broadcast_error_when_change_is_below_dust() {
+        // change = 545 sats, which is 1 below DUST_LIMIT (546)
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(broadcast_anchor(make_input(1545, 1000)));
         assert!(matches!(result, Err(AnchorError::PreBroadcast(_))));
     }
 }
