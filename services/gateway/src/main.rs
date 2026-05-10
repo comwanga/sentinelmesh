@@ -12,7 +12,7 @@ mod ws;
 use std::sync::{atomic::AtomicBool, Arc};
 use axum::{extract::State, http::StatusCode, response::Json, routing::get, Router};
 use tokio::net::TcpListener;
-use ws::{hub::WsHub, circle_hub::CircleHub};
+use ws::{circle_hub::CircleHub, hub::WsHub};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -39,7 +39,25 @@ async fn main() -> anyhow::Result<()> {
     let circle_hub = Arc::new(CircleHub::new());
     let redis_healthy = Arc::new(AtomicBool::new(false));
 
-    let state = AppState { db, config, http_client, hub, circle_hub, redis_healthy };
+    let state = AppState {
+        db: db.clone(),
+        config: config.clone(),
+        http_client,
+        hub: hub.clone(),
+        circle_hub,
+        redis_healthy: redis_healthy.clone(),
+    };
+
+    // Spawn Redis subscriber task (supervised, runs for the lifetime of the process)
+    {
+        let redis_url = config.redis_url.clone();
+        let pool = db.clone();
+        let hub_ref = hub.clone();
+        let healthy = redis_healthy.clone();
+        tokio::spawn(async move {
+            subscribers::event_subscriber::run(redis_url, pool, hub_ref, healthy).await;
+        });
+    }
 
     let app = Router::new()
         .route("/health", get(health))
@@ -49,20 +67,56 @@ async fn main() -> anyhow::Result<()> {
         .merge(routes::build_router())
         .with_state(state);
 
-    let addr = "0.0.0.0:3000";
-    let listener = TcpListener::bind(addr).await?;
+    let addr = format!("0.0.0.0:{}", config.port);
+    let listener = TcpListener::bind(&addr).await?;
     tracing::info!("gateway listening on {addr}");
-    axum::serve(listener, app).await?;
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
     Ok(())
 }
 
 async fn health() -> (StatusCode, Json<serde_json::Value>) {
     let ts = chrono::Utc::now().to_rfc3339();
-    (StatusCode::OK, Json(serde_json::json!({ "ok": true, "service": "gateway", "ts": ts })))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "ok": true, "service": "gateway", "ts": ts })),
+    )
 }
 
 async fn health_detailed(State(state): State<AppState>) -> Json<serde_json::Value> {
     let redis_ok = state.redis_healthy.load(std::sync::atomic::Ordering::Relaxed);
     let ts = chrono::Utc::now().to_rfc3339();
     Json(serde_json::json!({ "ok": true, "service": "gateway", "ts": ts, "redis": redis_ok }))
+}
+
+async fn shutdown_signal() {
+    use tokio::signal;
+
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    {
+        let terminate = async {
+            signal::unix::signal(signal::unix::SignalKind::terminate())
+                .expect("failed to install SIGTERM handler")
+                .recv()
+                .await;
+        };
+        tokio::select! {
+            _ = ctrl_c => {}
+            _ = terminate => {}
+        }
+    }
+
+    #[cfg(not(unix))]
+    ctrl_c.await;
+
+    tracing::info!("shutdown signal received");
 }
