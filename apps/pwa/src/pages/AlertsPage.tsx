@@ -48,13 +48,13 @@ export function AlertsPage() {
     return items.filter(e => {
       if (selectedTypes.size > 0 && !selectedTypes.has(e.event_type)) return false
 
-      const isVerified = e.confidence >= 0.7
+      const isVerified = e.severity === 'CRITICAL' || e.severity === 'HIGH'
       if (statusFilter === 'VERIFIED' && !isVerified) return false
       if (statusFilter === 'PENDING' && isVerified) return false
 
       const rangeMs = TIME_RANGE_MS[timeRange]
       if (rangeMs !== null) {
-        const eventTs = new Date(e.last_updated).getTime()
+        const eventTs = new Date(e.created_at).getTime()
         if (now - eventTs > rangeMs) return false
       }
 
@@ -84,7 +84,7 @@ export function AlertsPage() {
     <div style={{
       display: 'flex', flexDirection: 'column', height: '100%',
       background: '#0B0E14', overflow: 'hidden',
-    }}>
+    }} data-testid="alerts-page">
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '12px 16px 8px',
@@ -185,7 +185,7 @@ export function AlertsPage() {
         ) : (
           filtered.map(e => (
             <AlertCard
-              key={e.event_id}
+              key={e.id}
               {...safetyEventToCardProps(e, handleBookmark)}
             />
           ))

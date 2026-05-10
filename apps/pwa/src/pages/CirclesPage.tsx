@@ -7,7 +7,7 @@ export function CirclesPage() {
   const navigate = useNavigate()
 
   return (
-    <div style={{ height: '100%', overflow: 'auto', background: '#0B0E14', display: 'flex', flexDirection: 'column' }}>
+    <div data-testid="circles-page" style={{ height: '100%', overflow: 'auto', background: '#0B0E14', display: 'flex', flexDirection: 'column' }}>
       <div style={{
         background: '#1B5E20', color: '#4CAF50',
         fontFamily: "'Courier New', monospace", fontSize: 10,

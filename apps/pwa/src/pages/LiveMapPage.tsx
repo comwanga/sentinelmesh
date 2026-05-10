@@ -19,7 +19,7 @@ export function LiveMapPage() {
   const { activeAlerts, verified, verifiedPct, communityScore, sources } = useAppSelector(selectMapStats)
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div data-testid="live-map-page" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <MapStatsBar
         activeAlerts={activeAlerts}
         verified={verified}

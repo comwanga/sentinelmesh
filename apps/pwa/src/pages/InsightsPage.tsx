@@ -23,7 +23,7 @@ export function InsightsPage() {
   }, [dispatch])
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#0B0E14' }}>
+    <div data-testid="insights-page" style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#0B0E14' }}>
       <div style={{ padding: '16px 20px', borderBottom: '1px solid #1a2035', flexShrink: 0 }}>
         <h1 style={{ fontFamily: "'Courier New', monospace", fontSize: 16, color: '#e2e8f0', margin: 0, letterSpacing: '0.1em' }}>
           Insights

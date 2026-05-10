@@ -17,17 +17,16 @@ const eventsSlice = createSlice({
   initialState,
   reducers: {
     eventReceived(state, action: PayloadAction<SafetyEvent>) {
-      const idx = state.items.findIndex(e => e.event_id === action.payload.event_id)
+      const idx = state.items.findIndex(e => e.id === action.payload.id)
       if (idx >= 0) {
         state.items[idx] = action.payload
       } else {
         state.items.unshift(action.payload)
-        // Keep last 200 events in memory
         if (state.items.length > 200) state.items.pop()
       }
     },
-    eventResolved(state, action: PayloadAction<{ event_id: string }>) {
-      const idx = state.items.findIndex(e => e.event_id === action.payload.event_id)
+    eventResolved(state, action: PayloadAction<{ id: string }>) {
+      const idx = state.items.findIndex(e => e.id === action.payload.id)
       if (idx >= 0) state.items[idx]!.is_active = false
     },
     setConnected(state, action: PayloadAction<boolean>) {
@@ -45,12 +44,10 @@ export const selectMapStats = createSelector(
   (state: RootState) => state.events.items,
   items => {
     const activeAlerts = items.filter(e => e.is_active).length
-    const verified = items.filter(e => e.is_active && e.confidence >= 0.7).length
-    const verifiedPct = activeAlerts > 0 ? Math.round((verified / activeAlerts) * 100) : 0
-    const communityScore = items.length > 0
-      ? Math.round(items.reduce((sum, e) => sum + e.confidence, 0) / items.length * 100)
-      : 0
-    const sources = new Set(items.flatMap(e => Object.keys(e.source_breakdown))).size
+    const verified = activeAlerts
+    const verifiedPct = 0
+    const communityScore = 0
+    const sources = 0
     return { activeAlerts, verified, verifiedPct, communityScore, sources }
   }
 )

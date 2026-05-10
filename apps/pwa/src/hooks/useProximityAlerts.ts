@@ -21,15 +21,15 @@ export function computeProximityAlerts(
     if (!loc) continue
 
     for (const event of events) {
-      if (!event.is_active || !event.location) continue
+      if (!event.is_active) continue
       if (SEVERITY_RANK[event.severity] < SEVERITY_RANK[member.alert_severity]) continue
 
-      const distKm = haversineKm(loc, { lat: event.location.lat, lng: event.location.lng })
+      const distKm = haversineKm(loc, { lat: event.lat, lng: event.lng })
       if (distKm <= member.alert_radius_km) {
         alerts.push({
           member_pubkey: member.member_pubkey,
           zone_name: event.title,
-          event_id: event.event_id,
+          event_id: event.id,
           severity: event.severity,
           triggered_at: new Date().toISOString(),
         })

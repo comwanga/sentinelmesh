@@ -24,30 +24,19 @@ export type ReportStatus =
 
 export type ReporterTier = 'NEWCOMER' | 'TRUSTED' | 'VETERAN' | 'SENTINEL'
 
-export interface EventLocation {
-  place_name: string | null
-  lat: number
-  lng: number
-  county: string | null
-  /** Optional — present when source is a known gazetteer entry */
-  radius_meters?: number
-}
-
 export interface SafetyEvent {
-  event_id: string
+  id: string
   event_type: EventType
   severity: Severity
-  /** Max 200 characters */
   title: string
   summary: string | null
-  location: EventLocation | null
-  /** 0.0–1.0 */
-  confidence: number
-  source_count: number
-  source_breakdown: Record<string, number>
+  lat: number
+  lng: number
+  place_name: string | null
+  county: string | null
   is_active: boolean
   started_at: string
-  last_updated: string
+  created_at: string
   nostr_event_id: string | null
   bitcoin_txid: string | null
 }
@@ -97,7 +86,7 @@ export interface ReportVote {
 export type WsMessage =
   | { type: 'NEW_EVENT';       payload: SafetyEvent }
   | { type: 'EVENT_UPDATED';   payload: SafetyEvent }
-  | { type: 'EVENT_RESOLVED';  payload: { event_id: string } }
+  | { type: 'EVENT_RESOLVED';  payload: { id: string } }
   | { type: 'NEW_REPORT';      payload: CommunityReport }
   | { type: 'REPORT_UPDATED';  payload: CommunityReport }
   | { type: 'PROXIMITY_ALERT'; payload: Record<string, unknown> }

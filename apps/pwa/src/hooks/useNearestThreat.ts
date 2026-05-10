@@ -6,7 +6,7 @@ import type { SafetyEvent } from '../../../../shared/types'
 
 const selectHighRiskEvents = createSelector(
   (state: RootState) => state.events.items,
-  items => items.filter(e => e.confidence >= 0.7 && e.is_active)
+  items => items.filter(e => e.is_active)
 )
 
 export function useNearestThreat(): { nearest: SafetyEvent | null; geoError: GeolocationPositionError | null } {
@@ -16,6 +16,7 @@ export function useNearestThreat(): { nearest: SafetyEvent | null; geoError: Geo
   const events = useAppSelector(selectHighRiskEvents)
 
   useEffect(() => {
+    if (!navigator.geolocation) return
     const watchId = navigator.geolocation.watchPosition(
       geo => {
         const now = Date.now()
@@ -34,9 +35,7 @@ export function useNearestThreat(): { nearest: SafetyEvent | null; geoError: Geo
   let nearest: SafetyEvent | null = null
   let minDist = Infinity
   for (const e of events) {
-    const lat = e.location?.lat
-    const lng = e.location?.lng
-    if (lat == null || lng == null) continue // == catches both null and undefined
+    const { lat, lng } = e
     const dLat = (lat - pos.lat) * 111
     const dLng = (lng - pos.lng) * 111 * Math.cos(pos.lat * Math.PI / 180)
     const d = Math.hypot(dLat, dLng)
