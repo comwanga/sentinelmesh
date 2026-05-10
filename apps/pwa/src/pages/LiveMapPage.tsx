@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { Marker, Popup } from 'react-map-gl'
 import { createSelector } from '@reduxjs/toolkit'
 import { useAppSelector } from '../store'
@@ -10,7 +10,10 @@ import { ZapButton } from '../components/ZapButton'
 import { VerificationBadges } from '../components/VerificationBadges'
 import { ReportSubmit } from '../components/ReportSubmit'
 import { ReportList } from '../components/ReportList'
+import { MapStatsBar } from '../components/MapStatsBar'
+import { MapFeatureStrip } from '../components/MapFeatureStrip'
 import type { SafetyEvent } from '../../../../shared/types'
+import type { Severity } from '../../../../shared/types'
 
 const selectActiveEvents = createSelector(
   (state: RootState) => state.events.items,
@@ -20,7 +23,21 @@ const selectActiveEvents = createSelector(
 type Panel = 'none' | 'submit' | 'list'
 
 export function LiveMapPage() {
-  const events = useAppSelector(selectActiveEvents)
+  const allActive = useAppSelector(selectActiveEvents)
+  const [severityFilter, setSeverityFilter] = useState<Set<Severity>>(
+    new Set(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])
+  )
+
+  const handleToggleSeverity = useCallback((s: Severity) => {
+    setSeverityFilter(prev => {
+      const next = new Set(prev)
+      if (next.has(s)) next.delete(s)
+      else next.add(s)
+      return next
+    })
+  }, [])
+
+  const events = allActive.filter(e => severityFilter.has(e.severity))
   const connected = useAppSelector(state => state.events.connected)
   const [selected, setSelected] = useState<SafetyEvent | null>(null)
   const [panel, setPanel] = useState<Panel>('none')
@@ -35,6 +52,8 @@ export function LiveMapPage() {
       }}>
         {connected ? `Live · ${events.length} events` : 'Reconnecting…'}
       </div>
+
+      <MapStatsBar events={events} />
 
       <MapCanvas>
         {events.map(event => (
@@ -68,6 +87,8 @@ export function LiveMapPage() {
 
         <SafeRouteOverlay routes={[]} />
       </MapCanvas>
+
+      <MapFeatureStrip active={severityFilter} onToggle={handleToggleSeverity} />
 
       <div style={{ position: 'absolute', bottom: 24, right: 16, zIndex: 10, display: 'flex', gap: 8 }}>
         <button onClick={() => setPanel(p => p === 'list' ? 'none' : 'list')} style={fabStyle('#1565C0')}>
