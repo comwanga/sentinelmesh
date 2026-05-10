@@ -33,6 +33,10 @@ export function useAcousticDetection(): void {
     }
 
     start()
-    return () => { capture?.stop(); dispatch(detectionStopped()) }
+    return () => {
+      capture?.stop()
+      detector = null
+      dispatch(detectionStopped())
+    }
   }, [dispatch])
 }
