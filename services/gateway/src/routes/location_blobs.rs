@@ -90,3 +90,46 @@ async fn list_blobs(
 pub fn router() -> Router<AppState> {
     Router::new().route("/:id/location", get(list_blobs).post(push_blob))
 }
+
+impl From<LocationBlob> for sentinel_core::LocationBlob {
+    fn from(row: LocationBlob) -> Self {
+        Self {
+            id: row.id,
+            circle_id: row.circle_id,
+            sender_pubkey: row.sender_pubkey,
+            encrypted_payload: row.encrypted_payload,
+            created_at: row.created_at,
+            expires_at: row.expires_at,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::DateTime;
+    use uuid::Uuid;
+
+    #[test]
+    fn location_blob_converts_to_domain() {
+        let id = Uuid::new_v4();
+        let cid = Uuid::new_v4();
+        let created = DateTime::from_timestamp(0, 0).unwrap();
+        let expires = DateTime::from_timestamp(600, 0).unwrap();
+        let row = LocationBlob {
+            id,
+            circle_id: cid,
+            sender_pubkey: "spk".into(),
+            encrypted_payload: "ciphertext".into(),
+            created_at: created,
+            expires_at: expires,
+        };
+        let d = sentinel_core::LocationBlob::from(row);
+        assert_eq!(d.id, id);
+        assert_eq!(d.circle_id, cid);
+        assert_eq!(d.sender_pubkey, "spk");
+        assert_eq!(d.encrypted_payload, "ciphertext");
+        assert_eq!(d.created_at, created);
+        assert_eq!(d.expires_at, expires);
+    }
+}
