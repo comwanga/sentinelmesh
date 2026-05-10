@@ -15,6 +15,9 @@ vi.mock('react-map-gl', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div data-testid="mapbox">{children}</div>,
   Marker: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
+vi.mock('../MapCanvas', () => ({
+  MapCanvas: ({ children }: { children: React.ReactNode }) => <div data-testid="mapbox">{children}</div>,
+}))
 vi.mock('../../services/circleWebSocket', () => ({
   useCircleWsConnection: () => {},
 }))

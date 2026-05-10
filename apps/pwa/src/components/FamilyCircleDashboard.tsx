@@ -1,5 +1,4 @@
 import { useCallback, useState } from 'react'
-import Map from 'react-map-gl'
 import { useAppSelector, useAppDispatch } from '../store'
 import { activeAlertDismissed, circleLeft } from '../store/circlesSlice'
 import { CircleSidebar } from './CircleSidebar'
@@ -8,11 +7,10 @@ import { AlertBanner } from './AlertBanner'
 import { ProximityAlertLog } from './ProximityAlertLog'
 import { InviteModal } from './InviteModal'
 import { X25519Badge } from './X25519Badge'
+import { MapCanvas } from './MapCanvas'
 import { useCircleWsConnection } from '../services/circleWebSocket'
 import { useProximityAlerts } from '../hooks/useProximityAlerts'
-import 'mapbox-gl/dist/mapbox-gl.css'
 
-const MAPBOX_TOKEN = import.meta.env['VITE_MAPBOX_TOKEN'] as string
 const EMPTY_MEMBERS: never[] = []
 
 export function FamilyCircleDashboard() {
@@ -68,14 +66,9 @@ export function FamilyCircleDashboard() {
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ flex: 1, position: 'relative' }}>
-            <Map
-              mapboxAccessToken={MAPBOX_TOKEN}
-              initialViewState={{ longitude: 36.8219, latitude: -1.2921, zoom: 12 }}
-              style={{ width: '100%', height: '100%' }}
-              mapStyle="mapbox://styles/mapbox/dark-v11"
-            >
+            <MapCanvas initialViewState={{ longitude: 36.8219, latitude: -1.2921, zoom: 12 }}>
               <CircleMapLayer decryptedLocations={decryptedLocations} memberStatuses={memberStatuses} />
-            </Map>
+            </MapCanvas>
             <X25519Badge />
           </div>
 
