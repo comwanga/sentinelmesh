@@ -2,11 +2,13 @@ mod config;
 mod db;
 mod error;
 mod middleware;
+mod nudge;
 mod reports;
+mod routes;
 mod ws;
 
 use std::sync::{atomic::AtomicBool, Arc};
-use axum::{http::StatusCode, response::Json, routing::get, Router};
+use axum::{extract::State, http::StatusCode, response::Json, routing::get, Router};
 use tokio::net::TcpListener;
 use ws::{hub::WsHub, circle_hub::CircleHub};
 
@@ -39,8 +41,10 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/health/detailed", get(health_detailed))
         .route("/ws", get(ws::ws_handler))
         .route("/ws/circles", get(ws::ws_circles_handler))
+        .merge(routes::build_router())
         .with_state(state);
 
     let addr = "0.0.0.0:3000";
@@ -53,4 +57,10 @@ async fn main() -> anyhow::Result<()> {
 async fn health() -> (StatusCode, Json<serde_json::Value>) {
     let ts = chrono::Utc::now().to_rfc3339();
     (StatusCode::OK, Json(serde_json::json!({ "ok": true, "service": "gateway", "ts": ts })))
+}
+
+async fn health_detailed(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let redis_ok = state.redis_healthy.load(std::sync::atomic::Ordering::Relaxed);
+    let ts = chrono::Utc::now().to_rfc3339();
+    Json(serde_json::json!({ "ok": true, "service": "gateway", "ts": ts, "redis": redis_ok }))
 }
