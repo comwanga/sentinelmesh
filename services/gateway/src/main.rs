@@ -6,6 +6,7 @@ mod middleware;
 mod nudge;
 mod reports;
 mod routes;
+mod subscribers;
 mod ws;
 
 use std::sync::{atomic::AtomicBool, Arc};
