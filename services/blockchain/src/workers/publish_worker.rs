@@ -117,11 +117,14 @@ async fn process_job(pool: &PgPool, config: &Config, job: &PublishJob, http: &re
             blockstream_broadcast_url: config.bitcoin_network.blockstream_broadcast_url().into(),
         };
 
-        match bitcoin_anchor::broadcast_anchor(anchor_input).await {
+        let (txid_to_record, anchor_hash_to_record) = match bitcoin_anchor::broadcast_anchor(anchor_input).await {
             Ok(result) => {
-                utxo_db::spend_utxo(pool, utxo.id, &result.txid, result.change_vout, result.change_value_sats, job.id).await?;
-                job_db::set_bitcoin_anchored(pool, job.id, &result.txid, &anchor_hash).await?;
-                job_db::update_source_bitcoin_txid(pool, job, &result.txid).await?;
+                // Broadcast succeeded. spend_utxo failure must NOT re-trigger the Bitcoin stage —
+                // the tx is already on the network and the UTXO is effectively spent.
+                if let Err(e) = utxo_db::spend_utxo(pool, utxo.id, &result.txid, result.change_vout, result.change_value_sats, job.id).await {
+                    tracing::error!("spend_utxo failed after broadcast for job {}, txid={}: {}", job.id, result.txid, e);
+                }
+                (result.txid, anchor_hash.clone())
             }
             Err(AnchorError::PreBroadcast(msg)) => {
                 utxo_db::release_utxo(pool, utxo.id).await?;
@@ -129,12 +132,15 @@ async fn process_job(pool: &PgPool, config: &Config, job: &PublishJob, http: &re
             }
             Err(AnchorError::PostBroadcast { message, txid, change_vout, change_value_sats }) => {
                 // Tx was built; may or may not have been broadcast. Record what we know.
-                utxo_db::spend_utxo(pool, utxo.id, &txid, change_vout, change_value_sats, job.id).await?;
-                job_db::set_bitcoin_anchored(pool, job.id, &txid, &anchor_hash).await?;
-                job_db::update_source_bitcoin_txid(pool, job, &txid).await?;
+                if let Err(e) = utxo_db::spend_utxo(pool, utxo.id, &txid, change_vout, change_value_sats, job.id).await {
+                    tracing::error!("spend_utxo failed in PostBroadcast for job {}, txid={}: {}", job.id, txid, e);
+                }
                 tracing::warn!("post-broadcast error for job {}: {}", job.id, message);
+                (txid, anchor_hash.clone())
             }
-        }
+        };
+        job_db::set_bitcoin_anchored(pool, job.id, &txid_to_record, &anchor_hash_to_record).await?;
+        job_db::update_source_bitcoin_txid(pool, job, &txid_to_record).await?;
     }
     // Job is now BITCOIN_ANCHORED — confirmation_poller advances it to COMPLETE
     Ok(())
