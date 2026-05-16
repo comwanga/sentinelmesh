@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useAppSelector, useAppDispatch } from '../store'
-import { selectZapRecords, zapSent, ZapRecord } from '../store/zapsSlice'
+import { selectZapRecords, sendZap } from '../store/zapsSlice'
 import { ZapButton } from '../components/ZapButton'
 import type { CommunityReport } from '../../../../shared/types'
 
@@ -44,18 +44,12 @@ const valueStyle: React.CSSProperties = {
 
 interface ReportRowProps {
   report: CommunityReport
-  onZapSent: (record: ZapRecord) => void
+  onZapSent: (report: CommunityReport) => void
 }
 
 function ReportRow({ report, onZapSent }: ReportRowProps) {
   const handleZapSent = useCallback(() => {
-    onZapSent({
-      id: `${report.report_id}-${Date.now()}`,
-      amount: 21,
-      recipientPubkey: report.nostr_pubkey,
-      reportId: report.report_id,
-      timestamp: Date.now(),
-    })
+    onZapSent(report)
   }, [report, onZapSent])
 
   return (
@@ -85,8 +79,12 @@ export function ZapsPage() {
   const reports = useAppSelector(s => s.reports.items)
   const zapRecords = useAppSelector(selectZapRecords)
 
-  const handleZapSent = useCallback((record: ZapRecord) => {
-    dispatch(zapSent(record))
+  const handleZapSent = useCallback((report: CommunityReport) => {
+    dispatch(sendZap({
+      reportId: report.report_id,
+      recipientPubkey: report.nostr_pubkey,
+      amountSats: 21,
+    }))
   }, [dispatch])
 
   return (

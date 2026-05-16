@@ -10,10 +10,17 @@ pub struct Config {
     pub lnd_macaroon_hex: Option<String>,
     pub lnd_tls_skip_verify: bool,
     pub nostr_private_key: Option<String>,
+    pub internal_service_secret: String,
+    pub trust_proxy: bool,
 }
 
 impl Config {
     pub fn from_env() -> Result<Self> {
+        let internal_service_secret = std::env::var("INTERNAL_SERVICE_SECRET")
+            .unwrap_or_else(|_| {
+                tracing::warn!("INTERNAL_SERVICE_SECRET not set — using insecure dev default");
+                "dev-only-insecure-secret".into()
+            });
         Ok(Config {
             database_url: require("DATABASE_URL")?,
             redis_url: require("REDIS_URL")?,
@@ -28,6 +35,10 @@ impl Config {
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
             nostr_private_key: std::env::var("NOSTR_PRIVATE_KEY").ok(),
+            internal_service_secret,
+            trust_proxy: std::env::var("TRUST_PROXY")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
         })
     }
 }

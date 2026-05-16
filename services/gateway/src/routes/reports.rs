@@ -104,7 +104,10 @@ struct CastVoteBody {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn extract_ip(headers: &HeaderMap) -> String {
+fn extract_ip(headers: &HeaderMap, trust_proxy: bool) -> String {
+    if !trust_proxy {
+        return "direct".to_string();  // disables IP-based RL when not behind a trusted proxy
+    }
     headers
         .get("x-real-ip")
         .or_else(|| headers.get("x-forwarded-for"))
@@ -150,11 +153,8 @@ async fn post_report(
     headers: HeaderMap,
     Json(body): Json<CreateReportBody>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
-    let ip = extract_ip(&headers);
-    let pk_key = format!(
-        "report:{}",
-        body.nostr_pubkey.chars().take(16).collect::<String>()
-    );
+    let ip = extract_ip(&headers, state.config.trust_proxy);
+    let pk_key = format!("report:{}", body.nostr_pubkey);
     // Allow the request if either the per-pubkey OR the per-IP bucket still has
     // capacity.  Both buckets are debited on entry so we consume from pk first.
     if !rl.check(&pk_key) && !rl.check(&format!("ip:{ip}")) {
@@ -169,6 +169,10 @@ async fn post_report(
     }
 
     verify_nostr_event(&body.nostr_event, &body.nostr_pubkey, 300)?;
+
+    if !(body.lat >= -90.0 && body.lat <= 90.0) || !(body.lng >= -180.0 && body.lng <= 180.0) {
+        return Err(AppError::BadRequest("lat must be in -90..90, lng in -180..180".into()));
+    }
 
     let sig = body.nostr_event["sig"]
         .as_str()
@@ -215,11 +219,8 @@ async fn vote(
     Path(report_id): Path<Uuid>,
     Json(body): Json<CastVoteBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let ip = extract_ip(&headers);
-    let pk_key = format!(
-        "vote:{}",
-        body.voter_pubkey.chars().take(16).collect::<String>()
-    );
+    let ip = extract_ip(&headers, state.config.trust_proxy);
+    let pk_key = format!("vote:{}", body.voter_pubkey);
     if !rl.check(&pk_key) && !rl.check(&format!("ip:{ip}")) {
         return Err(AppError::RateLimited);
     }

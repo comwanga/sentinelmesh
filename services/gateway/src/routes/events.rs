@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{error::AppError, AppState};
+use crate::{error::AppError, middleware::internal_auth::InternalServiceAuth, AppState};
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct SafetyEvent {
@@ -65,10 +65,15 @@ pub struct ListEventsQuery {
 
 async fn create_event(
     State(state): State<AppState>,
+    _auth: InternalServiceAuth,
     Json(body): Json<CreateEventBody>,
 ) -> Result<(StatusCode, Json<SafetyEvent>), AppError> {
     if body.event_type.is_empty() || body.title.is_empty() || body.severity.is_empty() {
         return Err(AppError::BadRequest("event_type, title, severity are required".into()));
+    }
+
+    if !(body.lat >= -90.0 && body.lat <= 90.0) || !(body.lng >= -180.0 && body.lng <= 180.0) {
+        return Err(AppError::BadRequest("lat must be in -90..90, lng in -180..180".into()));
     }
 
     let mut tx = state.db.begin().await?;

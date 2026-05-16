@@ -8,7 +8,8 @@ use uuid::Uuid;
 pub struct LocationBlob {
     pub id: Uuid,
     pub circle_id: Uuid,
-    pub sender_pubkey: String,
+    pub recipient_pubkey_hash: String,
+    pub sender_ephemeral_pubkey: String,
     pub encrypted_payload: String,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
@@ -28,7 +29,8 @@ mod tests {
         let b = LocationBlob {
             id,
             circle_id: cid,
-            sender_pubkey: "pubkey".into(),
+            recipient_pubkey_hash: "hash".into(),
+            sender_ephemeral_pubkey: "ephpubkey".into(),
             encrypted_payload: "cipher".into(),
             created_at: created,
             expires_at: expires,
@@ -37,7 +39,8 @@ mod tests {
         let back: LocationBlob = serde_json::from_str(&json).unwrap();
         assert_eq!(back.id, id);
         assert_eq!(back.circle_id, cid);
-        assert_eq!(back.sender_pubkey, "pubkey");
+        assert_eq!(back.recipient_pubkey_hash, "hash");
+        assert_eq!(back.sender_ephemeral_pubkey, "ephpubkey");
         assert_eq!(back.encrypted_payload, "cipher");
         assert_eq!(back.created_at, created);
         assert_eq!(back.expires_at, expires);
