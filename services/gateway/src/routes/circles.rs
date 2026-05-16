@@ -74,7 +74,7 @@ async fn create_circle(
 
 async fn get_circle(
     State(state): State<AppState>,
-    _auth: NostrAuth,
+    auth: NostrAuth,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let circle = sqlx::query_as::<_, Circle>("SELECT * FROM circles WHERE id = $1")
@@ -82,6 +82,20 @@ async fn get_circle(
         .fetch_optional(&state.db)
         .await?
         .ok_or(AppError::NotFound)?;
+
+    // Authorization: requester must be owner or a member
+    if circle.owner_pubkey != auth.pubkey {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM circle_members WHERE circle_id = $1 AND member_pubkey = $2",
+        )
+        .bind(id)
+        .bind(&auth.pubkey)
+        .fetch_one(&state.db)
+        .await?;
+        if count == 0 {
+            return Err(AppError::Forbidden);
+        }
+    }
 
     let members = sqlx::query_as::<_, CircleMember>(
         "SELECT * FROM circle_members WHERE circle_id = $1",
