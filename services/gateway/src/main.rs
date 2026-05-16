@@ -12,6 +12,9 @@ mod ws;
 use std::sync::{atomic::AtomicBool, Arc};
 use axum::{extract::State, http::StatusCode, response::Json, routing::get, Router};
 use tokio::net::TcpListener;
+use tower_http::cors::{Any, CorsLayer};
+use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
+use axum::http::{Method, HeaderName};
 use ws::{circle_hub::CircleHub, hub::WsHub};
 
 #[derive(Clone)]
@@ -59,12 +62,32 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // CORS: allow any origin (public-read API — safety events, community reports)
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
+        .allow_headers([
+            HeaderName::from_static("content-type"),
+            HeaderName::from_static("authorization"),
+        ]);
+
+    // Rate limiting: 100 req/s per IP, burst of 50
+    let governor_conf = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(100)
+            .burst_size(50)
+            .finish()
+            .expect("invalid governor config"),
+    );
+
     let app = Router::new()
         .route("/health", get(health))
         .route("/health/detailed", get(health_detailed))
         .route("/ws", get(ws::ws_handler))
         .route("/ws/circles", get(ws::ws_circles_handler))
         .merge(routes::build_router())
+        .layer(GovernorLayer { config: governor_conf })
+        .layer(cors)
         .with_state(state);
 
     let addr = format!("0.0.0.0:{}", config.port);
