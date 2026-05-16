@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { MapCanvas } from '../MapCanvas'
+import { MapCanvas } from './MapCanvas'
 
 vi.mock('react-map-gl', () => ({
   default: ({ children, longitude, latitude, zoom, onMove }: {

@@ -1,5 +1,5 @@
 import { createBrowserRouter } from 'react-router-dom'
-import { AppShell } from './shell/AppShell'
+import { AppShell } from './components/shell/AppShell'
 import { LiveMapPage } from './pages/LiveMapPage'
 import { CirclesPage } from './pages/CirclesPage'
 import { AlertsPage } from './pages/AlertsPage'
