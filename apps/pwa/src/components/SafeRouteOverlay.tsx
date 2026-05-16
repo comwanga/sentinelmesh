@@ -4,13 +4,36 @@ import type { SafeRoute } from '../services/routingService'
 
 const ROUTE_COLOURS = ['#00C853', '#FFD600', '#FF6D00']
 
-interface Props { routes: SafeRoute[] }
+interface Props {
+  routes?: SafeRoute[]
+  onClose?: () => void
+}
 
-export function SafeRouteOverlay({ routes }: Props) {
-  if (routes.length === 0) return null
-
+export function SafeRouteOverlay({ routes = [], onClose }: Props) {
   return (
     <>
+      {onClose && (
+        <button
+          onClick={onClose}
+          aria-label="Close safe routes"
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            zIndex: 300,
+            background: 'rgba(11,14,20,0.85)',
+            border: '1px solid #1a2035',
+            borderRadius: 4,
+            color: '#e2e8f0',
+            fontSize: 16,
+            cursor: 'pointer',
+            padding: '2px 6px',
+            lineHeight: 1,
+          }}
+        >
+          ✕
+        </button>
+      )}
       {routes.map((route, index) => (
         <Source
           key={`safe-route-${index}`}
