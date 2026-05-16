@@ -85,6 +85,7 @@ function renderPage(reports: CommunityReport[] = [], zapRecords: ZapRecord[] = [
 describe('ZapsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('fetch', vi.fn())
   })
 
   it('renders "ZAP REPORTER" heading', () => {
@@ -131,20 +132,31 @@ describe('ZapsPage', () => {
     expect(screen.getByText('No zaps sent yet')).toBeInTheDocument()
   })
 
-  it('dispatches zapSent action when ZapButton wrapper is clicked', () => {
+  it('dispatches sendZap thunk and records zap when ZapButton wrapper is clicked', async () => {
     const report = makeReport({
       report_id: 'r1',
       report_type: 'SECURITY_INCIDENT',
       nostr_pubkey: 'npub1reporter',
     })
+
+    // Mock fetch to return a successful zap response
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: 'zap-server-1', amount_sats: 21, status: 'pending' }),
+    } as Response)
+
     const store = renderPage([report])
 
     // Click the mocked ZapButton (wrapped in an onClick div in ReportRow)
     fireEvent.click(screen.getByTestId('zap-btn-r1'))
 
-    // The dispatch should have added a record to zaps
+    // Wait for the async thunk to resolve
+    await vi.waitFor(() => {
+      const state = store.getState()
+      expect(state.zaps.records).toHaveLength(1)
+    })
+
     const state = store.getState()
-    expect(state.zaps.records).toHaveLength(1)
     expect(state.zaps.records[0]!.reportId).toBe('r1')
     expect(state.zaps.records[0]!.recipientPubkey).toBe('npub1reporter')
     expect(state.zaps.records[0]!.amount).toBe(21)
