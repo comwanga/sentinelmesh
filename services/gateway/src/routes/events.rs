@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{error::AppError, AppState};
+use crate::{error::AppError, middleware::internal_auth::InternalServiceAuth, AppState};
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct SafetyEvent {
@@ -65,6 +65,7 @@ pub struct ListEventsQuery {
 
 async fn create_event(
     State(state): State<AppState>,
+    _auth: InternalServiceAuth,
     Json(body): Json<CreateEventBody>,
 ) -> Result<(StatusCode, Json<SafetyEvent>), AppError> {
     if body.event_type.is_empty() || body.title.is_empty() || body.severity.is_empty() {
