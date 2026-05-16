@@ -24,7 +24,7 @@ interface Props {
 }
 
 export default function EventMarker({ event, onClick }: Props) {
-  const colour = SEVERITY_COLOURS[event.severity]
+  const colour = SEVERITY_COLOURS[event.severity] ?? '#4a5568'
   const icon = EVENT_ICONS[event.event_type] ?? '⚠️'
 
   return (

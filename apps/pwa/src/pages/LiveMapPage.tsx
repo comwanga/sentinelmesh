@@ -3,7 +3,9 @@ import { useBreakpoint } from '../hooks/useBreakpoint'
 import { useNearestThreat } from '../hooks/useNearestThreat'
 import { useAppSelector, useAppDispatch } from '../store'
 import { setOverlayIntent } from '../store/uiSlice'
-import { selectMapStats } from '../store/eventsSlice'
+import { selectMapStats, selectEventItems } from '../store/eventsSlice'
+import { Marker } from 'react-map-gl'
+import EventMarker from '../components/EventMarker'
 import { MapCanvas } from '../components/map/MapCanvas'
 import { MapStatsBar } from '../components/map/MapStatsBar'
 import { MapFeatureStrip } from '../components/map/MapFeatureStrip'
@@ -17,6 +19,7 @@ export function LiveMapPage() {
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const { activeAlerts, verified, verifiedPct, communityScore, sources } = useAppSelector(selectMapStats)
+  const events = useAppSelector(selectEventItems)
 
   return (
     <div data-testid="live-map-page" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -33,7 +36,13 @@ export function LiveMapPage() {
         </div>
       )}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <MapCanvas />
+        <MapCanvas>
+          {events.filter(e => e.is_active).map(event => (
+            <Marker key={event.id} longitude={event.lng} latitude={event.lat} anchor="center">
+              <EventMarker event={event} onClick={() => {}} />
+            </Marker>
+          ))}
+        </MapCanvas>
         {layout === 'desktop' && <AlertsDock />}
         {layout === 'mobile' && <AlertsSheet />}
         <MapOverlayHost />
