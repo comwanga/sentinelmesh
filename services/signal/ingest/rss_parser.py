@@ -1,5 +1,7 @@
 import feedparser
 import asyncio
+import concurrent.futures
+import sentry_sdk
 import redis.asyncio as aioredis
 from datetime import datetime, timezone
 
@@ -69,6 +71,7 @@ async def poll_rss_feeds() -> None:
                     await _process_entry(entry, feed_url, client)
                 except Exception as e:
                     # Log and continue — one bad entry should not stop the feed
+                    sentry_sdk.capture_exception(e)
                     print(f"RSS entry processing error ({feed_url}): {e}")
 
         except Exception as e:
