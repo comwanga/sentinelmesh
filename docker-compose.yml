@@ -27,19 +27,6 @@ services:
       timeout: 3s
       retries: 5
 
-  gateway-legacy:
-    build:
-      context: ./services/gateway
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      NODE_ENV: production
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
   gateway-rs:
     build:
       context: ./services
