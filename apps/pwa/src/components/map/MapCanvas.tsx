@@ -2,21 +2,37 @@ import { useState, useCallback } from 'react'
 import Map from 'react-map-gl'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string
-const DEFAULT_VIEW = { longitude: 36.8219, latitude: -1.2921, zoom: 11 }
 
-export function MapCanvas() {
-  const [viewState, setViewState] = useState(DEFAULT_VIEW)
+interface ViewState {
+  longitude: number
+  latitude: number
+  zoom: number
+}
+
+const DEFAULT_VIEW: ViewState = { longitude: 36.8219, latitude: -1.2921, zoom: 11 }
+
+interface Props {
+  initialViewState?: ViewState
+  children?: React.ReactNode
+  onMapLoad?: () => void
+}
+
+export function MapCanvas({ initialViewState = DEFAULT_VIEW, children, onMapLoad }: Props = {}) {
+  const [viewState, setViewState] = useState<ViewState>(initialViewState)
   const handleMove = useCallback(
-    (evt: { viewState: typeof DEFAULT_VIEW }) => setViewState(evt.viewState),
+    (evt: { viewState: ViewState }) => setViewState(evt.viewState),
     []
   )
   return (
     <Map
       {...viewState}
       onMove={handleMove}
+      onLoad={onMapLoad}
       mapboxAccessToken={MAPBOX_TOKEN}
       style={{ width: '100%', height: '100%' }}
       mapStyle="mapbox://styles/mapbox/dark-v11"
-    />
+    >
+      {children}
+    </Map>
   )
 }

@@ -1,6 +1,7 @@
 import httpx
 import json
 import asyncio
+import sentry_sdk
 from datetime import datetime, timezone
 
 import config
@@ -103,6 +104,7 @@ async def start_twitter_stream() -> None:
                             await emit_event(event)
 
                         except Exception as e:
+                            sentry_sdk.capture_exception(e)
                             print(f"Tweet processing error: {e}")
 
             except Exception as e:

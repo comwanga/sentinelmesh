@@ -6,6 +6,7 @@ use tokio::time::{interval, Duration};
 use uuid::Uuid;
 
 use crate::config::Config;
+use crate::db::jobs;
 
 #[derive(serde::Deserialize)]
 struct MempoolTxStatus {
@@ -24,6 +25,7 @@ struct AnchoredJob {
     source_type: String,
     source_id: Uuid,
     bitcoin_txid: String,
+    retry_count: i32,
 }
 
 pub async fn run(pool: Arc<PgPool>, config: Arc<Config>) {
@@ -42,7 +44,7 @@ pub async fn run(pool: Arc<PgPool>, config: Arc<Config>) {
 
 async fn poll_confirmations(pool: &PgPool, config: &Config, client: &reqwest::Client) -> Result<()> {
     let jobs = sqlx::query_as::<_, AnchoredJob>(
-        "SELECT id, source_type, source_id, bitcoin_txid FROM publish_jobs WHERE status = 'BITCOIN_ANCHORED' LIMIT 50",
+        "SELECT id, source_type, source_id, bitcoin_txid, retry_count FROM publish_jobs WHERE status = 'BITCOIN_ANCHORED' LIMIT 50",
     )
     .fetch_all(pool)
     .await?;
@@ -64,8 +66,18 @@ async fn check_and_confirm(
     let url = config.bitcoin_network.mempool_tx_url(&job.bitcoin_txid);
     let response = client.get(&url).send().await?;
 
-    // A non-2xx status (e.g. 404 = tx not in mempool yet) is a transient condition — skip this cycle.
-    if !response.status().is_success() {
+    let http_status = response.status();
+
+    // 404 means the txid is unknown to the network — definitive failure, not transient.
+    if http_status == reqwest::StatusCode::NOT_FOUND {
+        let error_message = format!("txid not found on network (404): {}", job.bitcoin_txid);
+        tracing::error!("job {} txid {} returned 404 — marking FAILED", job.id, job.bitcoin_txid);
+        jobs::mark_failed(pool, job.id, &error_message, job.retry_count).await?;
+        return Ok(());
+    }
+
+    // Any other non-2xx (5xx, other 4xx) is a transient API error — skip this cycle.
+    if !http_status.is_success() {
         return Ok(());
     }
 

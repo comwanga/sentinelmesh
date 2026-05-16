@@ -7,7 +7,7 @@ import { AlertBanner } from './AlertBanner'
 import { ProximityAlertLog } from './ProximityAlertLog'
 import { InviteModal } from './InviteModal'
 import { X25519Badge } from './X25519Badge'
-import { MapCanvas } from './MapCanvas'
+import { MapCanvas } from './map/MapCanvas'
 import { useCircleWsConnection } from '../services/circleWebSocket'
 import { useProximityAlerts } from '../hooks/useProximityAlerts'
 

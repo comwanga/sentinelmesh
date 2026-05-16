@@ -9,16 +9,29 @@ import type { WsMessage } from '../../../../shared/types'
 const WS_HOST = import.meta.env.DEV ? 'localhost:3000' : window.location.host
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${WS_HOST}/ws?county=global`
 
+const BACKOFF_BASE_MS = 1000
+const BACKOFF_CAP_MS = 30_000
+const BACKOFF_JITTER = 0.2
+
+function backoffDelay(attempt: number): number {
+  const exp = Math.min(BACKOFF_BASE_MS * Math.pow(2, attempt), BACKOFF_CAP_MS)
+  // add ±20% jitter to spread reconnect storms
+  const jitter = exp * BACKOFF_JITTER * (Math.random() * 2 - 1)
+  return Math.round(exp + jitter)
+}
+
 export function useWsConnection(): void {
   const dispatch = useDispatch()
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryCount = useRef<number>(0)
 
   function connect(): void {
     const ws = new WebSocket(WS_URL)
     wsRef.current = ws
 
     ws.onopen = () => {
+      retryCount.current = 0
       dispatch(setConnected(true))
       console.log('WebSocket connected')
     }
@@ -38,9 +51,17 @@ export function useWsConnection(): void {
       }
     }
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       dispatch(setConnected(false))
-      reconnectTimer.current = setTimeout(connect, 3000)
+      if (event.code === 1000) {
+        // clean close, reset retry counter and do not reconnect
+        retryCount.current = 0
+        return
+      }
+      const delay = backoffDelay(retryCount.current)
+      retryCount.current += 1
+      console.log(`WebSocket closed (code ${event.code}), reconnecting in ${delay}ms (attempt ${retryCount.current})`)
+      reconnectTimer.current = setTimeout(connect, delay)
     }
 
     ws.onerror = () => ws.close()
