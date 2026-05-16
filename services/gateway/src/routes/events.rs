@@ -72,6 +72,10 @@ async fn create_event(
         return Err(AppError::BadRequest("event_type, title, severity are required".into()));
     }
 
+    if !(body.lat >= -90.0 && body.lat <= 90.0) || !(body.lng >= -180.0 && body.lng <= 180.0) {
+        return Err(AppError::BadRequest("lat must be in -90..90, lng in -180..180".into()));
+    }
+
     let mut tx = state.db.begin().await?;
 
     let event = sqlx::query_as::<_, SafetyEvent>(

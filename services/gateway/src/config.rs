@@ -11,6 +11,7 @@ pub struct Config {
     pub lnd_tls_skip_verify: bool,
     pub nostr_private_key: Option<String>,
     pub internal_service_secret: String,
+    pub trust_proxy: bool,
 }
 
 impl Config {
@@ -35,6 +36,9 @@ impl Config {
                 .unwrap_or(false),
             nostr_private_key: std::env::var("NOSTR_PRIVATE_KEY").ok(),
             internal_service_secret,
+            trust_proxy: std::env::var("TRUST_PROXY")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
         })
     }
 }

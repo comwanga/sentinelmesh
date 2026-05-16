@@ -89,6 +89,7 @@ mod tests {
                 lnd_tls_skip_verify: false,
                 nostr_private_key: None,
                 internal_service_secret: secret.into(),
+                trust_proxy: false,
             }),
             http_client: reqwest::Client::new(),
             hub: Arc::new(WsHub::new()),
