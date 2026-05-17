@@ -4,6 +4,7 @@ mod error;
 mod lightning;
 mod middleware;
 mod nudge;
+mod maps;
 mod reports;
 mod routes;
 mod subscribers;
@@ -25,6 +26,7 @@ pub struct AppState {
     pub hub: Arc<WsHub>,
     pub circle_hub: Arc<CircleHub>,
     pub redis_healthy: Arc<AtomicBool>,
+    pub map_provider: std::sync::Arc<dyn maps::MapProvider>,
 }
 
 #[tokio::main]
@@ -42,6 +44,13 @@ async fn main() -> anyhow::Result<()> {
     let circle_hub = Arc::new(CircleHub::new());
     let redis_healthy = Arc::new(AtomicBool::new(false));
 
+    let map_provider: std::sync::Arc<dyn maps::MapProvider> = std::sync::Arc::new(
+        maps::MapboxAdapter::new(
+            http_client.clone(),
+            config.mapbox_token.clone().unwrap_or_default(),
+        )
+    );
+
     let state = AppState {
         db: db.clone(),
         config: config.clone(),
@@ -49,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
         hub: hub.clone(),
         circle_hub,
         redis_healthy: redis_healthy.clone(),
+        map_provider,
     };
 
     // Spawn Redis subscriber task (supervised, runs for the lifetime of the process)
