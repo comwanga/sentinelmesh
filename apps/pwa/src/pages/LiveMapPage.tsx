@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { useNearestThreat } from '../hooks/useNearestThreat'
+import { useCurrentLocation } from '../hooks/useCurrentLocation'
 import { useAppSelector, useAppDispatch } from '../store'
 import { setOverlayIntent } from '../store/uiSlice'
 import { selectMapStats, selectEventItems } from '../store/eventsSlice'
@@ -13,6 +14,9 @@ import { MapFeatureStrip } from '../components/map/MapFeatureStrip'
 import { AlertsDock } from '../components/map/AlertsDock'
 import { AlertsSheet } from '../components/map/AlertsSheet'
 import { MapOverlayHost } from '../components/map/MapOverlayHost'
+import { LocationMarker } from '../components/map/LocationMarker'
+import { HomeRouteLayer } from '../components/map/HomeRouteLayer'
+import { SafeRouteOverlay } from '../components/SafeRouteOverlay'
 import type { EventType } from '../../../../shared/types'
 
 type FilterId = 'gunshots' | 'violence' | 'protests' | 'accidents' | 'other'
@@ -31,6 +35,7 @@ export function LiveMapPage() {
   const handleMapLoad = useCallback(() => setMapLoaded(true), [])
   const { layout } = useBreakpoint()
   const { nearest: nearestThreat, distanceKm, geoError } = useNearestThreat()
+  const { location: currentLocation } = useCurrentLocation()
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const { activeAlerts, verified, verifiedPct, communityScore, sources } = useAppSelector(selectMapStats)
@@ -94,6 +99,9 @@ export function LiveMapPage() {
                 <EventMarker event={event} onClick={() => {}} />
               </Marker>
             ))}
+            {currentLocation && <LocationMarker location={currentLocation} />}
+            <SafeRouteOverlay />
+            <HomeRouteLayer />
           </MapCanvas>
 
           {/* Filter chips — overlaid on map top-left */}
@@ -176,12 +184,24 @@ export function LiveMapPage() {
 
           <MapOverlayHost />
 
-          {/* Mobile quick-actions: Routes + Acoustic Detect */}
+          {/* Mobile quick-actions: Routes + Acoustic + Home */}
           {layout === 'mobile' && (
             <div style={{
               position: 'absolute', bottom: 108, left: 12, zIndex: 10,
               display: 'flex', flexDirection: 'column', gap: 8,
             }}>
+              <button
+                onClick={() => dispatch(setOverlayIntent({ name: 'home-route' }))}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: 'rgba(11,14,20,0.88)', border: '1px solid #00E5FF',
+                  borderRadius: 20, padding: '6px 12px', cursor: 'pointer',
+                  fontFamily: "'Courier New', monospace", fontSize: 11, color: '#00E5FF',
+                  backdropFilter: 'blur(6px)',
+                }}
+              >
+                🏠 Home
+              </button>
               <button
                 onClick={() => dispatch(setOverlayIntent({ name: 'routes' }))}
                 style={{
@@ -198,9 +218,9 @@ export function LiveMapPage() {
                 onClick={() => dispatch(setOverlayIntent({ name: 'acoustic' }))}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
-                  background: 'rgba(11,14,20,0.88)', border: '1px solid #00E5FF',
+                  background: 'rgba(11,14,20,0.88)', border: '1px solid #BB86FC',
                   borderRadius: 20, padding: '6px 12px', cursor: 'pointer',
-                  fontFamily: "'Courier New', monospace", fontSize: 11, color: '#00E5FF',
+                  fontFamily: "'Courier New', monospace", fontSize: 11, color: '#BB86FC',
                   backdropFilter: 'blur(6px)',
                 }}
               >
@@ -223,6 +243,7 @@ export function LiveMapPage() {
           onCircles={() => navigate('/circles')}
           onRoutes={() => dispatch(setOverlayIntent({ name: 'routes' }))}
           onZaps={() => navigate('/zaps')}
+          onHomeRoute={() => dispatch(setOverlayIntent({ name: 'home-route' }))}
         />
       )}
     </div>
