@@ -33,9 +33,8 @@ export function MapOverlayHost() {
       const userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude }
       const eventLocation = { lat: activeEvent.lat, lng: activeEvent.lng }
       const radiusKm = ((activeEvent as any).radius_meters ?? 500) / 1000
-      const token = import.meta.env.VITE_MAPBOX_TOKEN as string
       try {
-        const result = await fetchSafeRoutes(userLocation, eventLocation, radiusKm, token)
+        const result = await fetchSafeRoutes(userLocation, eventLocation, radiusKm)
         dispatch(safeRoutesSet(result.map((r, i) => ({ id: `r${i}`, coordinates: r.coordinates }))))
       } catch {
         // Leave routes empty — overlay shows "no routes" state
