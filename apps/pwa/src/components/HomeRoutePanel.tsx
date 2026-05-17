@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useAppSelector, useAppDispatch } from '../store'
 import { setHomeLocation, clearHomeLocation, homeRouteSet, homeRouteCleared } from '../store/uiSlice'
 import { geocodeAddress, type GeocodeSuggestion } from '../services/geocodingService'
@@ -24,14 +24,20 @@ export function HomeRoutePanel({ onClose }: Props) {
   const [searching, setSearching] = useState(false)
   const [routing, setRouting] = useState(false)
   const [routeError, setRouteError] = useState<string | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const handleSearch = useCallback(async () => {
-    if (!query.trim()) return
+  // Debounced autocomplete — fires 400ms after user stops typing
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    const trimmed = query.trim()
+    if (trimmed.length < 2) { setSuggestions([]); return }
     setSearching(true)
-    setSuggestions([])
-    const results = await geocodeAddress(query, TOKEN, location ?? undefined)
-    setSuggestions(results)
-    setSearching(false)
+    debounceRef.current = setTimeout(async () => {
+      const results = await geocodeAddress(trimmed, TOKEN, location ?? undefined)
+      setSuggestions(results)
+      setSearching(false)
+    }, 400)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [query, location])
 
   const handleSelectHome = useCallback((s: GeocodeSuggestion) => {
@@ -118,27 +124,25 @@ export function HomeRoutePanel({ onClose }: Props) {
       <div style={{ fontSize: 9, color: '#4a5568', letterSpacing: '0.06em', marginBottom: 5 }}>
         SET HOME ADDRESS
       </div>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+      <div style={{ position: 'relative', marginBottom: 6 }}>
         <input
           value={query}
           onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') handleSearch() }}
-          placeholder="Search address…"
+          onKeyDown={e => { if (e.key === 'Escape') { setQuery(''); setSuggestions([]) } }}
+          placeholder="Type a place or road name…"
+          autoComplete="off"
           style={{
-            flex: 1, background: '#050709', border: '1px solid #1a2035', borderRadius: 4,
-            color: '#e2e8f0', fontSize: 10, padding: '5px 7px', outline: 'none',
+            width: '100%', boxSizing: 'border-box',
+            background: '#050709', border: '1px solid #1a2035', borderRadius: 4,
+            color: '#e2e8f0', fontSize: 10, padding: '6px 28px 6px 8px', outline: 'none',
           }}
         />
-        <button
-          onClick={handleSearch}
-          disabled={searching || !query.trim()}
-          style={{
-            background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)',
-            borderRadius: 4, color: '#00E5FF', fontSize: 10, padding: '5px 10px', cursor: 'pointer',
-          }}
-        >
-          {searching ? '…' : 'Go'}
-        </button>
+        {searching && (
+          <span style={{
+            position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+            fontSize: 10, color: '#4a5568',
+          }}>…</span>
+        )}
       </div>
 
       {/* Suggestions */}
