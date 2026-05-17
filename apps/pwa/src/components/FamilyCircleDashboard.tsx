@@ -22,6 +22,7 @@ export function FamilyCircleDashboard() {
   const decryptedLocations = useAppSelector(s => s.circles.decryptedLocations)
   const proximityAlerts = useAppSelector(s => s.circles.proximityAlerts)
   const activeAlert = useAppSelector(s => s.circles.activeAlert)
+  const decryptErrors = useAppSelector(s => s.circles.decryptErrors)
 
   const activeCircle = circles.find(c => c.circle_id === activeCircleId) ?? null
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -54,6 +55,11 @@ export function FamilyCircleDashboard() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0B0E14' }}>
       <AlertBanner alert={activeAlert} onDismiss={handleDismissAlert} />
+      {decryptErrors.length > 0 && (
+        <div style={{ background: '#2d1b00', color: '#FF8C00', fontFamily: "'Courier New', monospace", fontSize: 10, padding: '4px 12px' }}>
+          Could not decrypt location for: {decryptErrors.join(' · ')} — check your circle key.
+        </div>
+      )}
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <CircleSidebar

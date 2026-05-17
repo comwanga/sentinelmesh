@@ -41,6 +41,15 @@ export function loadOrCreateKeypair(): NostrKeypair {
   return { publicKey: getPublicKey(sk), secretKey: sk }
 }
 
+export function signAuthEvent(secretKey: Uint8Array): SignedReportEvent {
+  return finalizeEvent({
+    kind: 27235,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [],
+    content: '',
+  }, secretKey) as SignedReportEvent
+}
+
 export function signReport(
   payload: Record<string, unknown>,
   secretKey: Uint8Array,

@@ -12,6 +12,8 @@ pub struct Config {
     pub nostr_private_key: Option<String>,
     pub internal_service_secret: String,
     pub trust_proxy: bool,
+    pub max_db_connections: u32,
+    pub mapbox_token: Option<String>,
 }
 
 impl Config {
@@ -39,6 +41,11 @@ impl Config {
             trust_proxy: std::env::var("TRUST_PROXY")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
+            max_db_connections: std::env::var("MAX_DB_CONNECTIONS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(50),
+            mapbox_token: std::env::var("MAPBOX_TOKEN").ok(),
         })
     }
 }
