@@ -1,9 +1,10 @@
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools'
+import { nip19 } from 'nostr-tools'
 
 const SK_STORAGE_KEY = 'sentinel_nostr_sk'
 
 export interface NostrKeypair {
-  publicKey: string
+  publicKey: string   // hex
   secretKey: Uint8Array
 }
 
@@ -39,6 +40,38 @@ export function loadOrCreateKeypair(): NostrKeypair {
     localStorage.setItem(SK_STORAGE_KEY, toHex(sk))
   }
   return { publicKey: getPublicKey(sk), secretKey: sk }
+}
+
+export function toNpub(hexPubkey: string): string {
+  try { return nip19.npubEncode(hexPubkey) } catch { return hexPubkey }
+}
+
+export function toNsec(secretKey: Uint8Array): string {
+  try { return nip19.nsecEncode(secretKey) } catch { return toHex(secretKey) }
+}
+
+export function importFromNsec(nsecStr: string): NostrKeypair | null {
+  try {
+    const decoded = nip19.decode(nsecStr.trim())
+    if (decoded.type !== 'nsec') return null
+    const sk = decoded.data as Uint8Array
+    localStorage.setItem(SK_STORAGE_KEY, toHex(sk))
+    return { publicKey: getPublicKey(sk), secretKey: sk }
+  } catch {
+    return null
+  }
+}
+
+export function hexFromNpubOrHex(input: string): string | null {
+  const trimmed = input.trim()
+  if (trimmed.startsWith('npub1')) {
+    try {
+      const decoded = nip19.decode(trimmed)
+      if (decoded.type === 'npub') return decoded.data as string
+    } catch { return null }
+  }
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) return trimmed.toLowerCase()
+  return null
 }
 
 export function signAuthEvent(secretKey: Uint8Array): SignedReportEvent {

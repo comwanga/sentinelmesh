@@ -20,13 +20,6 @@ interface Props {
   onMapLoad?: () => void
 }
 
-function proxyTransform(url: string): { url: string } {
-  if (url.startsWith('https://api.mapbox.com')) {
-    return { url: url.replace('https://api.mapbox.com', '/api/tiles') }
-  }
-  return { url }
-}
-
 export function MapCanvas({ initialViewState = DEFAULT_VIEW, children, onMapLoad }: Props = {}) {
   const [viewState, setViewState] = useState<ViewState>(initialViewState)
   const handleMove = useCallback(
@@ -39,7 +32,6 @@ export function MapCanvas({ initialViewState = DEFAULT_VIEW, children, onMapLoad
       onMove={handleMove}
       onLoad={onMapLoad}
       mapboxAccessToken={MAPBOX_TOKEN}
-      transformRequest={proxyTransform}
       style={{ width: '100%', height: '100%' }}
       mapStyle="mapbox://styles/mapbox/dark-v11"
     >

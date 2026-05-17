@@ -15,7 +15,7 @@ vi.mock('react-map-gl', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div data-testid="mapbox">{children}</div>,
   Marker: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
-vi.mock('../MapCanvas', () => ({
+vi.mock('../map/MapCanvas', () => ({
   MapCanvas: ({ children }: { children: React.ReactNode }) => <div data-testid="mapbox">{children}</div>,
 }))
 vi.mock('../../services/circleWebSocket', () => ({
@@ -23,6 +23,12 @@ vi.mock('../../services/circleWebSocket', () => ({
 }))
 vi.mock('../../hooks/useProximityAlerts', () => ({
   useProximityAlerts: () => {},
+}))
+vi.mock('../../services/nostrService', () => ({
+  loadOrCreateKeypair: () => ({ publicKey: 'a'.repeat(64), secretKey: new Uint8Array(32) }),
+  signAuthEvent: () => ({}),
+  toNpub: (pk: string) => `npub1test${pk.slice(0, 8)}`,
+  hexFromNpubOrHex: (s: string) => s,
 }))
 
 const circle: Circle = { circle_id: 'c1', owner_pubkey: 'aaa', name: 'Wanga Family', created_at: '' }
@@ -55,6 +61,6 @@ describe('FamilyCircleDashboard', () => {
   it('shows empty state when no active circle', () => {
     const emptyStore = configureStore({ reducer: { circles: circlesReducer, events: eventsReducer, acoustic: acousticReducer } })
     render(<Provider store={emptyStore}><FamilyCircleDashboard /></Provider>)
-    expect(screen.getByText(/No active circle/i)).toBeInTheDocument()
+    expect(screen.getByText(/Create Circle/i)).toBeInTheDocument()
   })
 })

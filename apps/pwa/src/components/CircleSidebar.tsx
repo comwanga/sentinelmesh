@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react'
 import { MemberChip } from './MemberChip'
 import type { Circle, CircleMember, MemberStatus } from '../../../../shared/types'
 
@@ -7,6 +8,7 @@ interface CircleSidebarProps {
   memberStatuses: Record<string, MemberStatus>
   onInvite: () => void
   onLeave: () => void
+  onAddMember: (npubOrHex: string) => Promise<string | null>
 }
 
 const STATUS_LABEL: Record<MemberStatus, string> = {
@@ -27,7 +29,27 @@ const AVATAR_COLOR: Record<MemberStatus, string> = {
   OFFLINE: '#2D3748',
 }
 
-export function CircleSidebar({ circle, members, memberStatuses, onInvite, onLeave }: CircleSidebarProps) {
+export function CircleSidebar({ circle, members, memberStatuses, onInvite, onLeave, onAddMember }: CircleSidebarProps) {
+  const [addInput, setAddInput] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+  const [addSuccess, setAddSuccess] = useState(false)
+
+  const handleAdd = useCallback(async () => {
+    if (!addInput.trim()) return
+    setAdding(true)
+    setAddError(null)
+    const err = await onAddMember(addInput.trim())
+    setAdding(false)
+    if (err) {
+      setAddError(err)
+    } else {
+      setAddInput('')
+      setAddSuccess(true)
+      setTimeout(() => setAddSuccess(false), 2000)
+    }
+  }, [addInput, onAddMember])
+
   return (
     <aside style={{
       width: 256, flexShrink: 0, background: '#0d1118',
@@ -36,7 +58,7 @@ export function CircleSidebar({ circle, members, memberStatuses, onInvite, onLea
       {/* Circle header */}
       <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid #1a2035' }}>
         <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#BB86FC', marginBottom: 4 }}>
-          Family Circle
+          Circle
         </div>
         <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0' }}>{circle.name}</div>
         <div style={{ fontSize: 11, color: '#4a5568', marginTop: 2, fontFamily: "'Courier New', monospace" }}>
@@ -56,6 +78,11 @@ export function CircleSidebar({ circle, members, memberStatuses, onInvite, onLea
         <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#4a5568', padding: '6px 16px 4px' }}>
           Members
         </div>
+        {members.length === 0 && (
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', padding: '8px 16px', fontStyle: 'italic' }}>
+            No members yet — use Invite to add people.
+          </div>
+        )}
         {members.map(m => {
           const status = memberStatuses[m.member_pubkey] ?? 'OFFLINE'
           const initial = m.member_pubkey.slice(-1).toUpperCase()
@@ -83,34 +110,63 @@ export function CircleSidebar({ circle, members, memberStatuses, onInvite, onLea
         })}
       </div>
 
+      {/* Add member by pubkey */}
+      <div style={{ padding: '10px 16px', borderTop: '1px solid #1a2035' }}>
+        <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#4a5568', marginBottom: 5, letterSpacing: '0.06em' }}>
+          ADD MEMBER BY KEY
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            value={addInput}
+            onChange={e => { setAddInput(e.target.value); setAddError(null) }}
+            onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
+            placeholder="npub1… or hex pubkey"
+            style={{
+              flex: 1, background: '#0B0E14', border: '1px solid ' + (addError ? '#FF2D2D' : '#1a2035'),
+              borderRadius: 4, color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 10,
+              padding: '5px 7px', outline: 'none', minWidth: 0,
+            }}
+          />
+          <button
+            onClick={handleAdd}
+            disabled={adding || !addInput.trim()}
+            style={{
+              background: addSuccess ? '#1B5E20' : '#1a2035',
+              border: '1px solid ' + (addSuccess ? '#4CAF50' : '#1a2035'),
+              borderRadius: 4, color: addSuccess ? '#4CAF50' : '#94a3b8',
+              fontFamily: "'Courier New', monospace", fontSize: 10,
+              padding: '5px 8px', cursor: adding ? 'default' : 'pointer', flexShrink: 0,
+            }}
+          >
+            {adding ? '…' : addSuccess ? '✓' : 'Add'}
+          </button>
+        </div>
+        {addError && (
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#FF2D2D', marginTop: 3 }}>
+            {addError}
+          </div>
+        )}
+      </div>
+
       {/* E2EE widget */}
       <div style={{
-        margin: '8px 16px', background: '#050e14',
+        margin: '0 16px 8px', background: '#050e14',
         border: '1px solid rgba(0,229,255,0.15)', borderRadius: 6, padding: '8px 10px',
         display: 'flex', alignItems: 'center', gap: 8,
       }}>
-        <div style={{
-          width: 8, height: 8, borderRadius: '50%', background: '#00E5FF', flexShrink: 0,
-          animation: 'e2ee-pulse 2s ease-in-out infinite',
-        }} />
-        <style>{`
-          @keyframes e2ee-pulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(0,229,255,0.4); }
-            50% { box-shadow: 0 0 0 5px rgba(0,229,255,0); }
-          }
-        `}</style>
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#00E5FF', flexShrink: 0 }} />
         <div>
           <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#00E5FF' }}>
-            Active X25519 Encryption
+            X25519 Encryption Active
           </div>
           <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#2d4a5a', marginTop: 1 }}>
-            AES-256-GCM · server sees 0 coordinates
+            Server sees 0 coordinates
           </div>
         </div>
       </div>
 
       {/* Actions */}
-      <div style={{ padding: '10px 16px', borderTop: '1px solid #1a2035', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ padding: '8px 16px 12px', borderTop: '1px solid #1a2035', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <button
           onClick={onInvite}
           style={{
@@ -122,27 +178,18 @@ export function CircleSidebar({ circle, members, memberStatuses, onInvite, onLea
           }}
         >
           <span>⚡</span>
-          <span>Invite via Nostr</span>
+          <span>Generate Invite</span>
         </button>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button style={{
-            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-            background: 'transparent', border: '1px solid #1a2035', borderRadius: 6, padding: 6,
-            color: '#4a5568', fontSize: 11, cursor: 'pointer',
-          }}>
-            🔑 Manage Keys
-          </button>
-          <button
-            onClick={onLeave}
-            style={{
-              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-              background: 'transparent', border: '1px solid #1a2035', borderRadius: 6, padding: 6,
-              color: '#4a5568', fontSize: 11, cursor: 'pointer',
-            }}
-          >
-            ⬡ Leave Circle
-          </button>
-        </div>
+        <button
+          onClick={onLeave}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+            background: 'transparent', border: '1px solid #1a2035', borderRadius: 6, padding: '7px 0',
+            color: '#4a5568', fontFamily: "'Courier New', monospace", fontSize: 11, cursor: 'pointer', width: '100%',
+          }}
+        >
+          Leave Circle
+        </button>
       </div>
     </aside>
   )

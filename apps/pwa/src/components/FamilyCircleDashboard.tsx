@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useAppSelector, useAppDispatch } from '../store'
 import { activeAlertDismissed, circleLeft, circleLoaded } from '../store/circlesSlice'
-import { loadOrCreateKeypair, signAuthEvent } from '../services/nostrService'
+import { loadOrCreateKeypair, signAuthEvent, toNpub, hexFromNpubOrHex } from '../services/nostrService'
 import { CircleSidebar } from './CircleSidebar'
 import { CircleMapLayer } from './CircleMapLayer'
 import { AlertBanner } from './AlertBanner'
@@ -35,120 +35,287 @@ function toMember(raw: RawMember): CircleMember {
   }
 }
 
+function makeAuthHeaders() {
+  const keypair = loadOrCreateKeypair()
+  const authEvent = signAuthEvent(keypair.secretKey)
+  return {
+    'Content-Type': 'application/json',
+    'X-Nostr-Auth': JSON.stringify(authEvent),
+  }
+}
+
+// ─── Circle type presets ─────────────────────────────────────────────────────
+const CIRCLE_PRESETS = [
+  { emoji: '👨‍👩‍👧‍👦', label: 'Family',          name: 'Family'           },
+  { emoji: '👥',       label: 'Friends',         name: 'Friends'          },
+  { emoji: '🏘',       label: 'Neighborhood',    name: 'Neighborhood Watch' },
+  { emoji: '🏫',       label: 'School',          name: 'School Circle'    },
+  { emoji: '💼',       label: 'Work',            name: 'Work Team'        },
+]
+
+// ─── Invite string helpers ────────────────────────────────────────────────────
+function buildInviteString(circleId: string, ownerPubkey: string, circleName: string): string {
+  return `sm:circle:${circleId}:${ownerPubkey}:${encodeURIComponent(circleName)}`
+}
+
+interface ParsedInvite { circleId: string; ownerPubkey: string; circleName: string }
+
+function parseInviteString(raw: string): ParsedInvite | null {
+  const trimmed = raw.trim()
+  // new format: sm:circle:{id}:{ownerPubkey}:{name}
+  const newMatch = trimmed.match(/^sm:circle:([0-9a-f-]{36}):([0-9a-f]{64}):(.+)$/)
+  if (newMatch) {
+    return { circleId: newMatch[1]!, ownerPubkey: newMatch[2]!, circleName: decodeURIComponent(newMatch[3]!) }
+  }
+  // legacy format: sentinelmesh:invite:{id}:{timestamp}
+  const legacyMatch = trimmed.match(/^sentinelmesh:invite:([0-9a-f-]{36}):/)
+  if (legacyMatch) {
+    return { circleId: legacyMatch[1]!, ownerPubkey: '', circleName: 'Shared Circle' }
+  }
+  return null
+}
+
+// ─── Empty state (no active circle) ──────────────────────────────────────────
 function EmptyState() {
   const dispatch = useAppDispatch()
-  const [name, setName] = useState('')
+  const [tab, setTab] = useState<'create' | 'join'>('create')
+  const [circleNameInput, setCircleNameInput] = useState('')
+  const [selectedPreset, setSelectedPreset] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [inviteInput, setInviteInput] = useState('')
+  const [parsedInvite, setParsedInvite] = useState<ParsedInvite | null>(null)
+  const [joinError, setJoinError] = useState<string | null>(null)
+
+  const myNpub = toNpub(loadOrCreateKeypair().publicKey)
+
+  const effectiveCircleName = selectedPreset !== null
+    ? CIRCLE_PRESETS[selectedPreset]!.name
+    : circleNameInput.trim()
 
   const handleCreate = useCallback(async () => {
-    const trimmed = name.trim()
-    if (!trimmed) return
+    if (!effectiveCircleName) return
     setCreating(true)
-    setError(null)
+    setCreateError(null)
     try {
-      const keypair = loadOrCreateKeypair()
-      const authEvent = signAuthEvent(keypair.secretKey)
-      const headers = {
-        'Content-Type': 'application/json',
-        'X-Nostr-Auth': JSON.stringify(authEvent),
-      }
+      const headers = makeAuthHeaders()
       const res = await fetch(`${API_BASE}/api/circles`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ name: trimmed }),
+        method: 'POST', headers,
+        body: JSON.stringify({ name: effectiveCircleName }),
         signal: AbortSignal.timeout(15_000),
       })
-      if (!res.ok) {
-        setError(`Failed (${res.status}) — check your connection and try again`)
-        return
-      }
+      if (!res.ok) { setCreateError(`Server error (${res.status})`); return }
       const raw = await res.json() as RawCircle
       const circle = toCircle(raw)
-
-      const detailRes = await fetch(`${API_BASE}/api/circles/${raw.id}`, { headers, signal: AbortSignal.timeout(15_000) })
       let members: CircleMember[] = []
-      if (detailRes.ok) {
-        const detail = await detailRes.json() as RawCircle & { members: RawMember[] }
-        members = detail.members.map(toMember)
-      }
-
+      try {
+        const detailRes = await fetch(`${API_BASE}/api/circles/${raw.id}`, { headers, signal: AbortSignal.timeout(10_000) })
+        if (detailRes.ok) {
+          const detail = await detailRes.json() as RawCircle & { members: RawMember[] }
+          members = detail.members.map(toMember)
+        }
+      } catch { /* members default to empty */ }
       dispatch(circleLoaded({ circle, members }))
     } catch {
-      setError('Network error — please try again')
-    } finally {
-      setCreating(false)
-    }
-  }, [name, dispatch])
+      setCreateError('Network error — check your connection')
+    } finally { setCreating(false) }
+  }, [effectiveCircleName, dispatch])
+
+  function handleInviteChange(value: string) {
+    setInviteInput(value)
+    setJoinError(null)
+    setParsedInvite(parseInviteString(value))
+  }
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      height: '100%', padding: 24, gap: 16,
-    }}>
-      <div style={{
-        width: 56, height: 56, borderRadius: '50%', border: '2px solid #00E5FF',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24,
-      }}>
-        ⬡
-      </div>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontFamily: "'Courier New', monospace", fontSize: 13, color: '#e2e8f0', fontWeight: 700, marginBottom: 4 }}>
-          No Active Circle
-        </div>
-        <div style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: '#4a5568' }}>
-          Create a circle to share your location with trusted contacts
-        </div>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '28px 20px', overflowY: 'auto', height: '100%' }}>
 
-      <div style={{
-        width: '100%', maxWidth: 320,
-        background: '#0d1118', border: '1px solid #1a2035', borderRadius: 8, padding: 16,
-      }}>
-        <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', marginBottom: 6, letterSpacing: '0.06em' }}>
-          CIRCLE NAME
+      {/* ── My identity ── */}
+      <div style={{ width: '100%', maxWidth: 400, marginBottom: 24 }}>
+        <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', marginBottom: 4, letterSpacing: '0.06em' }}>
+          YOUR NOSTR PUBLIC KEY
         </div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: error ? 8 : 0 }}>
-          <input
-            value={name}
-            onChange={e => setName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleCreate() }}
-            placeholder="e.g. Family"
-            style={{
-              flex: 1, background: '#0B0E14', border: '1px solid #1a2035', borderRadius: 4,
-              color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 12,
-              padding: '7px 10px', outline: 'none',
-            }}
-          />
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: '#0d1118', border: '1px solid #1a2035', borderRadius: 6, padding: '8px 10px',
+        }}>
+          <span style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#BB86FC', flex: 1, wordBreak: 'break-all' }}>
+            {myNpub}
+          </span>
           <button
-            onClick={handleCreate}
-            disabled={creating || !name.trim()}
+            onClick={() => navigator.clipboard.writeText(myNpub)}
             style={{
-              background: creating || !name.trim() ? '#1a2035' : '#1B5E20',
-              border: '1px solid ' + (creating || !name.trim() ? '#1a2035' : '#4CAF50'),
-              borderRadius: 4, color: creating || !name.trim() ? '#4a5568' : '#4CAF50',
-              fontFamily: "'Courier New', monospace", fontSize: 11,
-              padding: '7px 14px', cursor: creating || !name.trim() ? 'default' : 'pointer',
-              letterSpacing: '0.05em',
+              flexShrink: 0, background: 'none', border: '1px solid #1a2035', borderRadius: 3,
+              color: '#4a5568', fontFamily: "'Courier New', monospace", fontSize: 9,
+              padding: '3px 7px', cursor: 'pointer',
             }}
           >
-            {creating ? '…' : 'Create'}
+            Copy
           </button>
         </div>
-        {error && (
-          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#FF2D2D', marginTop: 4 }}>
-            {error}
-          </div>
-        )}
+        <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#4a5568', marginTop: 4 }}>
+          Share this key with circle owners to be added as a member.
+        </div>
       </div>
 
-      <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', textAlign: 'center', maxWidth: 260 }}>
-        ✓ End-to-end encrypted · Zero knowledge · No server stores your location
+      {/* ── Tab selector ── */}
+      <div style={{ width: '100%', maxWidth: 400, display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid #1a2035', marginBottom: 20 }}>
+        {(['create', 'join'] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            style={{
+              flex: 1, padding: '10px 0', background: tab === t ? '#1a2035' : 'none', border: 'none',
+              fontFamily: "'Courier New', monospace", fontSize: 11, letterSpacing: '0.08em',
+              color: tab === t ? '#00E5FF' : '#4a5568', cursor: 'pointer',
+              borderBottom: tab === t ? '2px solid #00E5FF' : '2px solid transparent',
+            }}
+          >
+            {t === 'create' ? '+ Create Circle' : '⤵ Join Circle'}
+          </button>
+        ))}
       </div>
+
+      {/* ── Create tab ── */}
+      {tab === 'create' && (
+        <div style={{ width: '100%', maxWidth: 400 }}>
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', marginBottom: 8, letterSpacing: '0.06em' }}>
+            CHOOSE A TYPE
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+            {CIRCLE_PRESETS.map((p, i) => (
+              <button
+                key={i}
+                onClick={() => { setSelectedPreset(i === selectedPreset ? null : i); setCircleNameInput('') }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: selectedPreset === i ? '#1a2035' : 'none',
+                  border: '1px solid ' + (selectedPreset === i ? '#00E5FF' : '#1a2035'),
+                  borderRadius: 20, padding: '6px 12px', cursor: 'pointer',
+                  fontFamily: "'Courier New', monospace", fontSize: 11,
+                  color: selectedPreset === i ? '#00E5FF' : '#4a5568',
+                }}
+              >
+                <span>{p.emoji}</span>
+                <span>{p.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', marginBottom: 4, letterSpacing: '0.06em' }}>
+            {selectedPreset !== null ? 'CIRCLE NAME (pre-filled)' : 'CIRCLE NAME'}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: createError ? 8 : 16 }}>
+            <input
+              value={selectedPreset !== null ? CIRCLE_PRESETS[selectedPreset]!.name : circleNameInput}
+              onChange={e => { setSelectedPreset(null); setCircleNameInput(e.target.value) }}
+              onKeyDown={e => { if (e.key === 'Enter') handleCreate() }}
+              placeholder="e.g. Friends in Westlands"
+              style={{
+                flex: 1, background: '#0B0E14', border: '1px solid #1a2035', borderRadius: 4,
+                color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 12,
+                padding: '8px 10px', outline: 'none',
+              }}
+            />
+            <button
+              onClick={handleCreate}
+              disabled={creating || !effectiveCircleName}
+              style={{
+                background: creating || !effectiveCircleName ? '#1a2035' : '#1B5E20',
+                border: '1px solid ' + (creating || !effectiveCircleName ? '#1a2035' : '#4CAF50'),
+                borderRadius: 4, color: creating || !effectiveCircleName ? '#4a5568' : '#4CAF50',
+                fontFamily: "'Courier New', monospace", fontSize: 11,
+                padding: '8px 16px', cursor: creating || !effectiveCircleName ? 'default' : 'pointer',
+              }}
+            >
+              {creating ? '…' : 'Create'}
+            </button>
+          </div>
+          {createError && (
+            <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#FF2D2D', marginBottom: 12 }}>
+              {createError}
+            </div>
+          )}
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#4a5568', lineHeight: 1.6 }}>
+            ✓ End-to-end encrypted · ✓ Location never stored on server · ✓ You control who joins
+          </div>
+        </div>
+      )}
+
+      {/* ── Join tab ── */}
+      {tab === 'join' && (
+        <div style={{ width: '100%', maxWidth: 400 }}>
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', marginBottom: 4, letterSpacing: '0.06em' }}>
+            PASTE INVITE CODE
+          </div>
+          <textarea
+            value={inviteInput}
+            onChange={e => handleInviteChange(e.target.value)}
+            placeholder="sm:circle:… (paste the invite you received)"
+            rows={3}
+            style={{
+              width: '100%', background: '#0d1118', border: '1px solid ' + (parsedInvite ? '#4CAF50' : '#1a2035'),
+              borderRadius: 6, color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 11,
+              padding: '8px 10px', outline: 'none', resize: 'none', boxSizing: 'border-box', marginBottom: 10,
+            }}
+          />
+
+          {parsedInvite ? (
+            <div style={{
+              background: '#0d1118', border: '1px solid #4CAF50', borderRadius: 8, padding: '12px 14px', marginBottom: 14,
+            }}>
+              <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4CAF50', marginBottom: 6, letterSpacing: '0.08em' }}>
+                ✓ VALID INVITE
+              </div>
+              <div style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#e2e8f0', marginBottom: 4 }}>
+                Circle: {parsedInvite.circleName}
+              </div>
+              {parsedInvite.ownerPubkey && (
+                <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#94a3b8' }}>
+                  Owner: {parsedInvite.ownerPubkey.slice(0, 12)}…
+                </div>
+              )}
+              <div style={{ marginTop: 12, padding: '10px', background: '#050709', borderRadius: 6, border: '1px solid #1B5E20' }}>
+                <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#4a5568', marginBottom: 4 }}>
+                  TO JOIN: share your public key with the circle owner so they can add you.
+                </div>
+                <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#BB86FC', wordBreak: 'break-all' }}>
+                  {myNpub}
+                </div>
+                <button
+                  onClick={() => navigator.clipboard.writeText(myNpub)}
+                  style={{
+                    marginTop: 6, background: 'none', border: '1px solid #1a2035', borderRadius: 3,
+                    color: '#4a5568', fontFamily: "'Courier New', monospace", fontSize: 9,
+                    padding: '3px 8px', cursor: 'pointer',
+                  }}
+                >
+                  Copy my key
+                </button>
+              </div>
+            </div>
+          ) : inviteInput.trim().length > 0 ? (
+            <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#FF2D2D', marginBottom: 12 }}>
+              Unrecognised invite format. Ask the circle owner to share a fresh invite.
+            </div>
+          ) : null}
+
+          {joinError && (
+            <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#FF2D2D', marginBottom: 10 }}>
+              {joinError}
+            </div>
+          )}
+
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#4a5568', lineHeight: 1.6 }}>
+            Ask a circle owner to generate an invite for you, then paste it above. They must add your public key to complete the process.
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
+// ─── Main dashboard (active circle) ──────────────────────────────────────────
 export function FamilyCircleDashboard() {
   const dispatch = useAppDispatch()
   const { layout } = useBreakpoint()
@@ -170,9 +337,12 @@ export function FamilyCircleDashboard() {
   useProximityAlerts()
 
   const handleInvite = useCallback(() => {
-    setInviteString(`sentinelmesh:invite:${activeCircleId}:${Date.now()}`)
+    if (!activeCircleId || !activeCircle) return
+    const keypair = loadOrCreateKeypair()
+    const str = buildInviteString(activeCircleId, keypair.publicKey, activeCircle.name)
+    setInviteString(str)
     setInviteOpen(true)
-  }, [activeCircleId])
+  }, [activeCircleId, activeCircle])
 
   const handleLeave = useCallback(() => {
     if (window.confirm('Leave this circle? Your local circle key will be removed.')) {
@@ -180,11 +350,28 @@ export function FamilyCircleDashboard() {
     }
   }, [dispatch])
 
+  const handleAddMember = useCallback(async (npubOrHex: string) => {
+    const hex = hexFromNpubOrHex(npubOrHex)
+    if (!hex || !activeCircleId) return 'Invalid key format'
+    try {
+      const headers = makeAuthHeaders()
+      const res = await fetch(`${API_BASE}/api/circles/${activeCircleId}/members`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ member_pubkey: hex }),
+        signal: AbortSignal.timeout(10_000),
+      })
+      if (res.status === 403) return 'Only the circle owner can add members'
+      if (!res.ok) return `Server error (${res.status})`
+      const raw = await res.json() as RawMember
+      const updatedMembers = [...members, toMember(raw)]
+      dispatch(circleLoaded({ circle: activeCircle!, members: updatedMembers }))
+      return null
+    } catch { return 'Network error' }
+  }, [activeCircleId, activeCircle, members, dispatch])
+
   const handleDismissAlert = useCallback(() => dispatch(activeAlertDismissed()), [dispatch])
 
-  if (!activeCircle) {
-    return <EmptyState />
-  }
+  if (!activeCircle) return <EmptyState />
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0B0E14' }}>
@@ -195,7 +382,6 @@ export function FamilyCircleDashboard() {
         </div>
       )}
 
-      {/* Mobile: toggle sidebar button */}
       {layout === 'mobile' && (
         <button
           onClick={() => setSidebarOpen(o => !o)}
@@ -205,12 +391,11 @@ export function FamilyCircleDashboard() {
             fontSize: 11, padding: '6px 12px', cursor: 'pointer', textAlign: 'left',
           }}
         >
-          {sidebarOpen ? '▲ Hide members' : '▼ Members · ' + members.length}
+          {sidebarOpen ? '▲ Hide members' : `▼ Members · ${members.length}`}
         </button>
       )}
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', flexDirection: layout === 'mobile' ? 'column' : 'row' }}>
-        {/* Sidebar — always visible on desktop, toggled on mobile */}
         {(layout === 'desktop' || sidebarOpen) && (
           <CircleSidebar
             circle={activeCircle}
@@ -218,9 +403,9 @@ export function FamilyCircleDashboard() {
             memberStatuses={memberStatuses}
             onInvite={handleInvite}
             onLeave={handleLeave}
+            onAddMember={handleAddMember}
           />
         )}
-
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: layout === 'mobile' ? 300 : undefined }}>
           <div style={{ flex: 1, position: 'relative' }}>
             <MapCanvas initialViewState={{ longitude: 36.8219, latitude: -1.2921, zoom: 12 }}>
@@ -228,7 +413,6 @@ export function FamilyCircleDashboard() {
             </MapCanvas>
             <X25519Badge />
           </div>
-
           <ProximityAlertLog alerts={proximityAlerts} />
         </div>
       </div>
