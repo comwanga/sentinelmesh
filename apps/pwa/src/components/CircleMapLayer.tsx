@@ -1,4 +1,4 @@
-import { Marker } from 'react-map-gl'
+import { Marker } from 'react-map-gl/maplibre'
 import type { MemberStatus } from '../../../../shared/types'
 
 interface DecryptedLocation { lat: number; lng: number; ts: string }
