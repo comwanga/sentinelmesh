@@ -89,7 +89,7 @@ cp .env.example .env
 ### Step 2 — Start the backend (Docker)
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis gateway
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis gateway-rs
 ```
 
 Check it's running:
