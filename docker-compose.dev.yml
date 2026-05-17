@@ -12,18 +12,14 @@ services:
     ports:
       - "6379:6379"
 
-  gateway:
+  gateway-rs:
     build:
-      context: ./services/gateway
-      dockerfile: Dockerfile.dev
+      context: ./services
+      dockerfile: gateway/Dockerfile.dev
     ports:
       - "3000:3000"
-    volumes:
-      - ./services/gateway/src:/app/src
-      - ./shared:/shared:ro
-    environment:
-      NODE_ENV: development
-      CHOKIDAR_USEPOLLING: "true"
+    healthcheck:
+      start_period: 60s   # debug builds start slower than release
 
   signal:
     build:
