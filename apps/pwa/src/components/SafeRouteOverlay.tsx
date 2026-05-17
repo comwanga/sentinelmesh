@@ -1,52 +1,25 @@
-import React from 'react'
 import { Source, Layer } from 'react-map-gl/mapbox'
-import type { SafeRoute } from '../services/routingService'
+import { useAppSelector } from '../store'
 
 const ROUTE_COLOURS = ['#00C853', '#FFD600', '#FF6D00']
 
-interface Props {
-  routes?: SafeRoute[]
-  onClose?: () => void
-}
-
-export function SafeRouteOverlay({ routes = [], onClose }: Props) {
+export function SafeRouteOverlay() {
+  const safeRoutes = useAppSelector(s => s.ui.safeRoutes)
   return (
     <>
-      {onClose && (
-        <button
-          onClick={onClose}
-          aria-label="Close safe routes"
-          style={{
-            position: 'absolute',
-            top: 8,
-            right: 8,
-            zIndex: 300,
-            background: 'rgba(11,14,20,0.85)',
-            border: '1px solid #1a2035',
-            borderRadius: 4,
-            color: '#e2e8f0',
-            fontSize: 16,
-            cursor: 'pointer',
-            padding: '2px 6px',
-            lineHeight: 1,
-          }}
-        >
-          ✕
-        </button>
-      )}
-      {routes.map((route, index) => (
+      {safeRoutes.map((route, index) => (
         <Source
-          key={`safe-route-${index}`}
-          id={`safe-route-${index}`}
+          key={`safe-route-${route.id}`}
+          id={`safe-route-${route.id}`}
           type="geojson"
           data={{
             type: 'Feature' as const,
             geometry: { type: 'LineString' as const, coordinates: route.coordinates },
-            properties: { label: route.label },
+            properties: {},
           }}
         >
           <Layer
-            id={`safe-route-line-${index}`}
+            id={`safe-route-line-${route.id}`}
             type="line"
             paint={{
               'line-color': ROUTE_COLOURS[index] ?? '#00C853',

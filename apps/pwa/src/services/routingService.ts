@@ -1,6 +1,51 @@
 import { bearingBetween, destinationPoint, pointToLineDistance, LatLng } from '../utils/geo'
 
 const DIRECTIONS_BASE = 'https://api.mapbox.com/directions/v5/mapbox/walking'
+
+export interface HomeRoute {
+  coordinates: [number, number][]
+  distanceKm: number
+  durationMin: number
+  warnings: string[]
+}
+
+export async function fetchRouteToHome(
+  from: LatLng,
+  to: LatLng,
+  dangerZones: { lat: number; lng: number; radiusKm: number }[],
+  mapboxToken: string,
+): Promise<HomeRoute | null> {
+  const url =
+    `${DIRECTIONS_BASE}/${from.lng},${from.lat};${to.lng},${to.lat}` +
+    `?access_token=${mapboxToken}&geometries=geojson&overview=full`
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const data = await res.json() as {
+      routes?: { geometry: { coordinates: [number, number][] }; distance: number; duration: number }[]
+    }
+    const route = data.routes?.[0]
+    if (!route) return null
+    const coords = route.geometry.coordinates
+    const warnings: string[] = []
+    for (const zone of dangerZones) {
+      const passes = coords.some(([lng, lat]) => {
+        const dx = lat - zone.lat
+        const dy = lng - zone.lng
+        return Math.sqrt(dx * dx + dy * dy) * 111 < zone.radiusKm
+      })
+      if (passes) warnings.push(`Route passes near a danger zone`)
+    }
+    return {
+      coordinates: coords,
+      distanceKm: Math.round(route.distance / 100) / 10,
+      durationMin: Math.round(route.duration / 60),
+      warnings: [...new Set(warnings)],
+    }
+  } catch {
+    return null
+  }
+}
 const ESCAPE_DISTANCE_KM = 2.0
 const SAFETY_BUFFER_KM = 0.2
 

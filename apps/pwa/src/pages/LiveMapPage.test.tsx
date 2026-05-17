@@ -36,6 +36,11 @@ vi.mock('../components/map/MapOverlayHost', () => ({
   MapOverlayHost: () => <div data-testid="map-overlay-host" />,
 }))
 
+// Mock useCurrentLocation to avoid watchPosition in jsdom
+vi.mock('../hooks/useCurrentLocation', () => ({
+  useCurrentLocation: () => ({ location: null, error: null }),
+}))
+
 // Mock react-router-dom navigate used in LiveMapPage
 vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),

@@ -1,6 +1,11 @@
 import uiReducer, { setOverlayIntent, consumeOverlayIntent } from './uiSlice'
 
-const initial = { uiIntent: { type: 'overlay' as const, name: null } }
+const initial = {
+  uiIntent: { type: 'overlay' as const, name: null },
+  safeRoutes: [],
+  homeLocation: null,
+  homeRoute: null,
+}
 
 describe('uiSlice', () => {
   it('has null intent as initial state', () => {
