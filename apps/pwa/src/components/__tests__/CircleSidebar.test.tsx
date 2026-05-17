@@ -12,33 +12,35 @@ const members: CircleMember[] = [
 
 const statuses: Record<string, MemberStatus> = { 'npub1aaabbb': 'ONLINE', 'npub1cccdd': 'GHOST' }
 
+const noopAddMember = vi.fn().mockResolvedValue(null)
+
 describe('CircleSidebar', () => {
   it('renders circle name', () => {
-    render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={vi.fn()} onLeave={vi.fn()} />)
+    render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={vi.fn()} onLeave={vi.fn()} onAddMember={noopAddMember} />)
     expect(screen.getByText('Wanga Family')).toBeInTheDocument()
   })
 
   it('renders a MemberChip for each member', () => {
-    render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={vi.fn()} onLeave={vi.fn()} />)
+    render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={vi.fn()} onLeave={vi.fn()} onAddMember={noopAddMember} />)
     expect(screen.getAllByText(/npub1/)).toHaveLength(members.length * 2)
   })
 
   it('calls onInvite when invite button is clicked', () => {
     const onInvite = vi.fn()
-    render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={onInvite} onLeave={vi.fn()} />)
-    fireEvent.click(screen.getByText(/Invite via Nostr/i))
+    render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={onInvite} onLeave={vi.fn()} onAddMember={noopAddMember} />)
+    fireEvent.click(screen.getByText(/Generate Invite/i))
     expect(onInvite).toHaveBeenCalled()
   })
 
   it('calls onLeave when Leave Circle button is clicked', () => {
     const onLeave = vi.fn()
-    render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={vi.fn()} onLeave={onLeave} />)
+    render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={vi.fn()} onLeave={onLeave} onAddMember={noopAddMember} />)
     fireEvent.click(screen.getByText(/Leave Circle/i))
     expect(onLeave).toHaveBeenCalled()
   })
 
   it('shows E2EE indicator text', () => {
-    render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={vi.fn()} onLeave={vi.fn()} />)
-    expect(screen.getByText(/Active X25519 Encryption/i)).toBeInTheDocument()
+    render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={vi.fn()} onLeave={vi.fn()} onAddMember={noopAddMember} />)
+    expect(screen.getByText(/X25519 Encryption Active/i)).toBeInTheDocument()
   })
 })
