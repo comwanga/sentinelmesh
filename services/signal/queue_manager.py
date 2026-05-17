@@ -23,9 +23,16 @@ class QueueManager:
         task_type: str,
         payload: Dict[str, Any],
         max_retries: int = 3,
+        max_depth: int = 500,
     ) -> str:
         if self.client is None:
             raise RuntimeError("QueueManager not initialized; call await qm.init() first")
+
+        depth = await self.client.llen(f"queue:{task_type}")
+        if depth >= max_depth:
+            raise RuntimeError(
+                f"queue:{task_type} at capacity ({depth}/{max_depth}) — dropping job"
+            )
 
         job_id = str(uuid.uuid4())
         job_data = {

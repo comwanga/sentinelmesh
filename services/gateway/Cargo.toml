@@ -33,6 +33,7 @@ subtle       = "2"
 futures      = "0.3"
 base64       = "0.22"
 urlencoding  = "2"
+web-push     = { version = "0.10", default-features = false, features = ["hyper-client", "hyper-tls"] }
 
 [dev-dependencies]
 tower        = { version = "0.4", features = ["util"] }

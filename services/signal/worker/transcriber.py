@@ -71,7 +71,7 @@ async def process_transcription_job(job_data: dict) -> dict:
             logger.info(f"Job {job_id}: duplicate")
             return {"status": "skipped", "reason": "duplicate"}
 
-        classification = classify_event(text)
+        classification = await asyncio.to_thread(classify_event, text)
         if classification["confidence"] < 0.4:
             logger.info(f"Job {job_id}: low confidence {classification['confidence']}")
             return {"status": "skipped", "reason": "low_confidence"}

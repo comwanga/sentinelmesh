@@ -82,7 +82,7 @@ async def start_twitter_stream() -> None:
                             if not text or await is_duplicate(text, redis_client):
                                 continue
 
-                            classification = classify_event(text)
+                            classification = await asyncio.to_thread(classify_event, text)
                             if classification["confidence"] < 0.3:
                                 continue
 

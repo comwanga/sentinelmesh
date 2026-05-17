@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use futures::future::join_all;
 use nostr_sdk::{Client, EventBuilder, Keys, Kind, Tag, TagKind, Timestamp};
 use sentinel_core::jobs::SourceRow;
 use std::time::Duration;
@@ -103,7 +104,7 @@ async fn send_events(
     Ok(())
 }
 
-// Sends one event to each relay independently, each wrapped in RELAY_TIMEOUT.
+// Sends one event to all relays in parallel, each wrapped in RELAY_TIMEOUT.
 // Returns true if at least one relay accepted the event.
 async fn send_event_per_relay(
     client: &Client,
@@ -111,35 +112,40 @@ async fn send_event_per_relay(
     event: nostr_sdk::Event,
     event_id: &str,
 ) -> Result<bool> {
-    let mut any_success = false;
-
-    for url in relay_urls {
-        let fut = client.send_event_to([url.as_str()], event.clone());
-        match timeout(RELAY_TIMEOUT, fut).await {
-            Ok(Ok(output)) => {
-                if !output.success.is_empty() {
+    let futs: Vec<_> = relay_urls.iter().map(|url| {
+        let client = client.clone();
+        let url = url.clone();
+        let event = event.clone();
+        let event_id = event_id.to_string();
+        async move {
+            let fut = client.send_event_to([url.as_str()], event);
+            match timeout(RELAY_TIMEOUT, fut).await {
+                Ok(Ok(output)) if !output.success.is_empty() => {
                     tracing::info!("event {} published to relay {}", event_id, url);
-                    any_success = true;
-                } else {
+                    true
+                }
+                Ok(Ok(output)) => {
                     let reasons = relay_failure_summary(&output.failed);
                     tracing::warn!("relay {} rejected event {}: {}", url, event_id, reasons);
+                    false
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!("relay {} error for event {}: {}", url, event_id, e);
+                    false
+                }
+                Err(_elapsed) => {
+                    tracing::warn!(
+                        "relay {} timed out after {}s for event {}",
+                        url, RELAY_TIMEOUT.as_secs(), event_id
+                    );
+                    false
                 }
             }
-            Ok(Err(e)) => {
-                tracing::warn!("relay {} error for event {}: {}", url, event_id, e);
-            }
-            Err(_elapsed) => {
-                tracing::warn!(
-                    "relay {} timed out after {}s for event {}",
-                    url,
-                    RELAY_TIMEOUT.as_secs(),
-                    event_id
-                );
-            }
         }
-    }
+    }).collect();
 
-    Ok(any_success)
+    let results = join_all(futs).await;
+    Ok(results.into_iter().any(|ok| ok))
 }
 
 fn relay_failure_summary(failed: &std::collections::HashMap<nostr_sdk::RelayUrl, Option<String>>) -> String {

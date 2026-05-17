@@ -177,6 +177,22 @@ async fn handle_message(
         serde_json::to_string(&ws_msg).unwrap().into(),
     );
 
+    // Fire-and-forget push notifications — failure must not block event processing
+    if let (Some(priv_key), Some(subject)) = (
+        std::env::var("VAPID_PRIVATE_KEY").ok(),
+        std::env::var("VAPID_SUBJECT").ok(),
+    ) {
+        let pool = pool.clone();
+        let title = format!("{} — {}", event.severity, event.event_type.replace('_', " "));
+        let body = event.place_name.clone().unwrap_or_else(|| {
+            format!("{:.4}, {:.4}", event.lat, event.lng)
+        });
+        let event_id = event.id.to_string();
+        tokio::spawn(async move {
+            crate::routes::push::broadcast_push(&pool, &priv_key, &subject, &title, &body, &event_id).await;
+        });
+    }
+
     Ok(())
 }
 

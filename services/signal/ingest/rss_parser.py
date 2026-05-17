@@ -22,7 +22,7 @@ async def _process_entry(entry: dict, source_url: str, client: aioredis.Redis) -
     if await is_duplicate(text, client):
         return
 
-    classification = classify_event(text)
+    classification = await asyncio.to_thread(classify_event, text)
     if classification["event_type"] == "FALSE_ALARM" or classification["confidence"] < 0.3:
         return
 
