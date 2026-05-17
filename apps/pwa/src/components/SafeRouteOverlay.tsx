@@ -1,4 +1,4 @@
-import { Source, Layer } from 'react-map-gl/mapbox'
+import { Source, Layer } from 'react-map-gl/maplibre'
 import { useAppSelector } from '../store'
 
 const ROUTE_COLOURS = ['#00C853', '#FFD600', '#FF6D00']

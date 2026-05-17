@@ -14,9 +14,10 @@ vi.mock('../components/map/MapCanvas', () => ({
 }))
 
 // Mock react-map-gl used by sub-components
-vi.mock('react-map-gl', () => ({
+vi.mock('react-map-gl/maplibre', () => ({
   default: ({ children }: { children: ReactNode }) => <div data-testid="mapbox">{children}</div>,
   Marker: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Map: ({ children }: { children: ReactNode }) => <div data-testid="mapbox">{children}</div>,
 }))
 
 // Mock useNearestThreat so we can control the return value per test
