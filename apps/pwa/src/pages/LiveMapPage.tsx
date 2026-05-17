@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { useNearestThreat } from '../hooks/useNearestThreat'
 import { useCurrentLocation } from '../hooks/useCurrentLocation'
+import { useInitialViewport } from '../hooks/useInitialViewport'
 import { useAppSelector, useAppDispatch } from '../store'
 import { setOverlayIntent } from '../store/uiSlice'
 import { selectMapStats, selectEventItems } from '../store/eventsSlice'
@@ -33,6 +34,7 @@ export function LiveMapPage() {
   const [mapLoaded, setMapLoaded] = useState(false)
   const [activeFilters, setActiveFilters] = useState<Set<FilterId>>(new Set())
   const handleMapLoad = useCallback(() => setMapLoaded(true), [])
+  const initialViewport = useInitialViewport()
   const { layout } = useBreakpoint()
   const { nearest: nearestThreat, distanceKm, geoError } = useNearestThreat()
   const { location: currentLocation } = useCurrentLocation()
@@ -93,7 +95,7 @@ export function LiveMapPage() {
             </div>
           )}
 
-          <MapCanvas onMapLoad={handleMapLoad}>
+          <MapCanvas initialViewState={initialViewport} onMapLoad={handleMapLoad}>
             {visibleEvents.filter(e => e.is_active).map(event => (
               <Marker key={event.id} longitude={event.lng} latitude={event.lat} anchor="center">
                 <EventMarker event={event} onClick={() => {}} />
