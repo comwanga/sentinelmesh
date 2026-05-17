@@ -73,8 +73,12 @@ impl Config {
         let bitcoin_wif = required("BITCOIN_WIF")?;
         let network_str = std::env::var("BITCOIN_NETWORK").unwrap_or_else(|_| "testnet".into());
         let bitcoin_network = BitcoinNetwork::from_str(&network_str)?;
+        // Default: 4 geographically diverse relays so at least one is fast from Kenya.
+        // Operators can override via RELAY_URLS env var (comma-separated).
         let relay_urls = std::env::var("RELAY_URLS")
-            .unwrap_or_else(|_| "wss://relay.damus.io".into())
+            .unwrap_or_else(|_| {
+                "wss://relay.damus.io,wss://nos.lol,wss://relay.nostr.band,wss://nostr.wine".into()
+            })
             .split(',')
             .map(|s| s.trim().to_string())
             .collect();

@@ -14,6 +14,9 @@ pub struct Config {
     pub trust_proxy: bool,
     pub max_db_connections: u32,
     pub mapbox_token: Option<String>,
+    pub vapid_private_key: Option<String>,
+    pub vapid_public_key: Option<String>,
+    pub vapid_subject: Option<String>,
 }
 
 impl Config {
@@ -46,6 +49,9 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(50),
             mapbox_token: std::env::var("MAPBOX_TOKEN").ok(),
+            vapid_private_key: std::env::var("VAPID_PRIVATE_KEY").ok(),
+            vapid_public_key: std::env::var("VAPID_PUBLIC_KEY").ok(),
+            vapid_subject: std::env::var("VAPID_SUBJECT").ok(),
         })
     }
 }

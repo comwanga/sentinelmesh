@@ -159,6 +159,19 @@ CREATE INDEX idx_zaps_recipient  ON lightning_zaps(recipient_pubkey);
 CREATE INDEX idx_zaps_status     ON lightning_zaps(status, expires_at);
 CREATE INDEX idx_zaps_hash       ON lightning_zaps(payment_hash);
 
+-- Web Push subscriptions (P2 — push notifications)
+CREATE TABLE push_subscriptions (
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  nostr_pubkey VARCHAR(64) NOT NULL,
+  endpoint     TEXT NOT NULL UNIQUE,
+  p256dh       TEXT NOT NULL,
+  auth         TEXT NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_push_subscriptions_pubkey ON push_subscriptions(nostr_pubkey);
+
 -- Blockchain anchoring job queue and audit trail
 CREATE TABLE publish_jobs (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
