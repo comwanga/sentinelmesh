@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { ReportsPage } from './ReportsPage'
 
@@ -30,12 +30,17 @@ describe('ReportsPage', () => {
     expect(container).toHaveStyle({ flexDirection: 'row' })
   })
 
-  it('renders in mobile layout — components stacked', () => {
+  it('renders in mobile layout — list visible, form opens on submit button click', () => {
     mockUseBreakpoint.mockReturnValue({ layout: 'mobile' })
     render(<ReportsPage />)
 
-    expect(screen.getByTestId('report-submit')).toBeInTheDocument()
+    // Form is hidden behind modal on mobile initially
+    expect(screen.queryByTestId('report-submit')).not.toBeInTheDocument()
     expect(screen.getByTestId('report-list')).toBeInTheDocument()
+
+    // Clicking submit button opens the modal
+    fireEvent.click(screen.getByText('+ SUBMIT'))
+    expect(screen.getByTestId('report-submit')).toBeInTheDocument()
 
     const container = screen.getByTestId('reports-container')
     expect(container).toHaveStyle({ flexDirection: 'column' })

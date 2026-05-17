@@ -176,6 +176,39 @@ export function LiveMapPage() {
 
           <MapOverlayHost />
 
+          {/* Mobile quick-actions: Routes + Acoustic Detect */}
+          {layout === 'mobile' && (
+            <div style={{
+              position: 'absolute', bottom: 108, left: 12, zIndex: 10,
+              display: 'flex', flexDirection: 'column', gap: 8,
+            }}>
+              <button
+                onClick={() => dispatch(setOverlayIntent({ name: 'routes' }))}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: 'rgba(11,14,20,0.88)', border: '1px solid #2196F3',
+                  borderRadius: 20, padding: '6px 12px', cursor: 'pointer',
+                  fontFamily: "'Courier New', monospace", fontSize: 11, color: '#2196F3',
+                  backdropFilter: 'blur(6px)',
+                }}
+              >
+                🛣 Routes
+              </button>
+              <button
+                onClick={() => dispatch(setOverlayIntent({ name: 'acoustic' }))}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: 'rgba(11,14,20,0.88)', border: '1px solid #00E5FF',
+                  borderRadius: 20, padding: '6px 12px', cursor: 'pointer',
+                  fontFamily: "'Courier New', monospace", fontSize: 11, color: '#00E5FF',
+                  backdropFilter: 'blur(6px)',
+                }}
+              >
+                🎙 Listen
+              </button>
+            </div>
+          )}
+
           {layout === 'mobile' && <AlertsSheet />}
         </div>
 

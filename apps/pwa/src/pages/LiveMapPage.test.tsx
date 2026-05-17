@@ -20,7 +20,7 @@ vi.mock('react-map-gl', () => ({
 }))
 
 // Mock useNearestThreat so we can control the return value per test
-const mockUseNearestThreat = vi.fn(() => ({ nearest: null as SafetyEvent | null, geoError: null }))
+const mockUseNearestThreat = vi.fn(() => ({ nearest: null as SafetyEvent | null, distanceKm: null as number | null, geoError: null }))
 vi.mock('../hooks/useNearestThreat', () => ({
   useNearestThreat: () => mockUseNearestThreat(),
 }))
@@ -56,7 +56,7 @@ function renderPage(store = makeStore()) {
 }
 
 beforeEach(() => {
-  mockUseNearestThreat.mockReturnValue({ nearest: null, geoError: null })
+  mockUseNearestThreat.mockReturnValue({ nearest: null, distanceKm: null, geoError: null })
   mockUseBreakpoint.mockReturnValue({ layout: 'desktop' })
 })
 
@@ -95,40 +95,41 @@ describe('LiveMapPage', () => {
     expect(screen.queryByText('Report Incident')).not.toBeInTheDocument()
   })
 
-  it('shows NEAR YOU banner when nearestThreat is non-null', () => {
+  it('shows NEAR YOU banner when nearestThreat is non-null and distanceKm is set', () => {
     const threat: SafetyEvent = {
-      event_id: 'threat-1',
+      id: 'threat-1',
       event_type: 'SECURITY_INCIDENT',
       severity: 'HIGH',
       title: 'Armed robbery near CBD',
       summary: null,
-      location: { place_name: null, lat: -1.286, lng: 36.817, county: null },
-      confidence: 0.9,
-      source_count: 3,
-      source_breakdown: {},
+      lat: -1.286,
+      lng: 36.817,
+      place_name: null,
+      county: null,
       is_active: true,
       started_at: '',
-      last_updated: '',
+      created_at: '',
       nostr_event_id: null,
       bitcoin_txid: null,
     }
-    mockUseNearestThreat.mockReturnValue({ nearest: threat, geoError: null })
+    mockUseNearestThreat.mockReturnValue({ nearest: threat, distanceKm: 1.4, geoError: null })
     renderPage()
-    expect(screen.getByText('NEAR YOU: Armed robbery near CBD')).toBeInTheDocument()
+    expect(screen.getByText(/NEAR YOU/)).toBeInTheDocument()
   })
 
   it('does not show NEAR YOU banner when nearestThreat is null', () => {
-    mockUseNearestThreat.mockReturnValue({ nearest: null, geoError: null })
+    mockUseNearestThreat.mockReturnValue({ nearest: null, distanceKm: null, geoError: null })
     renderPage()
     expect(screen.queryByText(/NEAR YOU/)).not.toBeInTheDocument()
   })
 
-  it('shows location unavailable banner when geoError is set', () => {
+  it('shows GPS notice when geoError is set', () => {
     mockUseNearestThreat.mockReturnValue({
       nearest: null,
+      distanceKm: null,
       geoError: { code: 1, message: 'Permission denied', PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 } as GeolocationPositionError,
     })
     renderPage()
-    expect(screen.getByText(/Location unavailable/)).toBeInTheDocument()
+    expect(screen.getByText(/Enable GPS/)).toBeInTheDocument()
   })
 })
