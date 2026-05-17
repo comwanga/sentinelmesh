@@ -42,7 +42,7 @@ async fn subscribe(
     .bind(&req.subscription.endpoint)
     .bind(&req.subscription.keys.p256dh)
     .bind(&req.subscription.keys.auth)
-    .execute(&*state.pool)
+    .execute(&state.db)
     .await
     .map_err(|e| {
         tracing::error!("push subscribe DB error: {e}");
@@ -94,23 +94,21 @@ pub async fn broadcast_push(
     .to_string();
 
     for (endpoint, p256dh, auth) in &rows {
-        let info = match SubscriptionInfo::new(endpoint, p256dh, auth) {
-            Ok(i) => i,
+        // SubscriptionInfo::new returns SubscriptionInfo directly (infallible)
+        let info = SubscriptionInfo::new(endpoint, p256dh, auth);
+
+        let sig_builder = match VapidSignatureBuilder::from_base64(
+            vapid_private_key,
+            URL_SAFE_NO_PAD,
+            &info,
+        ) {
+            Ok(b) => b,
             Err(e) => {
-                tracing::warn!("push broadcast: invalid subscription {endpoint}: {e}");
+                tracing::warn!("push broadcast: VAPID builder error for {endpoint}: {e}");
                 continue;
             }
         };
 
-        let mut sig_builder =
-            match VapidSignatureBuilder::from_base64(vapid_private_key, URL_SAFE_NO_PAD, &info) {
-                Ok(b) => b,
-                Err(e) => {
-                    tracing::warn!("push broadcast: VAPID builder error: {e}");
-                    continue;
-                }
-            };
-        sig_builder.add_sub_info(&info);
         let signature = match sig_builder.build() {
             Ok(s) => s,
             Err(e) => {
@@ -119,13 +117,8 @@ pub async fn broadcast_push(
             }
         };
 
-        let mut msg_builder = match WebPushMessageBuilder::new(&info) {
-            Ok(b) => b,
-            Err(e) => {
-                tracing::warn!("push broadcast: message builder error: {e}");
-                continue;
-            }
-        };
+        // WebPushMessageBuilder::new returns directly (infallible)
+        let mut msg_builder = WebPushMessageBuilder::new(&info);
         msg_builder.set_payload(ContentEncoding::Aes128Gcm, payload.as_bytes());
         msg_builder.set_vapid_signature(signature);
 
