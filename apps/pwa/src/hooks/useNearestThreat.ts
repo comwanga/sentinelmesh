@@ -9,7 +9,7 @@ const selectHighRiskEvents = createSelector(
   items => items.filter(e => e.is_active)
 )
 
-export function useNearestThreat(): { nearest: SafetyEvent | null; geoError: GeolocationPositionError | null } {
+export function useNearestThreat(): { nearest: SafetyEvent | null; distanceKm: number | null; geoError: GeolocationPositionError | null } {
   const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null)
   const [geoError, setGeoError] = useState<GeolocationPositionError | null>(null)
   const lastUpdateRef = useRef<number>(0)
@@ -30,7 +30,7 @@ export function useNearestThreat(): { nearest: SafetyEvent | null; geoError: Geo
     return () => navigator.geolocation.clearWatch(watchId)
   }, [])
 
-  if (!pos || events.length === 0) return { nearest: null, geoError }
+  if (!pos || events.length === 0) return { nearest: null, distanceKm: null, geoError }
 
   let nearest: SafetyEvent | null = null
   let minDist = Infinity
@@ -44,5 +44,5 @@ export function useNearestThreat(): { nearest: SafetyEvent | null; geoError: Geo
       nearest = e
     }
   }
-  return { nearest, geoError }
+  return { nearest, distanceKm: nearest ? minDist : null, geoError }
 }

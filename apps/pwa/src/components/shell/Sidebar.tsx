@@ -48,6 +48,7 @@ export function Sidebar() {
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
     >
+      {/* Nav items */}
       {routeItems.map(item => (
         <NavLink
           key={item.path}
@@ -72,6 +73,7 @@ export function Sidebar() {
         </NavLink>
       ))}
 
+      {/* Overlay buttons */}
       {overlayItems.map(item => (
         <button key={item.overlay} style={itemBase} onClick={() => handleOverlay(item.overlay)}>
           <span style={{ fontSize: 16, flexShrink: 0, width: 24, textAlign: 'center' as const }}>{item.icon}</span>
@@ -81,7 +83,64 @@ export function Sidebar() {
         </button>
       ))}
 
-      <div style={{ marginTop: 'auto', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
+      {/* Privacy First section */}
+      <div style={{
+        marginTop: 'auto',
+        opacity: expanded ? 1 : 0, transition: 'opacity 150ms',
+        padding: '12px 20px',
+        borderTop: '1px solid #1a2035',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          <span style={{ fontSize: 13 }}>🔒</span>
+          <span style={{
+            fontFamily: "'Courier New', monospace", fontSize: 10,
+            fontWeight: 700, color: '#00E5FF', letterSpacing: '0.06em',
+          }}>
+            Privacy First
+          </span>
+        </div>
+        {['No personal data.', 'No readable locations.', 'All reports signed.', 'Audio stays on device.'].map(line => (
+          <div key={line} style={{
+            fontFamily: "'Courier New', monospace", fontSize: 9,
+            color: '#4a5568', lineHeight: 1.6, paddingLeft: 4,
+          }}>
+            {line}
+          </div>
+        ))}
+      </div>
+
+      {/* Built on open protocols */}
+      <div style={{
+        opacity: expanded ? 1 : 0, transition: 'opacity 150ms',
+        padding: '10px 20px 14px',
+        borderTop: '1px solid #1a2035',
+      }}>
+        <div style={{
+          fontFamily: "'Courier New', monospace", fontSize: 9,
+          color: '#4a5568', letterSpacing: '0.06em', marginBottom: 6,
+        }}>
+          Built on open protocols
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+          {[
+            { label: 'Nostr', color: '#9C27B0' },
+            { label: 'Bitcoin', color: '#FF9800' },
+          ].map(p => (
+            <span key={p.label} style={{
+              fontFamily: "'Courier New', monospace", fontSize: 9,
+              padding: '2px 6px', borderRadius: 4,
+              background: `${p.color}22`, border: `1px solid ${p.color}55`,
+              color: p.color,
+            }}>{p.label}</span>
+          ))}
+        </div>
+      </div>
+
+      {/* System status (icon-only when collapsed) */}
+      <div style={{
+        padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8,
+        borderTop: '1px solid #1a2035',
+      }}>
         <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4CAF50', flexShrink: 0 }} />
         <span style={{
           opacity: expanded ? 1 : 0, transition: 'opacity 150ms',

@@ -9,6 +9,7 @@ const base: AlertCardProps = {
   location: 'Pangani, Nairobi',
   timestamp: Date.now() - 120_000,
   confidence: 0.86,
+  rating: 4.0,
   status: 'VERIFIED',
   sources: ['NLP', 'Community'],
   voteCount: 12,
@@ -34,7 +35,7 @@ describe('AlertCard', () => {
 
   it('renders confidence percentage', () => {
     render(<AlertCard {...base} confidence={0.86} />)
-    expect(screen.getByText('86%')).toBeInTheDocument()
+    expect(screen.getByText(/86% confidence/)).toBeInTheDocument()
   })
 
   it('renders all source tags', () => {

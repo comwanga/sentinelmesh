@@ -1,28 +1,28 @@
-// AlertsDock: desktop right panel showing live alerts in a fixed 320px column
+import { useNavigate } from 'react-router-dom'
 import { useAppSelector } from '../../store'
 import { AlertCard, safetyEventToCardProps } from '../shared/AlertCard'
 
 export function AlertsDock() {
+  const navigate = useNavigate()
   const events = useAppSelector(s => s.events.items)
 
   return (
     <div style={{
-      position: 'fixed',
-      top: 0,
-      right: 0,
       width: 320,
-      height: '100%',
+      flexShrink: 0,
       background: '#0B0E14',
       borderLeft: '1px solid #1a2035',
       display: 'flex',
       flexDirection: 'column',
-      zIndex: 100,
+      overflow: 'hidden',
     }}>
-      {/* Header */}
       <div style={{
         padding: '14px 16px 10px',
         borderBottom: '1px solid #1a2035',
         flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
       }}>
         <span style={{
           fontFamily: "'Courier New', monospace",
@@ -33,14 +33,20 @@ export function AlertsDock() {
         }}>
           LIVE ALERTS
         </span>
+        <button
+          onClick={() => navigate('/alerts')}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            fontFamily: "'Courier New', monospace", fontSize: 10,
+            color: '#4a5568', letterSpacing: '0.06em',
+            padding: '2px 4px',
+          }}
+        >
+          SEE ALL →
+        </button>
       </div>
 
-      {/* Scrollable alert list */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '10px 12px',
-      }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
         {events.length === 0 ? (
           <div style={{
             fontFamily: "'Courier New', monospace",
@@ -55,7 +61,6 @@ export function AlertsDock() {
           events.map(event => (
             <AlertCard
               key={event.id}
-              // TODO: wire to bookmarks slice when implemented
               {...safetyEventToCardProps(event, () => {})}
             />
           ))
