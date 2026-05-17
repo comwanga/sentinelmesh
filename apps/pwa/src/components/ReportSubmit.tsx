@@ -99,7 +99,9 @@ export function ReportSubmit({ onClose, linkedEventId }: Props) {
 
   return (
     <div style={containerStyle}>
-      <h3 style={{ margin: '0 0 12px', fontSize: 14, fontFamily: 'sans-serif' }}>Submit Report</h3>
+      <h3 style={{ margin: '0 0 14px', fontSize: 13, fontFamily: "'Courier New', monospace", color: '#e2e8f0', letterSpacing: '0.08em' }}>
+        SUBMIT REPORT
+      </h3>
 
       <label style={labelStyle}>Type</label>
       <select
@@ -120,13 +122,13 @@ export function ReportSubmit({ onClose, linkedEventId }: Props) {
       />
 
       <label style={labelStyle}>Photo (optional)</label>
-      <input ref={fileRef} type="file" accept="image/*" style={{ marginBottom: 8, fontSize: 12 }} />
-      <p style={{ margin: '0 0 12px', fontSize: 10, color: '#888', fontFamily: 'sans-serif' }}>
-        EXIF data and faces are removed in your browser before upload.
+      <input ref={fileRef} type="file" accept="image/*" style={{ marginBottom: 4, fontSize: 11, color: '#94a3b8', width: '100%' }} />
+      <p style={{ margin: '0 0 12px', fontSize: 10, color: '#4a5568', fontFamily: "'Courier New', monospace" }}>
+        EXIF data and faces removed in browser before upload.
       </p>
 
       {errorMsg && (
-        <p style={{ margin: '0 0 8px', color: '#CC0000', fontSize: 12, fontFamily: 'sans-serif' }}>
+        <p style={{ margin: '0 0 8px', color: '#FF2D2D', fontSize: 11, fontFamily: "'Courier New', monospace" }}>
           {errorMsg}
         </p>
       )}
@@ -135,32 +137,35 @@ export function ReportSubmit({ onClose, linkedEventId }: Props) {
         <button
           onClick={handleSubmit}
           disabled={submitState === 'locating' || submitState === 'submitting'}
-          style={btnStyle('#2E7D32')}
+          style={btnStyle('#1B5E20', '#4CAF50')}
         >
           {submitState === 'locating' ? 'Getting location…' :
            submitState === 'submitting' ? 'Submitting…' : 'Submit'}
         </button>
-        <button onClick={onClose} style={btnStyle('#999')}>Cancel</button>
+        <button onClick={onClose} style={btnStyle('#1a2035', '#4a5568')}>Cancel</button>
       </div>
     </div>
   )
 }
 
 const containerStyle: React.CSSProperties = {
-  background: '#fff', borderRadius: 8, padding: 16,
-  boxShadow: '0 2px 12px rgba(0,0,0,0.15)', fontFamily: 'sans-serif',
-  maxWidth: 320,
+  background: '#0d1118', borderRadius: 8, padding: 16,
+  border: '1px solid #1a2035',
+  fontFamily: "'Courier New', monospace",
 }
 const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: 11, color: '#555', marginBottom: 2,
+  display: 'block', fontSize: 10, color: '#4a5568', marginBottom: 3, letterSpacing: '0.06em',
 }
 const inputStyle: React.CSSProperties = {
-  width: '100%', fontSize: 12, padding: '4px 6px', marginBottom: 8,
-  border: '1px solid #ccc', borderRadius: 4, boxSizing: 'border-box',
+  width: '100%', fontSize: 12, padding: '6px 8px', marginBottom: 10,
+  border: '1px solid #1a2035', borderRadius: 4, boxSizing: 'border-box',
+  background: '#0B0E14', color: '#e2e8f0', fontFamily: "'Courier New', monospace",
+  outline: 'none',
 }
-function btnStyle(bg: string): React.CSSProperties {
+function btnStyle(bg: string, color: string): React.CSSProperties {
   return {
-    background: bg, color: '#fff', border: 'none', borderRadius: 4,
-    padding: '6px 14px', fontSize: 12, cursor: 'pointer',
+    flex: 1, background: bg, color, border: `1px solid ${color}33`, borderRadius: 4,
+    padding: '7px 0', fontSize: 11, cursor: 'pointer', fontFamily: "'Courier New', monospace",
+    letterSpacing: '0.05em',
   }
 }

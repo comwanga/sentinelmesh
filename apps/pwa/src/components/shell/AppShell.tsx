@@ -1,7 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { useWsConnection } from '../../services/websocket'
-import { useAcousticDetection } from '../../hooks/useAcousticDetection'
 import { useCircles } from '../../hooks/useCircles'
 import { usePushSubscription } from '../../hooks/usePushSubscription'
 import { Header } from './Header'
@@ -10,7 +9,7 @@ import { BottomNav } from './BottomNav'
 
 export function AppShell() {
   useWsConnection()
-  useAcousticDetection()
+  // Acoustic detection is opt-in — started only when user activates the overlay
   useCircles()
   usePushSubscription()
   const { layout } = useBreakpoint()
