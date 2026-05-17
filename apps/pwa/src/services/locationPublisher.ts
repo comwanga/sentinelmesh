@@ -27,6 +27,7 @@ export function startLocationPublisher(
             'Content-Type': 'application/json',
             'X-Nostr-Auth': authEventJson,
           },
+          signal: AbortSignal.timeout(15_000),
           body: JSON.stringify({ encrypted_payload: encrypted }),
         })
       } catch {

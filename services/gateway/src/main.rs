@@ -34,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Arc::new(config::Config::from_env()?);
-    let db = db::create_pool(&config.database_url).await?;
+    let db = db::create_pool(&config.database_url, config.max_db_connections).await?;
     let http_client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()?;

@@ -36,4 +36,9 @@ async def emit_event(event: dict) -> None:
         return
 
     client = await get_client()
-    await client.publish("sentinel:events:new", json.dumps(event))
+    await client.xadd(
+        "sentinel:events:stream",
+        {"payload": json.dumps(event)},
+        maxlen=10_000,
+        approximate=True,
+    )

@@ -11,6 +11,7 @@ interface CirclesState {
   decryptedLocations: Record<string, DecryptedLocation>
   proximityAlerts: ProximityAlert[]
   activeAlert: ProximityAlert | null
+  decryptErrors: string[]
 }
 
 const initialState: CirclesState = {
@@ -21,6 +22,7 @@ const initialState: CirclesState = {
   decryptedLocations: {},
   proximityAlerts: [],
   activeAlert: null,
+  decryptErrors: [],
 }
 
 const circlesSlice = createSlice({
@@ -61,6 +63,10 @@ const circlesSlice = createSlice({
     activeAlertDismissed(state) {
       state.activeAlert = null
     },
+    circleDecryptError(state, action: PayloadAction<string>) {
+      // keep only the last 3 errors to avoid unbounded growth
+      state.decryptErrors = [action.payload, ...state.decryptErrors].slice(0, 3)
+    },
     circleLeft(state) {
       state.circles = []
       state.activeCircleId = null
@@ -69,6 +75,7 @@ const circlesSlice = createSlice({
       state.decryptedLocations = {}
       state.proximityAlerts = []
       state.activeAlert = null
+      state.decryptErrors = []
     },
   },
 })
@@ -79,6 +86,7 @@ export const {
   locationReceived,
   proximityAlertAdded,
   activeAlertDismissed,
+  circleDecryptError,
   circleLeft,
 } = circlesSlice.actions
 export default circlesSlice.reducer

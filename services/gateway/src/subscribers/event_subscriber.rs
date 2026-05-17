@@ -4,13 +4,19 @@ use std::sync::{
 };
 
 use anyhow::Result;
-use futures::StreamExt;
+use redis::AsyncCommands;
+use redis::streams::{StreamReadOptions, StreamReadReply};
 use sqlx::PgPool;
 use tokio::time::{sleep, Duration};
 
 use crate::ws::hub::WsHub;
 
-const CHANNEL: &str = "sentinel:events:new";
+const STREAM: &str = "sentinel:events:stream";
+const GROUP: &str = "gateway-consumers";
+const CONSUMER: &str = "gateway-main";
+const BATCH: usize = 100;
+const BLOCK_MS: usize = 5_000;
+
 const BASE_BACKOFF_MS: u64 = 100;
 const MAX_BACKOFF_MS: u64 = 30_000;
 
@@ -32,16 +38,14 @@ pub async fn run(
 
     let mut backoff_ms = BASE_BACKOFF_MS;
     loop {
-        match subscribe_loop(&redis_url, &pool, &hub, &redis_healthy, &validator).await {
+        match read_loop(&redis_url, &pool, &hub, &redis_healthy, &validator).await {
             Ok(()) => break,
             Err(e) => {
                 let was_healthy = redis_healthy.swap(false, Ordering::Relaxed);
                 if was_healthy {
                     backoff_ms = BASE_BACKOFF_MS;
                 }
-                tracing::warn!(
-                    "redis subscriber error: {e:#}, retrying in {backoff_ms}ms"
-                );
+                tracing::warn!("redis stream reader error: {e:#}, retrying in {backoff_ms}ms");
                 sleep(Duration::from_millis(backoff_ms)).await;
                 backoff_ms = (backoff_ms * 2).min(MAX_BACKOFF_MS);
             }
@@ -49,7 +53,7 @@ pub async fn run(
     }
 }
 
-async fn subscribe_loop(
+async fn read_loop(
     redis_url: &str,
     pool: &PgPool,
     hub: &Arc<WsHub>,
@@ -57,45 +61,76 @@ async fn subscribe_loop(
     validator: &jsonschema::Validator,
 ) -> Result<()> {
     let client = redis::Client::open(redis_url)?;
-    let mut pubsub = client.get_async_pubsub().await?;
-    pubsub.subscribe(CHANNEL).await?;
+    let mut conn = client.get_multiplexed_async_connection().await?;
+
+    // Create consumer group. "0" means deliver from the beginning of the stream
+    // on fresh creation; MKSTREAM creates the stream if it doesn't exist yet.
+    // BUSYGROUP error means the group already exists — that's fine.
+    let create_result: redis::RedisResult<()> =
+        conn.xgroup_create_mkstream(STREAM, GROUP, "0").await;
+    if let Err(e) = create_result {
+        if !e.to_string().contains("BUSYGROUP") {
+            return Err(e.into());
+        }
+    }
 
     redis_healthy.store(true, Ordering::Relaxed);
-    tracing::info!("redis subscriber connected, listening on {CHANNEL}");
+    tracing::info!("redis stream reader connected, reading {STREAM} as {GROUP}/{CONSUMER}");
 
-    let mut stream = pubsub.into_on_message();
+    let opts = StreamReadOptions::default()
+        .group(GROUP, CONSUMER)
+        .count(BATCH)
+        .block(BLOCK_MS);
+
     loop {
-        let msg: redis::Msg = match stream.next().await {
-            Some(m) => m,
-            None => anyhow::bail!("redis pub/sub stream ended unexpectedly"),
-        };
+        let reply: StreamReadReply =
+            conn.xread_options(&[STREAM], &[">"], &opts).await?;
 
-        let payload: String = msg.get_payload()?;
+        for stream_key in reply.keys {
+            for entry in stream_key.ids {
+                let msg_id = entry.id.clone();
 
-        let value: serde_json::Value = match serde_json::from_str(&payload) {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!("dropping non-JSON message on {CHANNEL}: {e}");
-                continue;
+                let Some(payload_val) = entry.map.get("payload") else {
+                    tracing::warn!("stream entry {msg_id} missing 'payload' field — acking and skipping");
+                    let _: i64 = conn.xack(STREAM, GROUP, &[&msg_id]).await?;
+                    continue;
+                };
+
+                let payload: String = redis::from_redis_value(payload_val)?;
+
+                let value: serde_json::Value = match serde_json::from_str(&payload) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!("dropping non-JSON stream entry {msg_id}: {e}");
+                        let _: i64 = conn.xack(STREAM, GROUP, &[&msg_id]).await?;
+                        continue;
+                    }
+                };
+
+                if let Err(errors) = validator.validate(&value) {
+                    let msgs: Vec<String> = errors.map(|e| e.to_string()).collect();
+                    tracing::warn!("dropping schema-invalid entry {msg_id}: {}", msgs.join("; "));
+                    let _: i64 = conn.xack(STREAM, GROUP, &[&msg_id]).await?;
+                    continue;
+                }
+
+                let event: sentinel_core::RedisEventPayload = match serde_json::from_value(value) {
+                    Ok(e) => e,
+                    Err(e) => {
+                        tracing::warn!("dropping entry {msg_id} that passed schema but failed deserialization: {e}");
+                        let _: i64 = conn.xack(STREAM, GROUP, &[&msg_id]).await?;
+                        continue;
+                    }
+                };
+
+                if let Err(e) = handle_message(pool, hub, &event).await {
+                    tracing::warn!("failed to handle stream entry {msg_id}: {e:#}");
+                    // Do not ACK — will be redelivered after visibility timeout
+                    continue;
+                }
+
+                let _: i64 = conn.xack(STREAM, GROUP, &[&msg_id]).await?;
             }
-        };
-
-        if let Err(errors) = validator.validate(&value) {
-            let msgs: Vec<String> = errors.map(|e| e.to_string()).collect();
-            tracing::warn!("dropping schema-invalid event on {CHANNEL}: {}", msgs.join("; "));
-            continue;
-        }
-
-        let event: sentinel_core::RedisEventPayload = match serde_json::from_value(value) {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::warn!("dropping event that passed schema but failed deserialization: {e}");
-                continue;
-            }
-        };
-
-        if let Err(e) = handle_message(pool, hub, &event).await {
-            tracing::warn!("failed to handle redis message: {e:#}");
         }
     }
 }

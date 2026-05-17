@@ -38,6 +38,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   signal:
     build:
@@ -108,7 +114,7 @@ services:
       signal:
         condition: service_healthy
       gateway-rs:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   pgdata:

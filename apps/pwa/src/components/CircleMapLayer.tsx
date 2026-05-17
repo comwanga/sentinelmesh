@@ -8,12 +8,21 @@ interface CircleMapLayerProps {
   memberStatuses: Record<string, MemberStatus>
 }
 
+function ageLabel(ts: string): { text: string; stale: boolean } {
+  const diffMs = Date.now() - new Date(ts).getTime()
+  const mins = Math.floor(diffMs / 60_000)
+  if (mins < 1) return { text: 'just now', stale: false }
+  if (mins < 5) return { text: `${mins}m ago`, stale: false }
+  return { text: `${mins}m ago`, stale: true }
+}
+
 export function CircleMapLayer({ decryptedLocations, memberStatuses }: CircleMapLayerProps) {
   return (
     <>
       {Object.entries(decryptedLocations).map(([pubkey, loc]) => {
         if (memberStatuses[pubkey] !== 'ONLINE') return null
         const truncated = pubkey.length > 10 ? `${pubkey.slice(0, 8)}…` : pubkey
+        const { text: age, stale } = ageLabel(loc.ts)
         return (
           <Marker key={pubkey} latitude={loc.lat} longitude={loc.lng}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
@@ -37,6 +46,14 @@ export function CircleMapLayer({ decryptedLocations, memberStatuses }: CircleMap
                 whiteSpace: 'nowrap',
               }}>
                 {truncated}
+              </span>
+              <span style={{
+                fontFamily: "'Courier New', monospace", fontSize: 8,
+                color: stale ? '#FF8C00' : '#4a5568',
+                background: 'rgba(13,17,24,0.8)', padding: '1px 4px', borderRadius: 3,
+                whiteSpace: 'nowrap',
+              }}>
+                {age}
               </span>
             </div>
           </Marker>

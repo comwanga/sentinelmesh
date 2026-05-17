@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { useNearestThreat } from '../hooks/useNearestThreat'
@@ -14,6 +15,8 @@ import { AlertsSheet } from '../components/map/AlertsSheet'
 import { MapOverlayHost } from '../components/map/MapOverlayHost'
 
 export function LiveMapPage() {
+  const [mapLoaded, setMapLoaded] = useState(false)
+  const handleMapLoad = useCallback(() => setMapLoaded(true), [])
   const { layout } = useBreakpoint()
   const { nearest: nearestThreat, geoError } = useNearestThreat()
   const dispatch = useAppDispatch()
@@ -36,7 +39,17 @@ export function LiveMapPage() {
         </div>
       )}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <MapCanvas>
+        {!mapLoaded && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 20,
+            background: '#0B0E14',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: "'Courier New', monospace", color: '#4a5568', fontSize: 13,
+          }}>
+            Loading map…
+          </div>
+        )}
+        <MapCanvas onMapLoad={handleMapLoad}>
           {events.filter(e => e.is_active).map(event => (
             <Marker key={event.id} longitude={event.lng} latitude={event.lat} anchor="center">
               <EventMarker event={event} onClick={() => {}} />

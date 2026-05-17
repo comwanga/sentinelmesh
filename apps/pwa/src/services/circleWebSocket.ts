@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useAppDispatch } from '../store'
-import { memberStatusUpdated, locationReceived } from '../store/circlesSlice'
+import { memberStatusUpdated, locationReceived, circleDecryptError } from '../store/circlesSlice'
 import { decryptLocation, loadCircleKey } from './e2eeService'
 import type { CircleWsMessage } from '../../../../shared/types'
 
@@ -34,10 +34,15 @@ export function useCircleWsConnection(circleId: string | null, nostrAuthEvent?: 
           if (msg.type === 'CIRCLE_LOCATION_BLOB') {
             const { sender_pubkey, encrypted_payload, sent_at } = msg.payload
             const key = await loadCircleKey(circleId!)
-            if (!key) return
+            if (!key) {
+              dispatch(circleDecryptError(`${sender_pubkey.slice(0, 8)}… — circle key not found`))
+              return
+            }
             const loc = await decryptLocation(key, encrypted_payload)
             if (loc) {
               dispatch(locationReceived({ pubkey: sender_pubkey, lat: loc.lat, lng: loc.lng, ts: sent_at }))
+            } else {
+              dispatch(circleDecryptError(`${sender_pubkey.slice(0, 8)}… — decryption failed`))
             }
           } else if (msg.type === 'CIRCLE_PRESENCE') {
             dispatch(memberStatusUpdated({ pubkey: msg.payload.sender_pubkey, status: msg.payload.mode }))

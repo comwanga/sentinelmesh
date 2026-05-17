@@ -1,13 +1,16 @@
-import * as blazeface from '@tensorflow-models/blazeface'
+import type * as Blazeface from '@tensorflow-models/blazeface'
 
 const MAX_DIMENSION = 800
 const JPEG_QUALITY = 0.85
 const BLUR_SCALE = 0.05 // scale face region down then up for pixelate blur
 
-let faceModel: blazeface.BlazeFaceModel | null = null
+let faceModel: Blazeface.BlazeFaceModel | null = null
 
-async function getFaceModel(): Promise<blazeface.BlazeFaceModel> {
-  if (!faceModel) faceModel = await blazeface.load()
+async function getFaceModel(): Promise<Blazeface.BlazeFaceModel> {
+  if (!faceModel) {
+    const blazeface = await import('@tensorflow-models/blazeface')
+    faceModel = await blazeface.load()
+  }
   return faceModel
 }
 

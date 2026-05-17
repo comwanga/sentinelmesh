@@ -36,6 +36,7 @@ export function ReportList() {
       const res = await fetch(`${API_BASE}/api/reports/${report.report_id}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({
           voter_pubkey: keypair.publicKey,
           vote,
