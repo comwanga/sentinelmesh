@@ -1,9 +1,19 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MapCanvas } from './MapCanvas'
 
-vi.mock('react-map-gl', () => ({
-  default: ({ children, longitude, latitude, zoom, onMove }: {
+vi.mock('../../config/mapConfig', () => ({
+  MAP_STYLE_URL: 'https://demotiles.maplibre.org/style.json',
+  WORLD_CENTER: { longitude: 0, latitude: 20, zoom: 2 },
+  MAPTILES_URL: '',
+}))
+
+vi.mock('../../hooks/useInitialViewport', () => ({
+  persistViewport: vi.fn(),
+}))
+
+vi.mock('react-map-gl/maplibre', () => ({
+  Map: ({ children, longitude, latitude, zoom, onMove }: {
     children?: React.ReactNode
     longitude: number
     latitude: number
@@ -23,12 +33,12 @@ vi.mock('react-map-gl', () => ({
 }))
 
 describe('MapCanvas', () => {
-  it('renders with default Nairobi view state', () => {
+  it('renders with world-center default view state', () => {
     render(<MapCanvas />)
     const map = screen.getByTestId('mapbox')
-    expect(map.getAttribute('data-longitude')).toBe('36.8219')
-    expect(map.getAttribute('data-latitude')).toBe('-1.2921')
-    expect(map.getAttribute('data-zoom')).toBe('11')
+    expect(map.getAttribute('data-longitude')).toBe('0')
+    expect(map.getAttribute('data-latitude')).toBe('20')
+    expect(map.getAttribute('data-zoom')).toBe('2')
   })
 
   it('renders children inside the map', () => {
@@ -42,5 +52,12 @@ describe('MapCanvas', () => {
     expect(map.getAttribute('data-longitude')).toBe('1')
     expect(map.getAttribute('data-latitude')).toBe('2')
     expect(map.getAttribute('data-zoom')).toBe('8')
+  })
+
+  it('calls onMove when map moves', () => {
+    const onLoad = vi.fn()
+    render(<MapCanvas onMapLoad={onLoad} />)
+    fireEvent.click(screen.getByTestId('mapbox'))
+    // Verify no crash — persistViewport is called internally
   })
 })

@@ -31,6 +31,7 @@ tower_governor = { version = "0.4", features = ["axum"] }
 hmac         = "0.12"
 subtle       = "2"
 futures      = "0.3"
+async-trait  = "0.1"
 base64       = "0.22"
 urlencoding  = "2"
 web-push     = { version = "0.10", default-features = false, features = ["hyper-client", "hyper-tls"] }

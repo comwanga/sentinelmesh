@@ -1,6 +1,7 @@
 pub mod circles;
 pub mod events;
 pub mod location_blobs;
+pub mod maps;
 pub mod push;
 pub mod reports;
 pub mod tiles;
@@ -17,4 +18,5 @@ pub fn build_router() -> Router<AppState> {
         .nest("/api/zaps",    zap::router())
         .nest("/api/tiles",   tiles::router())
         .nest("/api/push",    push::router())
+        .nest("/api/maps",    maps::router())
 }

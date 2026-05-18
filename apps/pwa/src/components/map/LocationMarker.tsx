@@ -1,4 +1,4 @@
-import { Marker } from 'react-map-gl'
+import { Marker } from 'react-map-gl/maplibre'
 import type { CurrentLocation } from '../../hooks/useCurrentLocation'
 
 interface Props {

@@ -75,7 +75,11 @@ mod tests {
     use tower::ServiceExt;
 
     fn make_state(secret: &str) -> AppState {
-        use crate::{config::Config, ws::{hub::WsHub, circle_hub::CircleHub}};
+        use crate::{config::Config, maps::{MapboxAdapter, MapProvider}, ws::{hub::WsHub, circle_hub::CircleHub}};
+        let http_client = reqwest::Client::new();
+        let map_provider: Arc<dyn MapProvider> = Arc::new(
+            MapboxAdapter::new(http_client.clone(), String::new())
+        );
         AppState {
             db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
             config: Arc::new(Config {
@@ -90,11 +94,17 @@ mod tests {
                 nostr_private_key: None,
                 internal_service_secret: secret.into(),
                 trust_proxy: false,
+                max_db_connections: 5,
+                mapbox_token: None,
+                vapid_private_key: None,
+                vapid_public_key: None,
+                vapid_subject: None,
             }),
-            http_client: reqwest::Client::new(),
+            http_client,
             hub: Arc::new(WsHub::new()),
             circle_hub: Arc::new(CircleHub::new()),
             redis_healthy: Arc::new(AtomicBool::new(false)),
+            map_provider,
         }
     }
 

@@ -2,33 +2,36 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add on-device acoustic threat detection to the SentinelMesh mobile app using TensorFlow Lite, enabling real-time alerts for gunshots, explosions, screaming, and glass breaking without requiring a network connection.
+**Goal:** Add on-device acoustic threat detection to the SentinelMesh PWA using Web Audio API + TensorFlow.js, enabling real-time alerts for gunshots, explosions, screaming, and glass breaking without sending audio to any server.
 
-**Architecture:** The mobile app captures 0.96-second PCM audio windows at 16kHz from the microphone, runs them through YAMNet (a Google TFLite audio classifier pre-trained on 521 sound classes), maps the top-scoring output to a SentinelMesh threat category, and on high-confidence detection (≥0.80) dispatches a local Redux alert and auto-submits a `PENDING` community report via the existing `/api/reports` endpoint. Detection is fully on-device — no audio ever leaves the phone. The existing community consensus engine handles false positive suppression: the acoustic report enters the normal verification pipeline and needs proximity confirmations to reach `VERIFIED`.
+**Architecture:** The PWA requests microphone access, feeds audio through an `AudioWorkletProcessor` at 16kHz, batches samples into 0.96-second windows (15,360 samples), runs them through YAMNet (loaded from TensorFlow Hub as a TF.js GraphModel), and maps the top-scoring output to a SentinelMesh threat category. On a detection ≥0.80 confidence, it dispatches a Redux alert and silently POSTs a `PENDING` community report to the existing `/api/reports` endpoint. No audio ever leaves the browser.
 
-**Tech Stack:** `react-native-audio-record`, `@tensorflow/tfjs`, `@tensorflow/tfjs-react-native`, `react-native-fs`, YAMNet TFLite model (1.7 MB from TensorFlow Hub), Redux Toolkit, existing `/api/reports` POST endpoint (no new backend code)
+**Tech Stack:** Web Audio API (AudioContext, AudioWorklet), `@tensorflow/tfjs` (browser), `@tensorflow/tfjs-backend-webgl`, react-map-gl (existing), Redux Toolkit (existing), existing `/api/reports` endpoint (no new backend)
+
+**Target directory:** `apps/pwa/` (React + Vite + TypeScript)
 
 ---
 
 ## Prerequisites (manual steps before starting tasks)
 
-**1. Download the YAMNet TFLite model:**
+**1. Install TensorFlow.js:**
 ```bash
-curl -L -o sentinel-mobile/android/app/src/main/assets/yamnet.tflite \
-  "https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1?lite-format=tflite"
+cd apps/pwa
+npm install @tensorflow/tfjs @tensorflow/tfjs-backend-webgl
 ```
 
-**2. Install npm dependencies:**
+**2. Download YAMNet TF.js model into public assets:**
 ```bash
-cd sentinel-mobile
-npm install react-native-audio-record @tensorflow/tfjs @tensorflow/tfjs-react-native react-native-fs
-npx react-native-asset
+# Creates apps/pwa/public/yamnet/ with model.json + weight shards
+mkdir -p apps/pwa/public/yamnet
+# Download from TF Hub (tfjs-format):
+# https://tfhub.dev/google/tfjs-model/yamnet/tfjs/1 → download and extract into apps/pwa/public/yamnet/
+# Alternatively, load from URL at runtime (see Task 3) — no local download needed if CDN is acceptable
 ```
 
-**3. Add Android permissions to `sentinel-mobile/android/app/src/main/AndroidManifest.xml` inside `<manifest>`:**
-```xml
-<uses-permission android:name="android.permission.RECORD_AUDIO" />
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+For development, the model can be loaded directly from TF Hub CDN:
+```
+https://tfhub.dev/google/tfjs-model/yamnet/tfjs/1/model.json?tfjs-format=file
 ```
 
 ---
@@ -37,594 +40,342 @@ npx react-native-asset
 
 | File | Action | Responsibility |
 |------|--------|----------------|
-| `sentinel-mobile/src/constants/acousticThreats.ts` | Create | YAMNet class index → threat category mapping + `getThreatFromScores` |
-| `sentinel-mobile/src/services/audioCapture.ts` | Create | 16kHz microphone capture, PCM buffering, Float32 normalisation |
-| `sentinel-mobile/src/services/acousticDetectionService.ts` | Create | TFLite model loading, inference on audio windows |
-| `sentinel-mobile/src/services/reportAutoSubmit.ts` | Create | Wrap acoustic detection into a `/api/reports` POST |
-| `sentinel-mobile/src/store/acousticSlice.ts` | Create | Redux state: `isRunning`, `currentAlert` |
-| `sentinel-mobile/src/store/index.ts` | Modify | Register `acousticReducer` |
-| `sentinel-mobile/src/components/AcousticAlert.tsx` | Create | Alert banner with auto-dismiss |
-| `sentinel-mobile/src/screens/MapScreen.tsx` | Modify | Request mic permission, mount detection loop, render `AcousticAlert` |
-| `sentinel-mobile/__tests__/acousticThreats.test.ts` | Create | Unit tests for class mapping |
-| `sentinel-mobile/__tests__/audioCapture.test.ts` | Create | Unit tests for PCM buffering and normalisation |
-| `sentinel-mobile/__tests__/acousticDetectionService.test.ts` | Create | Unit tests for TFLite inference path |
-| `sentinel-mobile/__tests__/reportAutoSubmit.test.ts` | Create | Unit tests for auto-submit logic |
-| `sentinel-mobile/__tests__/acousticSlice.test.ts` | Create | Unit tests for Redux slice |
-| `sentinel-mobile/__tests__/AcousticAlert.test.tsx` | Create | Unit tests for alert component |
+| `apps/pwa/src/constants/acousticThreats.ts` | Create | YAMNet class index → threat category mapping + `getThreatFromScores` |
+| `apps/pwa/public/audio-processor.js` | Create | AudioWorkletProcessor — runs in audio thread, sends 15360-sample windows to main thread |
+| `apps/pwa/src/services/audioCapture.ts` | Create | Sets up AudioContext + AudioWorklet, manages mic stream, emits Float32 windows |
+| `apps/pwa/src/services/acousticDetectionService.ts` | Create | TF.js model loading, inference on audio windows |
+| `apps/pwa/src/services/reportAutoSubmit.ts` | Create | Wraps acoustic detection into POST /api/reports |
+| `apps/pwa/src/store/acousticSlice.ts` | Create | Redux state: isRunning, currentAlert |
+| `apps/pwa/src/store/index.ts` | Modify | Register acousticReducer |
+| `apps/pwa/src/components/AcousticAlert.tsx` | Create | Dismissable alert banner |
+| `apps/pwa/src/App.tsx` | Modify | Mount detection hook, render AcousticAlert |
+| `apps/pwa/src/__tests__/acousticThreats.test.ts` | Create | Vitest unit tests |
+| `apps/pwa/src/__tests__/acousticSlice.test.ts` | Create | Vitest unit tests |
+| `apps/pwa/src/__tests__/reportAutoSubmit.test.ts` | Create | Vitest unit tests |
+
+**Note:** The PWA has no test setup yet. Add Vitest + jsdom:
+```bash
+cd apps/pwa
+npm install -D vitest @vitest/coverage-v8 jsdom @testing-library/react @testing-library/user-event
+```
+
+Add to `apps/pwa/vite.config.ts`:
+```typescript
+test: {
+  environment: 'jsdom',
+  globals: true,
+},
+```
 
 ---
 
 ## Task 1: YAMNet threat class mapping constants
 
 **Files:**
-- Create: `sentinel-mobile/src/constants/acousticThreats.ts`
-- Test: `sentinel-mobile/__tests__/acousticThreats.test.ts`
-
-YAMNet outputs a Float32Array of 521 scores (one per AudioSet class). We define which class indices map to SentinelMesh threat categories and the minimum confidence threshold.
+- Create: `apps/pwa/src/constants/acousticThreats.ts`
+- Test: `apps/pwa/src/__tests__/acousticThreats.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```typescript
-// sentinel-mobile/__tests__/acousticThreats.test.ts
-import { getThreatFromScores, DETECTION_THRESHOLD } from '../src/constants/acousticThreats';
+// apps/pwa/src/__tests__/acousticThreats.test.ts
+import { describe, test, expect } from 'vitest'
+import { getThreatFromScores, DETECTION_THRESHOLD } from '../constants/acousticThreats'
 
 describe('getThreatFromScores', () => {
   test('returns null when all scores are below threshold', () => {
-    const scores = new Float32Array(521).fill(0.1);
-    expect(getThreatFromScores(scores)).toBeNull();
-  });
+    const scores = new Float32Array(521).fill(0.1)
+    expect(getThreatFromScores(scores)).toBeNull()
+  })
 
   test('detects SECURITY_INCIDENT when gunshot class 427 is high', () => {
-    const scores = new Float32Array(521).fill(0.0);
-    scores[427] = 0.85;
-    const result = getThreatFromScores(scores);
-    expect(result).not.toBeNull();
-    expect(result!.category).toBe('SECURITY_INCIDENT');
-    expect(result!.label).toBe('Gunshot');
-    expect(result!.confidence).toBeCloseTo(0.85);
-  });
+    const scores = new Float32Array(521).fill(0.0)
+    scores[427] = 0.85
+    const result = getThreatFromScores(scores)
+    expect(result).not.toBeNull()
+    expect(result!.category).toBe('SECURITY_INCIDENT')
+    expect(result!.label).toBe('Gunshot')
+    expect(result!.confidence).toBeCloseTo(0.85)
+  })
 
   test('detects SECURITY_INCIDENT when screaming class 25 is high', () => {
-    const scores = new Float32Array(521).fill(0.0);
-    scores[25] = 0.82;
-    const result = getThreatFromScores(scores);
-    expect(result).not.toBeNull();
-    expect(result!.label).toBe('Screaming');
-  });
+    const scores = new Float32Array(521).fill(0.0)
+    scores[25] = 0.82
+    const result = getThreatFromScores(scores)
+    expect(result).not.toBeNull()
+    expect(result!.label).toBe('Screaming')
+  })
 
   test('returns highest-confidence detection when multiple classes exceed threshold', () => {
-    const scores = new Float32Array(521).fill(0.0);
-    scores[427] = 0.75; // gunshot — below threshold
-    scores[25]  = 0.91; // screaming — above threshold
-    scores[429] = 0.84; // explosion — above threshold
-    const result = getThreatFromScores(scores);
-    expect(result!.confidence).toBeCloseTo(0.91);
-    expect(result!.label).toBe('Screaming');
-  });
+    const scores = new Float32Array(521).fill(0.0)
+    scores[427] = 0.75  // gunshot — below threshold
+    scores[25]  = 0.91  // screaming — above
+    scores[429] = 0.84  // explosion — above
+    const result = getThreatFromScores(scores)
+    expect(result!.confidence).toBeCloseTo(0.91)
+    expect(result!.label).toBe('Screaming')
+  })
 
   test('DETECTION_THRESHOLD is 0.80', () => {
-    expect(DETECTION_THRESHOLD).toBe(0.80);
-  });
-});
+    expect(DETECTION_THRESHOLD).toBe(0.80)
+  })
+})
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd sentinel-mobile && npx jest __tests__/acousticThreats.test.ts --no-coverage
+cd apps/pwa && npx vitest run src/__tests__/acousticThreats.test.ts --no-coverage
 ```
-Expected: FAIL — `Cannot find module '../src/constants/acousticThreats'`
+Expected: FAIL — `Cannot find module '../constants/acousticThreats'`
 
 - [ ] **Step 3: Create the constants file**
 
 ```typescript
-// sentinel-mobile/src/constants/acousticThreats.ts
+// apps/pwa/src/constants/acousticThreats.ts
 
-export const DETECTION_THRESHOLD = 0.80;
+export const DETECTION_THRESHOLD = 0.80
 
-// AudioSet class indices from: https://github.com/tensorflow/models/blob/master/research/audioset/yamnet/yamnet_class_map.csv
+// AudioSet class indices — full list:
+// https://github.com/tensorflow/models/blob/master/research/audioset/yamnet/yamnet_class_map.csv
 export const YAMNET_THREAT_MAP: ReadonlyArray<{
-  classIndex: number;
-  label: string;
-  category: 'SECURITY_INCIDENT' | 'FIRE' | 'CIVIL_UNREST' | 'ACCIDENT';
+  classIndex: number
+  label: string
+  category: 'SECURITY_INCIDENT' | 'FIRE' | 'CIVIL_UNREST' | 'ACCIDENT'
 }> = [
-  { classIndex: 427, label: 'Gunshot',          category: 'SECURITY_INCIDENT' },
-  { classIndex: 429, label: 'Explosion',         category: 'SECURITY_INCIDENT' },
-  { classIndex: 25,  label: 'Screaming',         category: 'SECURITY_INCIDENT' },
-  { classIndex: 26,  label: 'Yell',              category: 'SECURITY_INCIDENT' },
-  { classIndex: 60,  label: 'Glass breaking',    category: 'SECURITY_INCIDENT' },
-  { classIndex: 345, label: 'Crowd',             category: 'CIVIL_UNREST'      },
-  { classIndex: 401, label: 'Fire alarm',        category: 'FIRE'              },
-  { classIndex: 402, label: 'Smoke detector',    category: 'FIRE'              },
-  { classIndex: 504, label: 'Crash',             category: 'ACCIDENT'          },
-  { classIndex: 505, label: 'Car crash',         category: 'ACCIDENT'          },
-] as const;
+  { classIndex: 427, label: 'Gunshot',        category: 'SECURITY_INCIDENT' },
+  { classIndex: 429, label: 'Explosion',       category: 'SECURITY_INCIDENT' },
+  { classIndex: 25,  label: 'Screaming',       category: 'SECURITY_INCIDENT' },
+  { classIndex: 26,  label: 'Yell',            category: 'SECURITY_INCIDENT' },
+  { classIndex: 60,  label: 'Glass breaking',  category: 'SECURITY_INCIDENT' },
+  { classIndex: 345, label: 'Crowd',           category: 'CIVIL_UNREST'      },
+  { classIndex: 401, label: 'Fire alarm',      category: 'FIRE'              },
+  { classIndex: 402, label: 'Smoke detector',  category: 'FIRE'              },
+  { classIndex: 504, label: 'Crash',           category: 'ACCIDENT'          },
+  { classIndex: 505, label: 'Car crash',       category: 'ACCIDENT'          },
+] as const
 
 export interface ThreatDetection {
-  classIndex: number;
-  label: string;
-  category: 'SECURITY_INCIDENT' | 'FIRE' | 'CIVIL_UNREST' | 'ACCIDENT';
-  confidence: number;
+  classIndex: number
+  label: string
+  category: 'SECURITY_INCIDENT' | 'FIRE' | 'CIVIL_UNREST' | 'ACCIDENT'
+  confidence: number
 }
 
-/**
- * Scans YAMNet output scores for any class that exceeds DETECTION_THRESHOLD.
- * Returns the highest-confidence match, or null if none qualify.
- */
 export function getThreatFromScores(scores: Float32Array): ThreatDetection | null {
-  let best: ThreatDetection | null = null;
+  let best: ThreatDetection | null = null
 
   for (const entry of YAMNET_THREAT_MAP) {
-    const confidence = scores[entry.classIndex];
-    if (confidence >= DETECTION_THRESHOLD) {
+    const confidence = scores[entry.classIndex]
+    if (confidence !== undefined && confidence >= DETECTION_THRESHOLD) {
       if (best === null || confidence > best.confidence) {
-        best = { ...entry, confidence };
+        best = { ...entry, confidence }
       }
     }
   }
 
-  return best;
+  return best
 }
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-cd sentinel-mobile && npx jest __tests__/acousticThreats.test.ts --no-coverage
+cd apps/pwa && npx vitest run src/__tests__/acousticThreats.test.ts --no-coverage
 ```
 Expected: PASS — 5 tests passing
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add sentinel-mobile/src/constants/acousticThreats.ts \
-        sentinel-mobile/__tests__/acousticThreats.test.ts
-git commit -m "feat: add YAMNet threat class mapping constants for acoustic detection"
+git add apps/pwa/src/constants/acousticThreats.ts apps/pwa/src/__tests__/acousticThreats.test.ts apps/pwa/package.json apps/pwa/package-lock.json apps/pwa/vite.config.ts
+git commit -m "feat: add YAMNet threat class mapping constants (PWA)"
 ```
 
 ---
 
-## Task 2: Audio capture service
+## Task 2: AudioWorklet processor (audio thread)
 
 **Files:**
-- Create: `sentinel-mobile/src/services/audioCapture.ts`
-- Test: `sentinel-mobile/__tests__/audioCapture.test.ts`
+- Create: `apps/pwa/public/audio-processor.js`
 
-Captures microphone input as 16kHz mono PCM and emits 0.96-second windows (15,360 samples) as normalised Float32Arrays. YAMNet requires exactly this format.
+The AudioWorkletProcessor runs in a dedicated audio thread. It accumulates raw float samples into a 15,360-sample buffer (0.96 s at 16kHz), then posts the buffer to the main thread. This file is served as a static asset.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Create the processor**
 
-```typescript
-// sentinel-mobile/__tests__/audioCapture.test.ts
-jest.mock('react-native-audio-record', () => ({
-  init: jest.fn(),
-  start: jest.fn(),
-  stop: jest.fn().mockResolvedValue(''),
-  on: jest.fn(),
-}));
+```javascript
+// apps/pwa/public/audio-processor.js
+// AudioWorkletProcessor — runs in the audio rendering thread.
+// Accumulates 0.96s of 16kHz mono PCM and posts Float32Array windows to the main thread.
 
-import AudioRecord from 'react-native-audio-record';
-import { AudioCapture } from '../src/services/audioCapture';
+const WINDOW_SAMPLES = 15360 // 0.96 s × 16000 Hz
 
-const WINDOW_SAMPLES = 15360;
+class SentinelAudioProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super()
+    this._buffer = new Float32Array(WINDOW_SAMPLES)
+    this._offset = 0
+  }
 
-function makeBase64Pcm(fillValue: number): string {
-  const buf = Buffer.alloc(WINDOW_SAMPLES * 2);
-  for (let i = 0; i < WINDOW_SAMPLES; i++) buf.writeInt16LE(fillValue, i * 2);
-  return buf.toString('base64');
+  process(inputs) {
+    const channel = inputs[0]?.[0]
+    if (!channel) return true
+
+    let srcOffset = 0
+    while (srcOffset < channel.length) {
+      const space = WINDOW_SAMPLES - this._offset
+      const toCopy = Math.min(space, channel.length - srcOffset)
+      this._buffer.set(channel.subarray(srcOffset, srcOffset + toCopy), this._offset)
+      this._offset += toCopy
+      srcOffset += toCopy
+
+      if (this._offset === WINDOW_SAMPLES) {
+        // Transfer ownership to avoid copying
+        const windowCopy = this._buffer.slice()
+        this.port.postMessage({ type: 'window', samples: windowCopy }, [windowCopy.buffer])
+        this._offset = 0
+      }
+    }
+
+    return true // keep processor alive
+  }
 }
 
-describe('AudioCapture', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  test('init called with 16kHz mono 16-bit config', () => {
-    new AudioCapture(jest.fn());
-    expect(AudioRecord.init).toHaveBeenCalledWith(
-      expect.objectContaining({ sampleRate: 16000, channels: 1, bitsPerSample: 16 })
-    );
-  });
-
-  test('emits Float32Array of 15360 samples when enough PCM arrives', (done) => {
-    (AudioRecord.on as jest.Mock).mockImplementation((event: string, cb: (d: string) => void) => {
-      if (event === 'data') setTimeout(() => cb(makeBase64Pcm(0)), 10);
-    });
-
-    new AudioCapture((samples) => {
-      expect(samples).toBeInstanceOf(Float32Array);
-      expect(samples.length).toBe(WINDOW_SAMPLES);
-      done();
-    });
-  });
-
-  test('normalises max int16 (32767) to approximately 1.0', (done) => {
-    (AudioRecord.on as jest.Mock).mockImplementation((event: string, cb: (d: string) => void) => {
-      if (event === 'data') setTimeout(() => cb(makeBase64Pcm(32767)), 10);
-    });
-
-    new AudioCapture((samples) => {
-      expect(Math.max(...Array.from(samples))).toBeCloseTo(1.0, 1);
-      done();
-    });
-  });
-
-  test('start() calls AudioRecord.start()', () => {
-    const capture = new AudioCapture(jest.fn());
-    capture.start();
-    expect(AudioRecord.start).toHaveBeenCalled();
-  });
-
-  test('stop() calls AudioRecord.stop()', async () => {
-    const capture = new AudioCapture(jest.fn());
-    await capture.stop();
-    expect(AudioRecord.stop).toHaveBeenCalled();
-  });
-});
+registerProcessor('sentinel-audio-processor', SentinelAudioProcessor)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Verify the file is in public/**
 
 ```bash
-cd sentinel-mobile && npx jest __tests__/audioCapture.test.ts --no-coverage
+ls apps/pwa/public/audio-processor.js
 ```
-Expected: FAIL — `Cannot find module '../src/services/audioCapture'`
+Expected: file exists
 
-- [ ] **Step 3: Implement AudioCapture**
+- [ ] **Step 3: Commit**
+
+```bash
+git add apps/pwa/public/audio-processor.js
+git commit -m "feat: add AudioWorklet processor for 16kHz PCM windowing"
+```
+
+---
+
+## Task 3: Audio capture service
+
+**Files:**
+- Create: `apps/pwa/src/services/audioCapture.ts`
+
+Sets up the browser audio pipeline: requests mic, creates AudioContext at 16kHz, loads the AudioWorklet, and invokes a callback with each 15,360-sample window.
+
+- [ ] **Step 1: Create audioCapture.ts**
 
 ```typescript
-// sentinel-mobile/src/services/audioCapture.ts
-import AudioRecord from 'react-native-audio-record';
+// apps/pwa/src/services/audioCapture.ts
 
-const SAMPLE_RATE    = 16000;
-const WINDOW_SAMPLES = 15360; // 0.96 s × 16000 Hz
-const BYTES_PER_SAMPLE = 2;   // 16-bit PCM
-
-export type AudioWindowCallback = (samples: Float32Array) => void;
+export type AudioWindowCallback = (samples: Float32Array) => void
 
 export class AudioCapture {
-  private onWindow: AudioWindowCallback;
-  private buffer: Int16Array = new Int16Array(WINDOW_SAMPLES);
-  private bufferOffset = 0;
+  private context: AudioContext | null = null
+  private stream: MediaStream | null = null
+  private node: AudioWorkletNode | null = null
 
-  constructor(onWindow: AudioWindowCallback) {
-    this.onWindow = onWindow;
+  constructor(private onWindow: AudioWindowCallback) {}
 
-    AudioRecord.init({
-      sampleRate: SAMPLE_RATE,
-      channels: 1,
-      bitsPerSample: 16,
-      audioSource: 6, // VOICE_RECOGNITION — cleaner signal than default mic
-      wavFile: '',
-    });
+  async start(): Promise<void> {
+    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
 
-    AudioRecord.on('data', (base64Chunk: string) => {
-      const bytes = Buffer.from(base64Chunk, 'base64');
-      const incoming = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / BYTES_PER_SAMPLE);
-      let srcOffset = 0;
+    // AudioContext at 16kHz — YAMNet's required sample rate
+    this.context = new AudioContext({ sampleRate: 16000 })
 
-      while (srcOffset < incoming.length) {
-        const space = WINDOW_SAMPLES - this.bufferOffset;
-        const toCopy = Math.min(space, incoming.length - srcOffset);
-        this.buffer.set(incoming.subarray(srcOffset, srcOffset + toCopy), this.bufferOffset);
-        this.bufferOffset += toCopy;
-        srcOffset += toCopy;
+    await this.context.audioWorklet.addModule('/audio-processor.js')
 
-        if (this.bufferOffset === WINDOW_SAMPLES) {
-          this.flushWindow();
-          this.bufferOffset = 0;
-        }
+    const source = this.context.createMediaStreamSource(this.stream)
+    this.node = new AudioWorkletNode(this.context, 'sentinel-audio-processor')
+
+    this.node.port.onmessage = (event: MessageEvent<{ type: string; samples: Float32Array }>) => {
+      if (event.data.type === 'window') {
+        this.onWindow(event.data.samples)
       }
-    });
-  }
-
-  private flushWindow(): void {
-    const float32 = new Float32Array(WINDOW_SAMPLES);
-    for (let i = 0; i < WINDOW_SAMPLES; i++) {
-      float32[i] = this.buffer[i] / 32768.0;
     }
-    this.onWindow(float32);
+
+    source.connect(this.node)
+    // Do NOT connect node to destination — we don't want mic playback
   }
 
-  start(): void {
-    AudioRecord.start();
-  }
-
-  stop(): Promise<void> {
-    return AudioRecord.stop().then(() => {});
+  stop(): void {
+    this.node?.disconnect()
+    this.stream?.getTracks().forEach(t => t.stop())
+    this.context?.close()
+    this.node = null
+    this.stream = null
+    this.context = null
   }
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+No unit test for this file — it relies entirely on browser APIs (`navigator.mediaDevices`, `AudioContext`, `AudioWorkletNode`) that cannot be meaningfully mocked in jsdom. Integration testing is done manually.
+
+- [ ] **Step 2: Commit**
 
 ```bash
-cd sentinel-mobile && npx jest __tests__/audioCapture.test.ts --no-coverage
-```
-Expected: PASS — 5 tests passing
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add sentinel-mobile/src/services/audioCapture.ts \
-        sentinel-mobile/__tests__/audioCapture.test.ts
-git commit -m "feat: add 16kHz audio capture service with PCM windowing and float32 normalisation"
+git add apps/pwa/src/services/audioCapture.ts
+git commit -m "feat: add Web Audio API capture service using AudioWorklet"
 ```
 
 ---
 
-## Task 3: Acoustic detection service (TFLite inference)
+## Task 4: Acoustic detection service (TF.js inference)
 
 **Files:**
-- Create: `sentinel-mobile/src/services/acousticDetectionService.ts`
-- Test: `sentinel-mobile/__tests__/acousticDetectionService.test.ts`
+- Create: `apps/pwa/src/services/acousticDetectionService.ts`
 
-Loads the YAMNet TFLite model at startup, accepts audio windows from `AudioCapture`, runs inference, and calls a `ThreatCallback` when `getThreatFromScores` returns a result.
+Loads YAMNet as a TF.js GraphModel and runs inference on each audio window.
 
-- [ ] **Step 1: Write the failing test**
-
-```typescript
-// sentinel-mobile/__tests__/acousticDetectionService.test.ts
-jest.mock('@tensorflow/tfjs-react-native', () => ({
-  bundleResourceIO: jest.fn(() => ({})),
-}));
-
-jest.mock('@tensorflow/tfjs', () => {
-  const mockDispose = jest.fn();
-  const mockModel = {
-    predict: jest.fn(() => ({
-      dataSync: () => {
-        const scores = new Float32Array(521).fill(0.01);
-        scores[427] = 0.88; // gunshot class
-        return scores;
-      },
-      dispose: mockDispose,
-    })),
-  };
-  return {
-    ready: jest.fn().mockResolvedValue(undefined),
-    loadGraphModel: jest.fn().mockResolvedValue(mockModel),
-    tensor: jest.fn((data: Float32Array) => ({ data, dispose: mockDispose })),
-  };
-});
-
-import { AcousticDetectionService } from '../src/services/acousticDetectionService';
-import { ThreatDetection } from '../src/constants/acousticThreats';
-
-describe('AcousticDetectionService', () => {
-  test('init() resolves without throwing', async () => {
-    const service = new AcousticDetectionService(jest.fn());
-    await expect(service.init()).resolves.not.toThrow();
-  });
-
-  test('calls onThreat with gunshot detection when class 427 is high', async () => {
-    const onThreat = jest.fn<void, [ThreatDetection]>();
-    const service = new AcousticDetectionService(onThreat);
-    await service.init();
-
-    await service.processWindow(new Float32Array(15360).fill(0.1));
-
-    expect(onThreat).toHaveBeenCalledWith(
-      expect.objectContaining({ label: 'Gunshot', category: 'SECURITY_INCIDENT' })
-    );
-  });
-
-  test('does not call onThreat when all scores are below threshold', async () => {
-    const tf = require('@tensorflow/tfjs');
-    tf.loadGraphModel.mockResolvedValueOnce({
-      predict: jest.fn(() => ({
-        dataSync: () => new Float32Array(521).fill(0.05),
-        dispose: jest.fn(),
-      })),
-    });
-
-    const onThreat = jest.fn();
-    const service = new AcousticDetectionService(onThreat);
-    await service.init();
-
-    await service.processWindow(new Float32Array(15360).fill(0.0));
-    expect(onThreat).not.toHaveBeenCalled();
-  });
-
-  test('processWindow is a no-op before init() is called', async () => {
-    const onThreat = jest.fn();
-    const service = new AcousticDetectionService(onThreat);
-    await expect(service.processWindow(new Float32Array(15360))).resolves.not.toThrow();
-    expect(onThreat).not.toHaveBeenCalled();
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-```bash
-cd sentinel-mobile && npx jest __tests__/acousticDetectionService.test.ts --no-coverage
-```
-Expected: FAIL — `Cannot find module '../src/services/acousticDetectionService'`
-
-- [ ] **Step 3: Implement AcousticDetectionService**
+- [ ] **Step 1: Create acousticDetectionService.ts**
 
 ```typescript
-// sentinel-mobile/src/services/acousticDetectionService.ts
-import * as tf from '@tensorflow/tfjs';
-import { bundleResourceIO } from '@tensorflow/tfjs-react-native';
-import { getThreatFromScores, ThreatDetection } from '../constants/acousticThreats';
+// apps/pwa/src/services/acousticDetectionService.ts
+import * as tf from '@tensorflow/tfjs'
+import '@tensorflow/tfjs-backend-webgl'
+import { getThreatFromScores, ThreatDetection } from '../constants/acousticThreats'
 
-export type ThreatCallback = (detection: ThreatDetection) => void;
+// Public TF Hub URL — can be swapped for a self-hosted copy
+const YAMNET_MODEL_URL =
+  'https://tfhub.dev/google/tfjs-model/yamnet/tfjs/1/model.json?tfjs-format=file'
+
+export type ThreatCallback = (detection: ThreatDetection) => void
 
 export class AcousticDetectionService {
-  private model: tf.GraphModel | null = null;
-  private onThreat: ThreatCallback;
+  private model: tf.GraphModel | null = null
 
-  constructor(onThreat: ThreatCallback) {
-    this.onThreat = onThreat;
-  }
+  constructor(private onThreat: ThreatCallback) {}
 
   async init(): Promise<void> {
-    await tf.ready();
-    // The .tflite file is bundled via react-native-asset into app assets
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const modelAsset = require('../../android/app/src/main/assets/yamnet.tflite');
-    this.model = await tf.loadGraphModel(bundleResourceIO(modelAsset, []));
+    await tf.ready()
+    this.model = await tf.loadGraphModel(YAMNET_MODEL_URL, { fromTFHub: true })
   }
 
   async processWindow(samples: Float32Array): Promise<void> {
-    if (!this.model) return;
+    if (!this.model) return
 
-    const inputTensor = tf.tensor(samples, [samples.length]);
-    const outputTensor = this.model.predict(inputTensor) as tf.Tensor;
-    const scores = outputTensor.dataSync() as Float32Array;
+    const inputTensor = tf.tensor1d(samples)
+    const outputTensor = this.model.predict(inputTensor) as tf.Tensor
+    const scores = await outputTensor.data() as Float32Array
 
-    inputTensor.dispose();
-    outputTensor.dispose();
+    inputTensor.dispose()
+    outputTensor.dispose()
 
-    const threat = getThreatFromScores(scores);
-    if (threat) {
-      this.onThreat(threat);
-    }
+    const threat = getThreatFromScores(scores)
+    if (threat) this.onThreat(threat)
   }
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 2: Commit**
 
 ```bash
-cd sentinel-mobile && npx jest __tests__/acousticDetectionService.test.ts --no-coverage
-```
-Expected: PASS — 4 tests passing
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add sentinel-mobile/src/services/acousticDetectionService.ts \
-        sentinel-mobile/__tests__/acousticDetectionService.test.ts
-git commit -m "feat: add TFLite acoustic detection service wrapping YAMNet"
-```
-
----
-
-## Task 4: Redux slice for acoustic detection state
-
-**Files:**
-- Create: `sentinel-mobile/src/store/acousticSlice.ts`
-- Modify: `sentinel-mobile/src/store/index.ts`
-- Test: `sentinel-mobile/__tests__/acousticSlice.test.ts`
-
-- [ ] **Step 1: Write the failing test**
-
-```typescript
-// sentinel-mobile/__tests__/acousticSlice.test.ts
-import acousticReducer, {
-  detectionStarted,
-  detectionStopped,
-  detectionReceived,
-  alertDismissed,
-} from '../src/store/acousticSlice';
-import { ThreatDetection } from '../src/constants/acousticThreats';
-
-const mockDetection: ThreatDetection = {
-  classIndex: 427,
-  label: 'Gunshot',
-  category: 'SECURITY_INCIDENT',
-  confidence: 0.88,
-};
-
-const initialState = { isRunning: false, currentAlert: null, lastDetectionAt: null };
-
-describe('acousticSlice', () => {
-  test('initial state is correct', () => {
-    expect(acousticReducer(undefined, { type: '@@INIT' })).toEqual(initialState);
-  });
-
-  test('detectionStarted sets isRunning true', () => {
-    expect(acousticReducer(initialState, detectionStarted()).isRunning).toBe(true);
-  });
-
-  test('detectionStopped sets isRunning false', () => {
-    const running = { ...initialState, isRunning: true };
-    expect(acousticReducer(running, detectionStopped()).isRunning).toBe(false);
-  });
-
-  test('detectionReceived sets currentAlert and lastDetectionAt', () => {
-    const state = acousticReducer(initialState, detectionReceived(mockDetection));
-    expect(state.currentAlert).toEqual(mockDetection);
-    expect(state.lastDetectionAt).not.toBeNull();
-  });
-
-  test('alertDismissed clears currentAlert', () => {
-    const withAlert = { ...initialState, currentAlert: mockDetection, lastDetectionAt: Date.now() };
-    expect(acousticReducer(withAlert, alertDismissed()).currentAlert).toBeNull();
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-```bash
-cd sentinel-mobile && npx jest __tests__/acousticSlice.test.ts --no-coverage
-```
-Expected: FAIL — `Cannot find module '../src/store/acousticSlice'`
-
-- [ ] **Step 3: Create the slice**
-
-```typescript
-// sentinel-mobile/src/store/acousticSlice.ts
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { ThreatDetection } from '../constants/acousticThreats';
-
-interface AcousticState {
-  isRunning: boolean;
-  currentAlert: ThreatDetection | null;
-  lastDetectionAt: number | null;
-}
-
-const initialState: AcousticState = {
-  isRunning: false,
-  currentAlert: null,
-  lastDetectionAt: null,
-};
-
-const acousticSlice = createSlice({
-  name: 'acoustic',
-  initialState,
-  reducers: {
-    detectionStarted(state) { state.isRunning = true; },
-    detectionStopped(state) { state.isRunning = false; },
-    detectionReceived(state, action: PayloadAction<ThreatDetection>) {
-      state.currentAlert = action.payload;
-      state.lastDetectionAt = Date.now();
-    },
-    alertDismissed(state) { state.currentAlert = null; },
-  },
-});
-
-export const { detectionStarted, detectionStopped, detectionReceived, alertDismissed } =
-  acousticSlice.actions;
-export default acousticSlice.reducer;
-```
-
-- [ ] **Step 4: Register in store index**
-
-In `sentinel-mobile/src/store/index.ts`, add `acoustic: acousticReducer` to the `configureStore` reducer map:
-```typescript
-import acousticReducer from './acousticSlice';
-
-// inside configureStore({ reducer: { ... } })
-acoustic: acousticReducer,
-```
-
-- [ ] **Step 5: Run test to verify it passes**
-
-```bash
-cd sentinel-mobile && npx jest __tests__/acousticSlice.test.ts --no-coverage
-```
-Expected: PASS — 5 tests passing
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add sentinel-mobile/src/store/acousticSlice.ts \
-        sentinel-mobile/src/store/index.ts \
-        sentinel-mobile/__tests__/acousticSlice.test.ts
-git commit -m "feat: add acoustic detection Redux slice"
+git add apps/pwa/src/services/acousticDetectionService.ts
+git commit -m "feat: add TF.js acoustic detection service using YAMNet"
 ```
 
 ---
@@ -632,118 +383,94 @@ git commit -m "feat: add acoustic detection Redux slice"
 ## Task 5: Auto-submit acoustic detection as community report
 
 **Files:**
-- Create: `sentinel-mobile/src/services/reportAutoSubmit.ts`
-- Test: `sentinel-mobile/__tests__/reportAutoSubmit.test.ts`
-
-When a threat fires, silently POST a `PENDING` community report. If the device is offline, the existing background sync (Android WorkManager) will retry it. The report description is transparent that it came from acoustic detection — the community can then confirm or deny.
+- Create: `apps/pwa/src/services/reportAutoSubmit.ts`
+- Test: `apps/pwa/src/__tests__/reportAutoSubmit.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```typescript
-// sentinel-mobile/__tests__/reportAutoSubmit.test.ts
-global.fetch = jest.fn();
-
-jest.mock('../src/services/nostrService', () => ({
-  signReport: jest.fn().mockResolvedValue({
-    nostr_pubkey: 'fakepubkey0000000000000000000000000000000000000000000000000000000',
-    nostr_signature: 'fakesig0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000',
-  }),
-}));
-
-import { autoSubmitAcousticReport } from '../src/services/reportAutoSubmit';
-import { ThreatDetection } from '../src/constants/acousticThreats';
+// apps/pwa/src/__tests__/reportAutoSubmit.test.ts
+import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { ThreatDetection } from '../constants/acousticThreats'
 
 const mockDetection: ThreatDetection = {
   classIndex: 427, label: 'Gunshot', category: 'SECURITY_INCIDENT', confidence: 0.88,
-};
-const mockLocation = { lat: -1.2921, lng: 36.8219 };
+}
+const mockLocation = { lat: -1.2921, lng: 36.8219 }
 
 describe('autoSubmitAcousticReport', () => {
-  beforeEach(() => (global.fetch as jest.Mock).mockClear());
+  beforeEach(() => vi.restoreAllMocks())
 
-  test('POSTs to /api/reports with correct type, lat, and lng', async () => {
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ report_id: 'test-id', status: 'PENDING' }),
-    });
+  test('POSTs to /api/reports with correct type, lat, lng', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ report_id: 'test-id', status: 'PENDING' }), { status: 200 })
+    )
+    const { autoSubmitAcousticReport } = await import('../services/reportAutoSubmit')
+    await autoSubmitAcousticReport(mockDetection, mockLocation)
 
-    await autoSubmitAcousticReport(mockDetection, mockLocation);
-
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringContaining('/api/reports'),
-      expect.objectContaining({ method: 'POST' }),
-    );
+      expect.objectContaining({ method: 'POST' })
+    )
+    const body = JSON.parse((fetchSpy.mock.calls[0]![1] as RequestInit).body as string)
+    expect(body.type).toBe('SECURITY_INCIDENT')
+    expect(body.lat).toBe(-1.2921)
+    expect(body.lng).toBe(36.8219)
+    expect(body.description).toContain('Gunshot')
+    expect(body.description).toContain('acoustic')
+  })
 
-    const body = JSON.parse((fetch as jest.Mock).mock.calls[0][1].body);
-    expect(body.type).toBe('SECURITY_INCIDENT');
-    expect(body.lat).toBe(-1.2921);
-    expect(body.lng).toBe(36.8219);
-    expect(body.description).toContain('Gunshot');
-    expect(body.description).toContain('acoustic');
-  });
-
-  test('does not throw when network request fails', async () => {
-    (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network error'));
-    await expect(autoSubmitAcousticReport(mockDetection, mockLocation)).resolves.not.toThrow();
-  });
-
-  test('does not throw when server returns non-ok status', async () => {
-    (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 503 });
-    await expect(autoSubmitAcousticReport(mockDetection, mockLocation)).resolves.not.toThrow();
-  });
-});
+  test('does not throw when fetch rejects', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('network'))
+    const { autoSubmitAcousticReport } = await import('../services/reportAutoSubmit')
+    await expect(autoSubmitAcousticReport(mockDetection, mockLocation)).resolves.not.toThrow()
+  })
+})
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd sentinel-mobile && npx jest __tests__/reportAutoSubmit.test.ts --no-coverage
+cd apps/pwa && npx vitest run src/__tests__/reportAutoSubmit.test.ts --no-coverage
 ```
-Expected: FAIL — `Cannot find module '../src/services/reportAutoSubmit'`
+Expected: FAIL
 
-- [ ] **Step 3: Implement autoSubmitAcousticReport**
+- [ ] **Step 3: Implement reportAutoSubmit.ts**
 
 ```typescript
-// sentinel-mobile/src/services/reportAutoSubmit.ts
-import { ThreatDetection } from '../constants/acousticThreats';
-import { signReport } from './nostrService';
+// apps/pwa/src/services/reportAutoSubmit.ts
+import { ThreatDetection } from '../constants/acousticThreats'
 
-const API_BASE = process.env.API_BASE_URL ?? 'https://api.sentinelmesh.ke';
+const API_BASE = import.meta.env['VITE_API_BASE_URL'] as string ?? ''
 
-interface Location { lat: number; lng: number; }
+interface Location { lat: number; lng: number }
 
 export async function autoSubmitAcousticReport(
   detection: ThreatDetection,
   location: Location,
 ): Promise<void> {
   const description =
-    `[Acoustic detection] ${detection.label} detected on-device ` +
+    `[Acoustic detection] ${detection.label} detected in browser ` +
     `(confidence: ${Math.round(detection.confidence * 100)}%). ` +
-    `Auto-submitted for community verification — please confirm or deny if you are nearby.`;
-
-  const payload = {
-    type: detection.category,
-    description,
-    lat: location.lat,
-    lng: location.lng,
-    timestamp: Date.now(),
-  };
+    `Auto-submitted for community verification — please confirm if you are nearby.`
 
   try {
-    const { nostr_pubkey, nostr_signature } = await signReport(payload);
-
     const response = await fetch(`${API_BASE}/api/reports`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, nostr_pubkey, nostr_signature }),
-    });
-
+      body: JSON.stringify({
+        type: detection.category,
+        description,
+        lat: location.lat,
+        lng: location.lng,
+        timestamp: Date.now(),
+      }),
+    })
     if (!response.ok) {
-      console.warn('[autoSubmit] server rejected acoustic report:', response.status);
+      console.warn('[autoSubmit] server rejected acoustic report:', response.status)
     }
   } catch (err) {
-    // Offline or transient error — WorkManager background sync will retry
-    console.warn('[autoSubmit] acoustic report queued for retry:', err);
+    console.warn('[autoSubmit] acoustic report failed (offline?):', err)
   }
 }
 ```
@@ -751,254 +478,298 @@ export async function autoSubmitAcousticReport(
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-cd sentinel-mobile && npx jest __tests__/reportAutoSubmit.test.ts --no-coverage
+cd apps/pwa && npx vitest run src/__tests__/reportAutoSubmit.test.ts --no-coverage
 ```
-Expected: PASS — 3 tests passing
+Expected: PASS — 2 tests passing
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add sentinel-mobile/src/services/reportAutoSubmit.ts \
-        sentinel-mobile/__tests__/reportAutoSubmit.test.ts
-git commit -m "feat: auto-submit acoustic detections as PENDING community reports"
+git add apps/pwa/src/services/reportAutoSubmit.ts apps/pwa/src/__tests__/reportAutoSubmit.test.ts
+git commit -m "feat: add acoustic auto-submit for community reports (PWA)"
 ```
 
 ---
 
-## Task 6: AcousticAlert banner component
+## Task 6: Redux slice for acoustic detection state
 
 **Files:**
-- Create: `sentinel-mobile/src/components/AcousticAlert.tsx`
-- Test: `sentinel-mobile/__tests__/AcousticAlert.test.tsx`
-
-Displays a coloured banner at the top of the screen when a threat is detected. Auto-dismisses after 30 seconds.
+- Create: `apps/pwa/src/store/acousticSlice.ts`
+- Modify: `apps/pwa/src/store/index.ts`
+- Test: `apps/pwa/src/__tests__/acousticSlice.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```typescript
-// sentinel-mobile/__tests__/AcousticAlert.test.tsx
-import React from 'react';
-import { render, fireEvent, act } from '@testing-library/react-native';
-import { AcousticAlert } from '../src/components/AcousticAlert';
-import { ThreatDetection } from '../src/constants/acousticThreats';
-
-jest.useFakeTimers();
+// apps/pwa/src/__tests__/acousticSlice.test.ts
+import { describe, test, expect } from 'vitest'
+import acousticReducer, {
+  detectionStarted, detectionStopped, detectionReceived, alertDismissed,
+} from '../store/acousticSlice'
+import { ThreatDetection } from '../constants/acousticThreats'
 
 const mockDetection: ThreatDetection = {
   classIndex: 427, label: 'Gunshot', category: 'SECURITY_INCIDENT', confidence: 0.88,
-};
+}
 
-describe('AcousticAlert', () => {
-  test('renders null when detection is null', () => {
-    const { toJSON } = render(<AcousticAlert detection={null} onDismiss={jest.fn()} />);
-    expect(toJSON()).toBeNull();
-  });
-
-  test('renders threat label and confidence percentage', () => {
-    const { getByText } = render(<AcousticAlert detection={mockDetection} onDismiss={jest.fn()} />);
-    expect(getByText(/Gunshot/)).toBeTruthy();
-    expect(getByText(/88%/)).toBeTruthy();
-  });
-
-  test('calls onDismiss when dismiss button is pressed', () => {
-    const onDismiss = jest.fn();
-    const { getByTestId } = render(<AcousticAlert detection={mockDetection} onDismiss={onDismiss} />);
-    fireEvent.press(getByTestId('acoustic-dismiss'));
-    expect(onDismiss).toHaveBeenCalled();
-  });
-
-  test('auto-dismisses after 30 seconds', () => {
-    const onDismiss = jest.fn();
-    render(<AcousticAlert detection={mockDetection} onDismiss={onDismiss} />);
-    act(() => jest.advanceTimersByTime(30_000));
-    expect(onDismiss).toHaveBeenCalled();
-  });
-});
+describe('acousticSlice', () => {
+  test('initial state is correct', () => {
+    expect(acousticReducer(undefined, { type: '@@INIT' })).toEqual({
+      isRunning: false, currentAlert: null, lastDetectionAt: null,
+    })
+  })
+  test('detectionStarted sets isRunning true', () => {
+    const state = acousticReducer(undefined, detectionStarted())
+    expect(state.isRunning).toBe(true)
+  })
+  test('detectionStopped sets isRunning false', () => {
+    const state = acousticReducer({ isRunning: true, currentAlert: null, lastDetectionAt: null }, detectionStopped())
+    expect(state.isRunning).toBe(false)
+  })
+  test('detectionReceived sets currentAlert and lastDetectionAt', () => {
+    const state = acousticReducer(undefined, detectionReceived(mockDetection))
+    expect(state.currentAlert).toEqual(mockDetection)
+    expect(state.lastDetectionAt).not.toBeNull()
+  })
+  test('alertDismissed clears currentAlert', () => {
+    const withAlert = { isRunning: false, currentAlert: mockDetection, lastDetectionAt: Date.now() }
+    expect(acousticReducer(withAlert, alertDismissed()).currentAlert).toBeNull()
+  })
+})
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd sentinel-mobile && npx jest __tests__/AcousticAlert.test.tsx --no-coverage
+cd apps/pwa && npx vitest run src/__tests__/acousticSlice.test.ts --no-coverage
 ```
-Expected: FAIL — `Cannot find module '../src/components/AcousticAlert'`
+Expected: FAIL
 
-- [ ] **Step 3: Implement AcousticAlert**
+- [ ] **Step 3: Create acousticSlice.ts**
+
+```typescript
+// apps/pwa/src/store/acousticSlice.ts
+import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { ThreatDetection } from '../constants/acousticThreats'
+
+interface AcousticState {
+  isRunning: boolean
+  currentAlert: ThreatDetection | null
+  lastDetectionAt: number | null
+}
+
+const initialState: AcousticState = {
+  isRunning: false,
+  currentAlert: null,
+  lastDetectionAt: null,
+}
+
+const acousticSlice = createSlice({
+  name: 'acoustic',
+  initialState,
+  reducers: {
+    detectionStarted(state) { state.isRunning = true },
+    detectionStopped(state) { state.isRunning = false },
+    detectionReceived(state, action: PayloadAction<ThreatDetection>) {
+      state.currentAlert = action.payload
+      state.lastDetectionAt = Date.now()
+    },
+    alertDismissed(state) { state.currentAlert = null },
+  },
+})
+
+export const { detectionStarted, detectionStopped, detectionReceived, alertDismissed } =
+  acousticSlice.actions
+export default acousticSlice.reducer
+```
+
+- [ ] **Step 4: Register in store/index.ts**
+
+In `apps/pwa/src/store/index.ts`, import and add:
+```typescript
+import acousticReducer from './acousticSlice'
+// inside configureStore reducer map:
+acoustic: acousticReducer,
+```
+
+- [ ] **Step 5: Run test to verify it passes**
+
+```bash
+cd apps/pwa && npx vitest run src/__tests__/acousticSlice.test.ts --no-coverage
+```
+Expected: PASS — 5 tests passing
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/pwa/src/store/acousticSlice.ts apps/pwa/src/store/index.ts apps/pwa/src/__tests__/acousticSlice.test.ts
+git commit -m "feat: add acoustic detection Redux slice (PWA)"
+```
+
+---
+
+## Task 7: AcousticAlert banner component
+
+**Files:**
+- Create: `apps/pwa/src/components/AcousticAlert.tsx`
+
+Plain React component (no React Native — pure HTML/CSS).
+
+- [ ] **Step 1: Create AcousticAlert.tsx**
 
 ```tsx
-// sentinel-mobile/src/components/AcousticAlert.tsx
-import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { ThreatDetection } from '../constants/acousticThreats';
+// apps/pwa/src/components/AcousticAlert.tsx
+import { useEffect } from 'react'
+import { ThreatDetection } from '../constants/acousticThreats'
 
 const CATEGORY_COLOUR: Record<string, string> = {
   SECURITY_INCIDENT: '#FF2D2D',
   FIRE:              '#FF8C00',
   CIVIL_UNREST:      '#FF8C00',
   ACCIDENT:          '#FFD700',
-};
+}
 
 interface Props {
-  detection: ThreatDetection | null;
-  onDismiss: () => void;
+  detection: ThreatDetection | null
+  onDismiss: () => void
 }
 
 export function AcousticAlert({ detection, onDismiss }: Props) {
   useEffect(() => {
-    if (!detection) return;
-    const timer = setTimeout(onDismiss, 30_000);
-    return () => clearTimeout(timer);
-  }, [detection, onDismiss]);
+    if (!detection) return
+    const timer = setTimeout(onDismiss, 30_000)
+    return () => clearTimeout(timer)
+  }, [detection, onDismiss])
 
-  if (!detection) return null;
+  if (!detection) return null
 
-  const bg = CATEGORY_COLOUR[detection.category] ?? '#FF2D2D';
+  const bg = CATEGORY_COLOUR[detection.category] ?? '#FF2D2D'
 
   return (
-    <View style={[styles.banner, { backgroundColor: bg }]}>
-      <View style={styles.body}>
-        <Text style={styles.title}>⚠ {detection.label} detected nearby</Text>
-        <Text style={styles.conf}>Confidence: {Math.round(detection.confidence * 100)}%</Text>
-        <Text style={styles.sub}>
-          Submitted for community verification. Stay alert and move to safety.
-        </Text>
-      </View>
-      <TouchableOpacity testID="acoustic-dismiss" onPress={onDismiss} style={styles.close}>
-        <Text style={styles.closeText}>✕</Text>
-      </TouchableOpacity>
-    </View>
-  );
+    <div style={{
+      position: 'absolute', top: 56, left: 12, right: 12, zIndex: 20,
+      background: bg, borderRadius: 8, padding: '12px 16px',
+      display: 'flex', alignItems: 'flex-start', gap: 12,
+      boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+    }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ color: '#fff', fontWeight: 700, fontSize: 15, fontFamily: 'sans-serif' }}>
+          ⚠ {detection.label} detected nearby
+        </div>
+        <div style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12, marginTop: 3, fontFamily: 'sans-serif' }}>
+          Confidence: {Math.round(detection.confidence * 100)}%
+        </div>
+        <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11, marginTop: 4, fontFamily: 'sans-serif' }}>
+          Submitted for community verification. Stay alert.
+        </div>
+      </div>
+      <button
+        data-testid="acoustic-dismiss"
+        onClick={onDismiss}
+        style={{
+          background: 'none', border: 'none', color: '#fff',
+          fontSize: 20, fontWeight: 700, cursor: 'pointer', padding: 0,
+        }}
+      >
+        ✕
+      </button>
+    </div>
+  )
 }
-
-const styles = StyleSheet.create({
-  banner:    { flexDirection: 'row', padding: 12, margin: 8, borderRadius: 8, elevation: 8, zIndex: 999 },
-  body:      { flex: 1 },
-  title:     { color: '#fff', fontWeight: '700', fontSize: 15 },
-  conf:      { color: '#fff', fontSize: 12, opacity: 0.9, marginTop: 2 },
-  sub:       { color: '#fff', fontSize: 11, opacity: 0.8, marginTop: 4 },
-  close:     { justifyContent: 'center', paddingLeft: 12 },
-  closeText: { color: '#fff', fontSize: 22, fontWeight: '700' },
-});
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 2: Commit**
 
 ```bash
-cd sentinel-mobile && npx jest __tests__/AcousticAlert.test.tsx --no-coverage
-```
-Expected: PASS — 4 tests passing
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add sentinel-mobile/src/components/AcousticAlert.tsx \
-        sentinel-mobile/__tests__/AcousticAlert.test.tsx
-git commit -m "feat: add AcousticAlert banner with auto-dismiss"
+git add apps/pwa/src/components/AcousticAlert.tsx
+git commit -m "feat: add AcousticAlert banner component (PWA)"
 ```
 
 ---
 
-## Task 7: Wire acoustic detection into MapScreen
+## Task 8: Wire acoustic detection into App.tsx
 
 **Files:**
-- Modify: `sentinel-mobile/src/screens/MapScreen.tsx`
+- Modify: `apps/pwa/src/App.tsx`
 
-Requests microphone permission on mount, initialises `AudioCapture` + `AcousticDetectionService`, dispatches Redux actions, renders `AcousticAlert`, and auto-submits reports.
+- [ ] **Step 1: Update App.tsx**
 
-- [ ] **Step 1: Add imports to MapScreen.tsx**
-
-Find the import block at the top of `sentinel-mobile/src/screens/MapScreen.tsx` and add:
-```typescript
-import { PermissionsAndroid } from 'react-native';
-import { useDispatch, useSelector } from 'react-redux';
-import { AudioCapture } from '../services/audioCapture';
-import { AcousticDetectionService } from '../services/acousticDetectionService';
-import { autoSubmitAcousticReport } from '../services/reportAutoSubmit';
-import { detectionReceived, alertDismissed, detectionStarted, detectionStopped } from '../store/acousticSlice';
-import { AcousticAlert } from '../components/AcousticAlert';
-import type { RootState } from '../store';
-```
-
-- [ ] **Step 2: Add detection hook inside the MapScreen component body**
-
-Place this inside the MapScreen function body, after existing hooks:
-```typescript
-const dispatch = useDispatch();
-const currentAlert  = useSelector((s: RootState) => s.acoustic.currentAlert);
-const userLocation  = useSelector((s: RootState) => s.location.current);
-
-useEffect(() => {
-  let capture: AudioCapture | null = null;
-  let detector: AcousticDetectionService | null = null;
-
-  async function start() {
-    const granted = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-      {
-        title: 'Microphone for threat detection',
-        message:
-          'SentinelMesh uses your microphone to detect nearby threats on-device. ' +
-          'No audio is ever sent to a server.',
-        buttonPositive: 'Allow',
-        buttonNegative: 'No thanks',
-      },
-    );
-    if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
-
-    detector = new AcousticDetectionService((detection) => {
-      dispatch(detectionReceived(detection));
-      if (userLocation) autoSubmitAcousticReport(detection, userLocation);
-    });
-    await detector.init();
-
-    capture = new AudioCapture((samples) => detector?.processWindow(samples));
-    capture.start();
-    dispatch(detectionStarted());
-  }
-
-  start();
-
-  return () => {
-    capture?.stop();
-    dispatch(detectionStopped());
-  };
-}, []); // intentionally runs once on mount
-```
-
-- [ ] **Step 3: Add AcousticAlert to the JSX**
-
-Inside MapScreen's return, wrap existing content so `AcousticAlert` renders above the map:
 ```tsx
-return (
-  <>
-    <AcousticAlert
-      detection={currentAlert}
-      onDismiss={() => dispatch(alertDismissed())}
-    />
-    {/* existing MapView and other components unchanged */}
-  </>
-);
+// apps/pwa/src/App.tsx
+import { useEffect, useCallback } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import SafetyMap from './components/SafetyMap'
+import { AcousticAlert } from './components/AcousticAlert'
+import { useWsConnection } from './services/websocket'
+import { AudioCapture } from './services/audioCapture'
+import { AcousticDetectionService } from './services/acousticDetectionService'
+import { autoSubmitAcousticReport } from './services/reportAutoSubmit'
+import { detectionReceived, alertDismissed, detectionStarted, detectionStopped } from './store/acousticSlice'
+import type { RootState } from './store'
+
+export default function App() {
+  useWsConnection()
+  const dispatch = useDispatch()
+  const currentAlert = useSelector((s: RootState) => s.acoustic.currentAlert)
+
+  const handleDismiss = useCallback(() => dispatch(alertDismissed()), [dispatch])
+
+  useEffect(() => {
+    let capture: AudioCapture | null = null
+    let detector: AcousticDetectionService | null = null
+
+    async function start() {
+      detector = new AcousticDetectionService((detection) => {
+        dispatch(detectionReceived(detection))
+        // Auto-submit using geolocation if available
+        navigator.geolocation?.getCurrentPosition((pos) => {
+          autoSubmitAcousticReport(detection, {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          })
+        })
+      })
+
+      try {
+        await detector.init()
+        capture = new AudioCapture((samples) => detector?.processWindow(samples))
+        await capture.start()
+        dispatch(detectionStarted())
+      } catch (err) {
+        // Microphone denied or model failed to load — fail silently, detection is optional
+        console.warn('[acoustic] detection unavailable:', err)
+      }
+    }
+
+    start()
+
+    return () => {
+      capture?.stop()
+      dispatch(detectionStopped())
+    }
+  }, [dispatch])
+
+  return (
+    <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
+      <AcousticAlert detection={currentAlert} onDismiss={handleDismiss} />
+      <SafetyMap />
+    </div>
+  )
+}
 ```
 
-- [ ] **Step 4: Run all acoustic tests together**
+- [ ] **Step 2: Run all tests**
 
 ```bash
-cd sentinel-mobile && npx jest \
-  __tests__/acousticThreats.test.ts \
-  __tests__/audioCapture.test.ts \
-  __tests__/acousticDetectionService.test.ts \
-  __tests__/acousticSlice.test.ts \
-  __tests__/reportAutoSubmit.test.ts \
-  __tests__/AcousticAlert.test.tsx \
-  --no-coverage
+cd apps/pwa && npx vitest run --no-coverage
 ```
-Expected: All tests PASS (26+ assertions)
+Expected: All tests passing (acousticThreats, acousticSlice, reportAutoSubmit)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add sentinel-mobile/src/screens/MapScreen.tsx
-git commit -m "feat: mount acoustic detection in MapScreen with mic permission and alert overlay"
+git add apps/pwa/src/App.tsx
+git commit -m "feat: wire acoustic detection and alert into PWA App"
 ```
 
 ---
@@ -1006,15 +777,17 @@ git commit -m "feat: mount acoustic detection in MapScreen with mic permission a
 ## Self-Review
 
 **Spec coverage:**
-- [x] On-device TFLite inference, no network for detection — Tasks 2–3
+- [x] On-device inference, no audio sent to server — AudioWorklet + TF.js runs in browser
 - [x] Threats: gunshot, explosion, screaming, glass breaking, crowd, fire alarm — Task 1 map
-- [x] Confidence threshold 0.80 — `DETECTION_THRESHOLD` constant
-- [x] High-confidence detection → local alert — Tasks 6–7
-- [x] Auto-submits community report — Task 5
-- [x] Uses existing `/api/reports` endpoint — Task 5 (no new backend)
-- [x] False positives suppressed via community consensus — report enters PENDING state, needs proximity confirmations to promote
-- [x] Works offline — Tasks 2–3 (no network in detection path); offline retry delegated to existing WorkManager
+- [x] Detection threshold 0.80 — `DETECTION_THRESHOLD` constant
+- [x] Alert on detection — AcousticAlert in App.tsx
+- [x] Auto-submits community report — reportAutoSubmit → existing /api/reports
+- [x] False positives suppressed by community consensus — report enters PENDING, needs confirmation
+- [x] Graceful failure if mic denied — try/catch in App.tsx, detection is optional
 
-**Placeholder scan:** None found.
-
-**Type consistency:** `ThreatDetection` defined once in `acousticThreats.ts`, imported by all other files. `AudioWindowCallback` and `ThreatCallback` defined in their respective files and not reused elsewhere.
+**Platform adaptation from original plan:**
+- `react-native-audio-record` → Web Audio API + AudioWorklet
+- `@tensorflow/tfjs-react-native` → `@tensorflow/tfjs` (browser)
+- React Native components → plain React with inline styles
+- `@rnmapbox/maps` — not needed for this plan (safe routes plan handles map layer)
+- Android Keystore → not applicable (PWA has no persistent key storage)

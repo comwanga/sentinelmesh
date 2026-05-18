@@ -5,7 +5,6 @@ import { geocodeAddress, type GeocodeSuggestion } from '../services/geocodingSer
 import { fetchRouteToHome } from '../services/routingService'
 import { useCurrentLocation } from '../hooks/useCurrentLocation'
 
-const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string
 const HOME_KEY = 'sentinel_home_location'
 
 interface Props {
@@ -33,7 +32,7 @@ export function HomeRoutePanel({ onClose }: Props) {
     if (trimmed.length < 2) { setSuggestions([]); return }
     setSearching(true)
     debounceRef.current = setTimeout(async () => {
-      const results = await geocodeAddress(trimmed, TOKEN, location ?? undefined)
+      const results = await geocodeAddress(trimmed, location ?? undefined)
       setSuggestions(results)
       setSearching(false)
     }, 400)
@@ -69,7 +68,6 @@ export function HomeRoutePanel({ onClose }: Props) {
       { lat: location.lat, lng: location.lng },
       { lat: homeLocation.lat, lng: homeLocation.lng },
       dangerZones,
-      TOKEN,
     )
     setRouting(false)
     if (!route) {
