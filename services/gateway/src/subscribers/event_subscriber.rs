@@ -151,6 +151,10 @@ async fn handle_message(
            severity   = EXCLUDED.severity,
            title      = EXCLUDED.title,
            summary    = EXCLUDED.summary,
+           state      = CASE WHEN EXCLUDED.is_active
+                             THEN COALESCE(safety_events.state, 'ACTIVE')
+                             ELSE 'RESOLVED'
+                        END,
            updated_at = NOW()",
     )
     .bind(event.id)
