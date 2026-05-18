@@ -1,6 +1,6 @@
 # SentinelMesh
 
-A public safety app for Kenya. It shows live threats on a map, lets communities report incidents, and helps families stay safe — without collecting personal data.
+A global public safety app. It shows live threats on a map, lets communities report incidents, and helps families stay safe — without collecting personal data.
 
 ---
 
