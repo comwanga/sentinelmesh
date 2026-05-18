@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { Provider } from 'react-redux'
 import { RouterProvider } from 'react-router-dom'
+import 'maplibre-gl/dist/maplibre-gl.css'
 import { store } from './store'
 import { router } from './router'
 
