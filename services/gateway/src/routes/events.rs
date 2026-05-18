@@ -190,6 +190,7 @@ impl From<SafetyEvent> for sentinel_core::Event {
             place_name: row.place_name,
             county: row.county,
             is_active: row.is_active,
+            state: None,
             created_at: row.created_at,
         }
     }

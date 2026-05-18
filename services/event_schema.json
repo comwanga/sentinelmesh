@@ -61,6 +61,12 @@
       "type": "string",
       "format": "date-time"
     },
+    "state": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "summary": {
       "type": [
         "string",

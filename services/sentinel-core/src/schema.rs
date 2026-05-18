@@ -17,6 +17,7 @@ pub struct RedisEventPayload {
     pub place_name: Option<String>,
     pub county: Option<String>,
     pub is_active: bool,
+    pub state: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -34,6 +35,7 @@ impl From<RedisEventPayload> for crate::Event {
             place_name: p.place_name,
             county: p.county,
             is_active: p.is_active,
+            state: p.state,
             created_at: p.created_at,
         }
     }
@@ -53,6 +55,7 @@ impl From<&RedisEventPayload> for crate::Event {
             place_name: p.place_name.clone(),
             county: p.county.clone(),
             is_active: p.is_active,
+            state: p.state.clone(),
             created_at: p.created_at,
         }
     }
@@ -77,6 +80,7 @@ mod tests {
             place_name: Some("Uhuru Park".into()),
             county: Some("Nairobi".into()),
             is_active: true,
+            state: Some("ACTIVE".into()),
             created_at: Utc::now(),
         }
     }
@@ -111,6 +115,7 @@ mod tests {
         assert_eq!(payload.place_name, event.place_name);
         assert_eq!(payload.started_at, event.started_at);
         assert_eq!(payload.created_at, event.created_at);
+        assert_eq!(payload.state, event.state);
     }
 
     #[test]

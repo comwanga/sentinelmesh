@@ -20,6 +20,8 @@ pub struct Event {
     pub place_name: Option<String>,
     pub county: Option<String>,
     pub is_active: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -41,6 +43,7 @@ mod tests {
             place_name: Some("Main St".into()),
             county: Some("Nairobi".into()),
             is_active: true,
+            state: Some("ACTIVE".into()),
             created_at: Utc::now(),
         }
     }
@@ -68,5 +71,29 @@ mod tests {
         assert_eq!(back.summary, None);
         assert_eq!(back.place_name, None);
         assert_eq!(back.county, None);
+    }
+
+    #[test]
+    fn state_field_present() {
+        let e = sample();
+        let _: Option<String> = e.state;
+    }
+
+    #[test]
+    fn state_none_round_trip() {
+        let mut e = sample();
+        e.state = None;
+        let json = serde_json::to_string(&e).unwrap();
+        let back: Event = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.state, None);
+    }
+
+    #[test]
+    fn state_some_round_trip() {
+        let mut e = sample();
+        e.state = Some("ACTIVE".into());
+        let json = serde_json::to_string(&e).unwrap();
+        let back: Event = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.state, Some("ACTIVE".into()));
     }
 }
