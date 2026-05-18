@@ -97,7 +97,7 @@ export function LiveMapPage() {
 
           <MapCanvas initialViewState={initialViewport} onMapLoad={handleMapLoad}>
             <RadiusZoneLayer events={visibleEvents} />
-            <EventClusterLayer zoom={2} />
+            <EventClusterLayer />
             {currentLocation && <LocationMarker location={currentLocation} />}
             <SafeRouteOverlay />
             <HomeRouteLayer />

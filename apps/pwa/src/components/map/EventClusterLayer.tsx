@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { Marker } from 'react-map-gl/maplibre'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Marker, useMap } from 'react-map-gl/maplibre'
 import { useAppSelector } from '../../store'
 import { selectEventItems } from '../../store/eventsSlice'
 import EventMarker from '../EventMarker'
@@ -52,11 +52,23 @@ function buildClusters(events: SafetyEvent[], zoom: number): Cluster[] {
 }
 
 interface Props {
-  zoom?: number
+  zoom?: number  // override for tests; defaults to live map zoom
   onEventClick?: (event: SafetyEvent) => void
 }
 
-export function EventClusterLayer({ zoom = 2, onEventClick }: Props) {
+export function EventClusterLayer({ zoom: zoomProp, onEventClick }: Props) {
+  const { current: map } = useMap()
+  const [mapZoom, setMapZoom] = useState<number>(map?.getZoom() ?? 2)
+
+  useEffect(() => {
+    if (!map) return
+    const onZoom = () => setMapZoom(map.getZoom())
+    map.on('zoom', onZoom)
+    return () => { map.off('zoom', onZoom) }
+  }, [map])
+
+  const zoom = zoomProp ?? mapZoom
+
   const allEvents = useAppSelector(selectEventItems)
   const activeEvents = useMemo(() => allEvents.filter(e => e.is_active), [allEvents])
 
