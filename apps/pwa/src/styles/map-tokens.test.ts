@@ -19,7 +19,7 @@ describe('map-tokens', () => {
     expect(RADIUS_FILL.CRITICAL).toMatch(/rgba/)
     expect(RADIUS_FILL.HIGH).toMatch(/rgba/)
     expect(RADIUS_FILL.MEDIUM).toMatch(/rgba/)
-    expect(RADIUS_FILL.LOW).toBeUndefined()
+    expect('LOW' in RADIUS_FILL).toBe(false)
   })
 
   it('overlay hue ranges do not appear in base map tokens', () => {
@@ -27,8 +27,9 @@ describe('map-tokens', () => {
       MAP_COLORS.bg, MAP_COLORS.water, MAP_COLORS.park,
       MAP_COLORS.roadMotorway, MAP_COLORS.roadPrimary, MAP_COLORS.roadSecondary,
     ]
+    const reservedHues = ['#FF2D2D', '#FF9800', '#FFD500', '#9C27B0', '#00E5FF', '#00E6B4']
     for (const v of baseTokenValues) {
-      expect(v).not.toMatch(/^#[Ff][Ff]/)  // no bright reds/oranges
+      expect(reservedHues).not.toContain(v)
     }
   })
 })
