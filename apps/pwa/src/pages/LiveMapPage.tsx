@@ -18,6 +18,7 @@ import { MapOverlayHost } from '../components/map/MapOverlayHost'
 import { LocationMarker } from '../components/map/LocationMarker'
 import { HomeRouteLayer } from '../components/map/HomeRouteLayer'
 import { SafeRouteOverlay } from '../components/SafeRouteOverlay'
+import { RadiusZoneLayer } from '../components/map/RadiusZoneLayer'
 import type { EventType } from '../../../../shared/types'
 
 type FilterId = 'gunshots' | 'violence' | 'protests' | 'accidents' | 'other'
@@ -96,6 +97,7 @@ export function LiveMapPage() {
           )}
 
           <MapCanvas initialViewState={initialViewport} onMapLoad={handleMapLoad}>
+            <RadiusZoneLayer events={visibleEvents} />
             {visibleEvents.filter(e => e.is_active).map(event => (
               <Marker key={event.id} longitude={event.lng} latitude={event.lat} anchor="center">
                 <EventMarker event={event} onClick={() => {}} />
