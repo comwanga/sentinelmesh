@@ -14,6 +14,13 @@ export type EventType =
 
 export type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
 
+export type EventState =
+  | 'REPORTED'
+  | 'ACTIVE'
+  | 'UPDATED'
+  | 'RESOLVED'
+  | 'EXPIRED'
+
 export type ReportStatus =
   | 'PENDING'
   | 'UNVERIFIED'
@@ -35,6 +42,7 @@ export interface SafetyEvent {
   place_name: string | null
   county: string | null
   is_active: boolean
+  state: EventState
   started_at: string
   created_at: string
   nostr_event_id: string | null

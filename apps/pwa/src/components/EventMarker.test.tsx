@@ -6,7 +6,7 @@ import type { SafetyEvent } from '../../../../shared/types'
 const base: SafetyEvent = {
   id: '1', event_type: 'SECURITY_INCIDENT', severity: 'CRITICAL',
   title: 'Test', summary: null, lat: -1.28, lng: 36.82,
-  place_name: null, county: null, is_active: true,
+  place_name: null, county: null, is_active: true, state: 'ACTIVE',
   started_at: '2026-05-18T00:00:00Z', created_at: '2026-05-18T00:00:00Z',
   nostr_event_id: null, bitcoin_txid: null,
 }
