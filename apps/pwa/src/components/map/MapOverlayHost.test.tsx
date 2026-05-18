@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, within, act } from '@testing-library/react'
 import { MapOverlayHost } from './MapOverlayHost'
 
 // Create portal target before tests
@@ -45,5 +45,18 @@ describe('MapOverlayHost', () => {
   it('portal target exists in document', () => {
     render(<MapOverlayHost />)
     expect(document.getElementById('map-overlay-portal')).not.toBeNull()
+  })
+
+  it('renders acoustic overlay into portal when intent is acoustic', () => {
+    vi.mocked(useAppSelector).mockImplementation((selector: unknown) => {
+      const fn = selector as (s: unknown) => unknown
+      return fn({
+        ui: { uiIntent: { name: 'acoustic' } },
+        events: { items: [] },
+      })
+    })
+    render(<MapOverlayHost />)
+    const portal = document.getElementById('map-overlay-portal')!
+    expect(within(portal).getByTestId('acoustic')).toBeInTheDocument()
   })
 })

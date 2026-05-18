@@ -30,17 +30,21 @@ export function MapOverlayHost() {
       ?? events.find(e => e.is_active)
     if (!activeEvent) return
 
+    let mounted = true
     navigator.geolocation?.getCurrentPosition(async (pos) => {
+      if (!mounted) return
       const userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude }
       const eventLocation = { lat: activeEvent.lat, lng: activeEvent.lng }
-      const radiusKm = ((activeEvent as Record<string, unknown>).radius_meters as number ?? 500) / 1000
+      const radiusKm = (Number((activeEvent as Record<string, unknown>).radius_meters) || 500) / 1000
       try {
         const result = await fetchSafeRoutes(userLocation, eventLocation, radiusKm)
+        if (!mounted) return
         dispatch(safeRoutesSet(result.map((r, i) => ({ id: `r${i}`, coordinates: r.coordinates }))))
       } catch {
         // Leave routes empty — overlay shows "no routes" state
       }
     })
+    return () => { mounted = false }
   }, [overlay, events, dispatch])
 
   const portalRoot = typeof document !== 'undefined'
@@ -50,9 +54,6 @@ export function MapOverlayHost() {
   if (!overlay) return null
   if (!portalRoot) return null
 
-  const presentation: 'panel' | 'sheet' | 'fullscreen' =
-    layout === 'desktop' ? 'panel' : overlay === 'acoustic' ? 'fullscreen' : 'sheet'
-
   let content: React.ReactNode = null
 
   if (overlay === 'acoustic') {
@@ -61,7 +62,7 @@ export function MapOverlayHost() {
         position: 'absolute',
         inset: 0,
         zIndex: 200,
-        pointerEvents: presentation === 'fullscreen' ? 'all' : 'none',
+        pointerEvents: layout !== 'desktop' ? 'all' : 'none',
       }}>
         <AcousticAlert onClose={() => setOverlay(null)} />
       </div>
