@@ -295,15 +295,14 @@ async fn handle_events_ws(mut socket: WebSocket, state: crate::AppState) {
                         let is_known = known.contains_key(&id);
 
                         if let Ok(ws_evt) = serde_json::from_str::<WsEvent>(&vpe.event_json) {
+                            let digest = EventDigest { severity: ws_evt.severity.clone(), state: ws_evt.state.clone() };
                             let (added, updated) = if is_known {
-                                (vec![], vec![ws_evt.clone()])
+                                (vec![], vec![ws_evt])
                             } else {
-                                (vec![ws_evt.clone()], vec![])
+                                (vec![ws_evt], vec![])
                             };
 
-                            if let Some(d) = parse_digest_from_json(&vpe.event_json) {
-                                known.insert(id, d);
-                            }
+                            known.insert(id, digest);
 
                             let json = serde_json::to_string(&ServerMsg::DiffPatch {
                                 added,
@@ -315,6 +314,8 @@ async fn handle_events_ws(mut socket: WebSocket, state: crate::AppState) {
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {
                         tracing::warn!("viewport WS lagged by {n}, sending snapshot");
+                        // Resubscribe first so we don't miss events published during the DB query
+                        rx = state.event_tx.subscribe();
                         if let Ok(events) =
                             query_viewport_events(&state.db, &current_bounds, &filters, current_zoom).await
                         {
@@ -329,7 +330,6 @@ async fn handle_events_ws(mut socket: WebSocket, state: crate::AppState) {
                             }).unwrap();
                             if socket.send(Message::Text(json)).await.is_err() { break; }
                         }
-                        rx = state.event_tx.subscribe();
                     }
                     Err(_) => break,
                 }
