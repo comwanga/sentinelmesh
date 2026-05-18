@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Marker } from 'react-map-gl/maplibre'
 import { useAppSelector } from '../../store'
 import { selectEventItems } from '../../store/eventsSlice'
@@ -9,6 +9,8 @@ import type { SafetyEvent } from '../../../../../shared/types'
 // Hysteresis thresholds: dissolve clusters above DISSOLVE_ZOOM, re-form below FORM_ZOOM
 const DISSOLVE_ZOOM = 13.2
 const FORM_ZOOM     = 12.8
+
+const noop = () => {}
 
 interface Cluster {
   id: string
@@ -59,10 +61,16 @@ export function EventClusterLayer({ zoom = 2, onEventClick }: Props) {
   const activeEvents = useMemo(() => allEvents.filter(e => e.is_active), [allEvents])
 
   const clusteredRef = useRef(zoom < DISSOLVE_ZOOM)
-  if (zoom >= DISSOLVE_ZOOM) clusteredRef.current = false
-  if (zoom <= FORM_ZOOM)     clusteredRef.current = true
 
-  const showClustered = clusteredRef.current
+  // Compute showClustered from hysteresis: only change mode when crossing a threshold
+  let showClustered = clusteredRef.current
+  if (zoom >= DISSOLVE_ZOOM) showClustered = false
+  if (zoom <= FORM_ZOOM)     showClustered = true
+
+  // Sync ref after render so next render reads the committed value
+  useEffect(() => {
+    clusteredRef.current = showClustered
+  })
 
   const clusters = useMemo(
     () => showClustered ? buildClusters(activeEvents, zoom) : [],
@@ -76,7 +84,7 @@ export function EventClusterLayer({ zoom = 2, onEventClick }: Props) {
       <>
         {activeEvents.map(event => (
           <Marker key={event.id} longitude={event.lng} latitude={event.lat} anchor="center">
-            <EventMarker event={event} onClick={onEventClick ?? (() => {})} />
+            <EventMarker event={event} onClick={onEventClick ?? noop} />
           </Marker>
         ))}
       </>
@@ -88,7 +96,7 @@ export function EventClusterLayer({ zoom = 2, onEventClick }: Props) {
       {clusters.map(cluster => (
         <Marker key={cluster.id} longitude={cluster.lng} latitude={cluster.lat} anchor="center">
           {cluster.totalCount === 1
-            ? <EventMarker event={cluster.events[0]} onClick={onEventClick ?? (() => {})} />
+            ? <EventMarker event={cluster.events[0]} onClick={onEventClick ?? noop} />
             : (
               <ClusterMarker
                 clusterId={cluster.id}

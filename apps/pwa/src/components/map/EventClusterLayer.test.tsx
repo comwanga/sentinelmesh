@@ -57,14 +57,15 @@ describe('EventClusterLayer', () => {
   it('renders individual EventMarkers at high zoom (>= 13.2)', async () => {
     render(<EventClusterLayer zoom={14} />)
     const eventMarkers = screen.getAllByTestId('event-marker')
-    expect(eventMarkers.length).toBeGreaterThanOrEqual(1)
+    expect(eventMarkers).toHaveLength(3)
   })
 
   it('renders cluster marker at low zoom (< 12.8) for nearby events', async () => {
     render(<EventClusterLayer zoom={10} />)
-    const clusters = screen.queryAllByTestId('cluster-marker')
-    // event1 and event2 are nearby at low zoom → should cluster
-    expect(clusters.length).toBeGreaterThan(0)
+    const clusterMarkers = screen.queryAllByTestId('cluster-marker')
+    // event1 and event2 are ~0.01° apart at zoom=10 (cellSize≈0.176°) → same cell, count=2
+    const clusterWith2 = clusterMarkers.find(el => el.getAttribute('data-count') === '2')
+    expect(clusterWith2).toBeDefined()
   })
 
   it('does not render inactive events', () => {
