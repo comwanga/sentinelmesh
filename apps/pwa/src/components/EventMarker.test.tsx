@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import EventMarker from './EventMarker'
 import type { SafetyEvent } from '../../../../shared/types'
@@ -12,6 +12,9 @@ const base: SafetyEvent = {
 }
 
 describe('EventMarker', () => {
+  afterEach(() => {
+    document.querySelectorAll('style[data-sm-pulse]').forEach(el => el.remove())
+  })
   it('renders a hit-area wrapper with 8px padding', () => {
     const { container } = render(<EventMarker event={base} onClick={vi.fn()} />)
     const wrapper = container.firstElementChild as HTMLElement
@@ -68,7 +71,6 @@ describe('EventMarker', () => {
   })
 
   it('non-CRITICAL marker does not inject animation', () => {
-    document.querySelectorAll('style[data-sm-pulse]').forEach(el => el.remove())
     render(<EventMarker event={{ ...base, severity: 'HIGH' }} onClick={vi.fn()} />)
     const styleEls = document.querySelectorAll('style[data-sm-pulse]')
     expect(styleEls.length).toBe(0)

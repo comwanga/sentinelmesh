@@ -25,6 +25,7 @@ const PULSE_CSS = `
 `
 
 function injectPulseStyles() {
+  if (typeof document === 'undefined') return
   if (document.querySelector('style[data-sm-pulse]')) return
   const el = document.createElement('style')
   el.setAttribute('data-sm-pulse', '')
