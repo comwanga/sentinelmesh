@@ -20,7 +20,7 @@ pub struct Event {
     pub place_name: Option<String>,
     pub county: Option<String>,
     pub is_active: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
     pub created_at: DateTime<Utc>,
 }
@@ -74,9 +74,10 @@ mod tests {
     }
 
     #[test]
-    fn state_field_present() {
-        let e = sample();
-        let _: Option<String> = e.state;
+    fn state_field_present_and_roundtrips_absent_key() {
+        let json = r#"{"id":"00000000-0000-0000-0000-000000000000","event_type":"FIRE","severity":"HIGH","title":"T","lat":0.0,"lng":0.0,"started_at":"2024-01-01T00:00:00Z","summary":null,"place_name":null,"county":null,"is_active":true,"created_at":"2024-01-01T00:00:00Z"}"#;
+        let e: Event = serde_json::from_str(json).unwrap();
+        assert_eq!(e.state, None);
     }
 
     #[test]

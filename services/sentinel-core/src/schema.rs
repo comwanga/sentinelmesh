@@ -17,6 +17,7 @@ pub struct RedisEventPayload {
     pub place_name: Option<String>,
     pub county: Option<String>,
     pub is_active: bool,
+    #[serde(default)]
     pub state: Option<String>,
     pub created_at: DateTime<Utc>,
 }
@@ -129,5 +130,23 @@ mod tests {
         assert_eq!(back.summary, None);
         assert_eq!(back.place_name, None);
         assert_eq!(back.county, None);
+    }
+
+    #[test]
+    fn deserialise_payload_without_state_key() {
+        let json = r#"{
+            "schema_version": 1,
+            "id": "00000000-0000-0000-0000-000000000001",
+            "event_type": "FIRE",
+            "severity": "HIGH",
+            "title": "Test",
+            "lat": 0.0,
+            "lng": 0.0,
+            "started_at": "2024-01-01T00:00:00Z",
+            "is_active": true,
+            "created_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let p: RedisEventPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(p.state, None);
     }
 }
