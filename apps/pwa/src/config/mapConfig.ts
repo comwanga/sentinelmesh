@@ -12,3 +12,14 @@ export const MAPTILES_URL: string =
   (import.meta.env.VITE_MAPTILES_URL as string | undefined) ?? ''
 
 export const WORLD_CENTER = { longitude: 0, latitude: 20, zoom: 2 } as const
+
+export async function loadMapStyle(): Promise<object | string> {
+  const styleUrl = MAP_STYLE_URL
+  if (!styleUrl || styleUrl.startsWith('http') || styleUrl.startsWith('//')) {
+    return styleUrl
+  }
+  const res = await fetch(styleUrl)
+  if (!res.ok) throw new Error(`Map style fetch failed: ${res.status} ${styleUrl}`)
+  const text = await res.text()
+  return JSON.parse(text.replaceAll('{MAPTILES_URL}', MAPTILES_URL))
+}

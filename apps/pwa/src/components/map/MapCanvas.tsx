@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Map } from 'react-map-gl/maplibre'
-import { MAP_STYLE_URL, WORLD_CENTER } from '../../config/mapConfig'
+import { loadMapStyle, WORLD_CENTER } from '../../config/mapConfig'
 import { persistViewport } from '../../hooks/useInitialViewport'
+import styles from './MapCanvas.module.css'
 
 interface ViewState {
   longitude: number
@@ -17,19 +18,28 @@ interface Props {
 
 export function MapCanvas({ initialViewState = WORLD_CENTER, children, onMapLoad }: Props = {}) {
   const [viewState, setViewState] = useState<ViewState>(initialViewState)
+  const [mapStyle, setMapStyle] = useState<object | string | undefined>(undefined)
+
+  useEffect(() => {
+    loadMapStyle().then(setMapStyle).catch(console.error)
+  }, [])
+
   const handleMove = useCallback((evt: { viewState: ViewState }) => {
     setViewState(evt.viewState)
     persistViewport(evt.viewState)
   }, [])
+
   return (
-    <Map
-      {...viewState}
-      onMove={handleMove}
-      onLoad={onMapLoad}
-      style={{ width: '100%', height: '100%' }}
-      mapStyle={MAP_STYLE_URL}
-    >
-      {children}
-    </Map>
+    <div className={styles.container}>
+      <Map
+        {...viewState}
+        onMove={handleMove}
+        onLoad={onMapLoad}
+        style={{ width: '100%', height: '100%' }}
+        mapStyle={mapStyle}
+      >
+        {children}
+      </Map>
+    </div>
   )
 }
