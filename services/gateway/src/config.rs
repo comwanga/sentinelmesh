@@ -17,6 +17,7 @@ pub struct Config {
     pub vapid_private_key: Option<String>,
     pub vapid_public_key: Option<String>,
     pub vapid_subject: Option<String>,
+    pub ws_events_rate_cap: u32,
 }
 
 impl Config {
@@ -52,6 +53,10 @@ impl Config {
             vapid_private_key: std::env::var("VAPID_PRIVATE_KEY").ok(),
             vapid_public_key: std::env::var("VAPID_PUBLIC_KEY").ok(),
             vapid_subject: std::env::var("VAPID_SUBJECT").ok(),
+            ws_events_rate_cap: std::env::var("WS_EVENTS_RATE_CAP")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(30),
         })
     }
 }

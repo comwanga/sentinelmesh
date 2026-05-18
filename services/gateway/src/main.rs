@@ -12,6 +12,7 @@ mod ws;
 
 use std::sync::{atomic::AtomicBool, Arc};
 use axum::{extract::State, http::StatusCode, response::Json, routing::get, Router};
+use tokio::sync::broadcast;
 use tokio::net::TcpListener;
 use tower_http::cors::{Any, CorsLayer};
 use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
@@ -27,6 +28,7 @@ pub struct AppState {
     pub circle_hub: Arc<CircleHub>,
     pub redis_healthy: Arc<AtomicBool>,
     pub map_provider: std::sync::Arc<dyn maps::MapProvider>,
+    pub event_tx: Arc<broadcast::Sender<ws::ViewportEvent>>,
 }
 
 #[tokio::main]
@@ -51,6 +53,11 @@ async fn main() -> anyhow::Result<()> {
         )
     );
 
+    // Capacity 512: allows slow viewport-WS clients up to 512 events of lag
+    // before Lagged errors force them into snapshot mode.
+    let (event_tx_inner, _) = broadcast::channel::<ws::ViewportEvent>(512);
+    let event_tx = Arc::new(event_tx_inner);
+
     let state = AppState {
         db: db.clone(),
         config: config.clone(),
@@ -59,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
         circle_hub,
         redis_healthy: redis_healthy.clone(),
         map_provider,
+        event_tx: event_tx.clone(),
     };
 
     // Spawn Redis subscriber task (supervised, runs for the lifetime of the process)
@@ -67,8 +75,9 @@ async fn main() -> anyhow::Result<()> {
         let pool = db.clone();
         let hub_ref = hub.clone();
         let healthy = redis_healthy.clone();
+        let tx = event_tx.clone();
         tokio::spawn(async move {
-            subscribers::event_subscriber::run(redis_url, pool, hub_ref, healthy).await;
+            subscribers::event_subscriber::run(redis_url, pool, hub_ref, healthy, tx).await;
         });
     }
 
@@ -95,6 +104,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/health/detailed", get(health_detailed))
         .route("/ws", get(ws::ws_handler))
         .route("/ws/circles", get(ws::ws_circles_handler))
+        .route("/ws/events", get(ws::ws_events_handler))
         .merge(routes::build_router())
         .layer(GovernorLayer { config: governor_conf })
         .layer(cors)
