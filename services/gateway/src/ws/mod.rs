@@ -1,3 +1,7 @@
+pub mod events_ws;
+
+pub use events_ws::{ws_events_handler, ViewportEvent};
+
 pub mod hub;
 pub mod circle_hub;
 

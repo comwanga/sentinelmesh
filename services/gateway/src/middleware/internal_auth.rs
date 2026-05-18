@@ -80,6 +80,7 @@ mod tests {
         let map_provider: Arc<dyn MapProvider> = Arc::new(
             MapboxAdapter::new(http_client.clone(), String::new())
         );
+        let (event_tx_inner, _) = tokio::sync::broadcast::channel::<crate::ws::ViewportEvent>(1);
         AppState {
             db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
             config: Arc::new(Config {
@@ -99,12 +100,14 @@ mod tests {
                 vapid_private_key: None,
                 vapid_public_key: None,
                 vapid_subject: None,
+                ws_events_rate_cap: 30,
             }),
             http_client,
             hub: Arc::new(WsHub::new()),
             circle_hub: Arc::new(CircleHub::new()),
             redis_healthy: Arc::new(AtomicBool::new(false)),
             map_provider,
+            event_tx: Arc::new(event_tx_inner),
         }
     }
 
