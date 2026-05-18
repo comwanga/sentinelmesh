@@ -575,4 +575,79 @@ mod tests {
         assert_eq!(e, 38.0);
         assert_eq!(n, 1.0);
     }
+
+    fn make_event(id: u128, severity: &str, state: &str) -> WsEvent {
+        WsEvent {
+            id: Uuid::from_u128(id),
+            event_type: "FIRE".into(),
+            severity: severity.into(),
+            state: state.into(),
+            title: "Test".into(),
+            lat: -1.0,
+            lng: 36.0,
+            started_at: chrono::Utc::now(),
+        }
+    }
+
+    #[test]
+    fn compute_diff_all_added_when_known_empty() {
+        let known = HashMap::new();
+        let new_events = vec![make_event(1, "HIGH", "ACTIVE")];
+        let diff = compute_diff(&known, &new_events);
+        assert_eq!(diff.added.len(), 1);
+        assert!(diff.removed.is_empty());
+        assert!(diff.updated.is_empty());
+    }
+
+    #[test]
+    fn compute_diff_all_removed_when_new_empty() {
+        let mut known = HashMap::new();
+        known.insert(Uuid::from_u128(1), EventDigest { severity: "HIGH".into(), state: "ACTIVE".into() });
+        let diff = compute_diff(&known, &[]);
+        assert!(diff.added.is_empty());
+        assert_eq!(diff.removed, vec![Uuid::from_u128(1)]);
+        assert!(diff.updated.is_empty());
+    }
+
+    #[test]
+    fn compute_diff_detects_severity_upgrade() {
+        let id = Uuid::from_u128(1);
+        let mut known = HashMap::new();
+        known.insert(id, EventDigest { severity: "HIGH".into(), state: "ACTIVE".into() });
+        let new_events = vec![make_event(1, "CRITICAL", "ACTIVE")];
+        let diff = compute_diff(&known, &new_events);
+        assert!(diff.added.is_empty());
+        assert!(diff.removed.is_empty());
+        assert_eq!(diff.updated.len(), 1);
+        assert_eq!(diff.updated[0].severity, "CRITICAL");
+    }
+
+    #[test]
+    fn compute_diff_no_change_produces_empty_diff() {
+        let id = Uuid::from_u128(1);
+        let mut known = HashMap::new();
+        known.insert(id, EventDigest { severity: "HIGH".into(), state: "ACTIVE".into() });
+        let new_events = vec![make_event(1, "HIGH", "ACTIVE")];
+        let diff = compute_diff(&known, &new_events);
+        assert!(!diff.has_changes());
+    }
+
+    #[test]
+    fn parse_digest_from_valid_json() {
+        let json = r#"{"id":"00000000-0000-0000-0000-000000000000","severity":"CRITICAL","state":"ACTIVE","title":"T","event_type":"FIRE","lat":0.0,"lng":0.0,"started_at":"2024-01-01T00:00:00Z"}"#;
+        let digest = parse_digest_from_json(json).unwrap();
+        assert_eq!(digest.severity, "CRITICAL");
+        assert_eq!(digest.state, "ACTIVE");
+    }
+
+    #[test]
+    fn parse_digest_from_invalid_json_returns_none() {
+        assert!(parse_digest_from_json("not json").is_none());
+    }
+
+    #[test]
+    fn parse_digest_missing_field_returns_none() {
+        let json = r#"{"id":"00000000-0000-0000-0000-000000000000","severity":"CRITICAL"}"#;
+        assert!(parse_digest_from_json(json).is_none());
+    }
 }
