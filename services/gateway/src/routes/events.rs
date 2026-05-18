@@ -28,6 +28,7 @@ pub struct SafetyEvent {
     pub source_count: Option<i32>,
     pub source_breakdown: Option<serde_json::Value>,
     pub is_active: bool,
+    pub state: String,
     pub nostr_event_id: Option<String>,
     pub bitcoin_txid: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -63,6 +64,19 @@ pub struct ListEventsQuery {
     pub limit: Option<i64>,
 }
 
+#[derive(Deserialize)]
+pub struct BoundsQuery {
+    pub min_lat: f64,
+    pub max_lat: f64,
+    pub min_lng: f64,
+    pub max_lng: f64,
+    pub zoom: Option<f64>,
+}
+
+fn viewport_limit(zoom: f64) -> i64 {
+    ((1000.0 / (zoom - 8.0).max(1.0)) as i64).clamp(50, 500)
+}
+
 async fn create_event(
     State(state): State<AppState>,
     _auth: InternalServiceAuth,
@@ -83,7 +97,10 @@ async fn create_event(
            (event_type, severity, title, lat, lng, started_at, summary, place_name, county,
             radius_meters, confidence, source_count, source_breakdown, is_active)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-         RETURNING *"
+         RETURNING id, event_type, severity, title, lat, lng, started_at,
+                   summary, place_name, county, radius_meters, confidence,
+                   source_count, source_breakdown, is_active, state,
+                   nostr_event_id, bitcoin_txid, created_at, updated_at"
     )
     .bind(&body.event_type).bind(&body.severity).bind(&body.title)
     .bind(body.lat).bind(body.lng).bind(body.started_at)
@@ -137,7 +154,11 @@ async fn list_events(
     });
 
     let events = sqlx::query_as::<_, SafetyEvent>(
-        "SELECT * FROM safety_events
+        "SELECT id, event_type, severity, title, lat, lng, started_at,
+                summary, place_name, county, radius_meters, confidence,
+                source_count, source_breakdown, is_active, state,
+                nostr_event_id, bitcoin_txid, created_at, updated_at
+         FROM safety_events
          WHERE ($1::float8 IS NULL OR
                 earth_distance(ll_to_earth($1,$2), ll_to_earth(lat,lng)) <= $3)
            AND ($4::text[] IS NULL OR severity = ANY($4))
@@ -160,7 +181,11 @@ async fn get_event(
     Path(id): Path<Uuid>,
 ) -> Result<Json<SafetyEvent>, AppError> {
     let event = sqlx::query_as::<_, SafetyEvent>(
-        "SELECT * FROM safety_events WHERE id = $1"
+        "SELECT id, event_type, severity, title, lat, lng, started_at,
+                summary, place_name, county, radius_meters, confidence,
+                source_count, source_breakdown, is_active, state,
+                nostr_event_id, bitcoin_txid, created_at, updated_at
+         FROM safety_events WHERE id = $1"
     )
     .bind(id)
     .fetch_optional(&state.db)
@@ -170,9 +195,34 @@ async fn get_event(
     Ok(Json(event))
 }
 
+async fn list_events_by_bounds(
+    State(state): State<AppState>,
+    Query(q): Query<BoundsQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let limit = viewport_limit(q.zoom.unwrap_or(12.0));
+    let events = sqlx::query_as::<_, SafetyEvent>(
+        "SELECT id, event_type, severity, title, lat, lng, started_at,
+                summary, place_name, county, radius_meters, confidence,
+                source_count, source_breakdown, is_active, state,
+                nostr_event_id, bitcoin_txid, created_at, updated_at
+           FROM safety_events
+          WHERE geog && ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
+            AND state NOT IN ('RESOLVED', 'EXPIRED')
+          ORDER BY created_at DESC
+          LIMIT $5"
+    )
+    .bind(q.min_lng).bind(q.min_lat).bind(q.max_lng).bind(q.max_lat)
+    .bind(limit)
+    .fetch_all(&state.db)
+    .await?;
+    let total = events.len() as i64;
+    Ok(Json(serde_json::json!({ "events": events, "total": total })))
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_events).post(create_event))
+        .route("/bounds", get(list_events_by_bounds))
         .route("/:id", get(get_event))
 }
 
@@ -190,7 +240,7 @@ impl From<SafetyEvent> for sentinel_core::Event {
             place_name: row.place_name,
             county: row.county,
             is_active: row.is_active,
-            state: None,
+            state: Some(row.state),
             created_at: row.created_at,
         }
     }
@@ -220,6 +270,7 @@ mod tests {
             source_count: Some(3),
             source_breakdown: None,
             is_active: true,
+            state: "ACTIVE".into(),
             nostr_event_id: Some("nevent1abc".into()),
             bitcoin_txid: None,
             created_at: now,
@@ -248,5 +299,20 @@ mod tests {
         let _: String = e.event_type;
         let _: String = e.severity;
         let _: bool = e.is_active;
+    }
+
+    #[test]
+    fn viewport_limit_clamped_to_max_at_low_zoom() {
+        assert_eq!(viewport_limit(8.0), 500);
+    }
+
+    #[test]
+    fn viewport_limit_mid_zoom() {
+        assert_eq!(viewport_limit(12.0), 250);
+    }
+
+    #[test]
+    fn viewport_limit_clamped_to_min_at_high_zoom() {
+        assert_eq!(viewport_limit(30.0), 50);
     }
 }
