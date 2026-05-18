@@ -2,6 +2,13 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use axum::{
+    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, State},
+    response::IntoResponse,
+};
+use sqlx::PgPool;
+use std::time::{Duration, Instant};
+use tokio::sync::broadcast;
 
 /// Lightweight event broadcast to all viewport WS handlers when a new event
 /// arrives from the Redis stream. Each handler decides independently whether
@@ -20,7 +27,7 @@ pub struct ViewportEvent {
 // DB projection — lighter than SafetyEvent, sized for WS payloads
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct WsEvent {
     pub id: Uuid,
     pub event_type: String,
@@ -96,10 +103,320 @@ pub enum ServerMsg<'a> {
 }
 
 // ---------------------------------------------------------------------------
-// Handler (stub — filled in Task 3)
+// viewport_event_limit
 // ---------------------------------------------------------------------------
 
-pub async fn ws_events_handler() -> &'static str { "stub" }
+/// Dynamic row limit based on zoom: denser viewports at low zoom get fewer rows.
+pub fn viewport_event_limit(zoom: f64) -> i64 {
+    ((800.0 / (zoom - 8.0).max(1.0)) as i64).clamp(50, 400)
+}
+
+// ---------------------------------------------------------------------------
+// query_viewport_events
+// ---------------------------------------------------------------------------
+
+pub async fn query_viewport_events(
+    pool: &PgPool,
+    bounds: &Bounds,
+    filters: &[String],
+    zoom: f64,
+) -> sqlx::Result<Vec<WsEvent>> {
+    let limit = viewport_event_limit(zoom);
+    // ST_MakeEnvelope(xmin, ymin, xmax, ymax, srid) = (west, south, east, north, 4326)
+    if filters.is_empty() {
+        sqlx::query_as::<_, WsEvent>(
+            "SELECT id, event_type, severity, state, title, lat, lng, started_at
+               FROM safety_events
+              WHERE geog && ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
+                AND state NOT IN ('RESOLVED', 'EXPIRED')
+              ORDER BY
+                CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1
+                              WHEN 'MEDIUM' THEN 2 ELSE 3 END ASC
+              LIMIT $5"
+        )
+        .bind(bounds.west).bind(bounds.south).bind(bounds.east).bind(bounds.north)
+        .bind(limit)
+        .fetch_all(pool)
+        .await
+    } else {
+        sqlx::query_as::<_, WsEvent>(
+            "SELECT id, event_type, severity, state, title, lat, lng, started_at
+               FROM safety_events
+              WHERE geog && ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
+                AND state NOT IN ('RESOLVED', 'EXPIRED')
+                AND event_type = ANY($5)
+              ORDER BY
+                CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1
+                              WHEN 'MEDIUM' THEN 2 ELSE 3 END ASC
+              LIMIT $6"
+        )
+        .bind(bounds.west).bind(bounds.south).bind(bounds.east).bind(bounds.north)
+        .bind(filters)
+        .bind(limit)
+        .fetch_all(pool)
+        .await
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handler
+// ---------------------------------------------------------------------------
+
+pub async fn ws_events_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<crate::AppState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_events_ws(socket, state))
+}
+
+async fn handle_events_ws(mut socket: WebSocket, state: crate::AppState) {
+    use std::collections::HashMap;
+
+    // --- Phase 1: await SUBSCRIBE message ---
+    let (bounds, zoom, filters, low_bandwidth) = loop {
+        match socket.recv().await {
+            Some(Ok(Message::Text(text))) => {
+                match serde_json::from_str::<ClientMsg>(&text) {
+                    Ok(ClientMsg::Subscribe { bounds, zoom, filters, low_bandwidth }) => {
+                        break (bounds, zoom, filters, low_bandwidth);
+                    }
+                    Ok(_) => {
+                        let err = serde_json::to_string(&ServerMsg::Error {
+                            message: "first message must be SUBSCRIBE",
+                        }).unwrap();
+                        let _ = socket.send(Message::Text(err)).await;
+                    }
+                    Err(e) => {
+                        let err = serde_json::to_string(&ServerMsg::Error {
+                            message: &format!("invalid message: {e}"),
+                        }).unwrap();
+                        let _ = socket.send(Message::Text(err)).await;
+                    }
+                }
+            }
+            _ => return, // client disconnected or sent non-text
+        }
+    };
+
+    // --- Phase 2: send initial batch ---
+    let initial = match query_viewport_events(&state.db, &bounds, &filters, zoom).await {
+        Ok(events) => events,
+        Err(e) => {
+            tracing::warn!("viewport WS query failed: {e:#}");
+            let err = serde_json::to_string(&ServerMsg::Error { message: "db error" }).unwrap();
+            let _ = socket.send(Message::Text(err)).await;
+            return;
+        }
+    };
+
+    let initial_json = serde_json::to_string(&ServerMsg::InitialBatch {
+        events: &initial,
+    }).unwrap();
+    if socket.send(Message::Text(initial_json)).await.is_err() {
+        return;
+    }
+
+    // --- Phase 3: build known-events map and enter main loop ---
+    let mut known: HashMap<Uuid, EventDigest> = initial
+        .iter()
+        .map(|e| (e.id, EventDigest { severity: e.severity.clone(), state: e.state.clone() }))
+        .collect();
+
+    let mut current_bounds = bounds;
+    let mut current_zoom = zoom;
+    let rate_cap = state.config.ws_events_rate_cap as usize;
+    let mut rx = state.event_tx.subscribe();
+
+    // Debounce state
+    let debounce_dur = Duration::from_millis(300);
+    let mut pending_viewport: Option<(Bounds, f64)> = None;
+    let debounce_sleep = tokio::time::sleep(debounce_dur);
+    tokio::pin!(debounce_sleep);
+    let mut debounce_active = false;
+
+    // Rate limiter state
+    let mut rate_window_start = Instant::now();
+    let mut rate_count: usize = 0;
+
+    loop {
+        tokio::select! {
+            // Debounce timer fired — process pending viewport change
+            () = &mut debounce_sleep, if debounce_active => {
+                debounce_active = false;
+                if let Some((new_bounds, new_zoom)) = pending_viewport.take() {
+                    if let Ok(new_events) =
+                        query_viewport_events(&state.db, &new_bounds, &filters, new_zoom).await
+                    {
+                        let patch = compute_diff(&known, &new_events);
+                        if patch.has_changes() {
+                            let json = serde_json::to_string(&ServerMsg::DiffPatch {
+                                added: patch.added,
+                                removed: patch.removed,
+                                updated: patch.updated,
+                            }).unwrap();
+                            if socket.send(Message::Text(json)).await.is_err() { break; }
+                        }
+                        known = new_events.into_iter()
+                            .map(|e| (e.id, EventDigest {
+                                severity: e.severity.clone(),
+                                state: e.state.clone(),
+                            }))
+                            .collect();
+                    }
+                    current_bounds = new_bounds;
+                    current_zoom = new_zoom;
+                }
+            }
+
+            // New event from broadcast channel
+            result = rx.recv() => {
+                match result {
+                    Ok(vpe) => {
+                        if !current_bounds.contains(vpe.lat, vpe.lng) { continue; }
+
+                        // low_bandwidth: only forward CRITICAL and HIGH events
+                        if low_bandwidth && !matches!(vpe.severity.as_str(), "CRITICAL" | "HIGH") {
+                            continue;
+                        }
+
+                        // Rate limiting
+                        let now = Instant::now();
+                        if now.duration_since(rate_window_start) >= Duration::from_secs(1) {
+                            rate_window_start = now;
+                            rate_count = 0;
+                        }
+                        if rate_count >= rate_cap {
+                            tracing::debug!("viewport WS rate cap reached, dropping event");
+                            continue;
+                        }
+                        rate_count += 1;
+
+                        let id = vpe.id;
+                        let is_known = known.contains_key(&id);
+
+                        if let Ok(ws_evt) = serde_json::from_str::<WsEvent>(&vpe.event_json) {
+                            let (added, updated) = if is_known {
+                                (vec![], vec![ws_evt.clone()])
+                            } else {
+                                (vec![ws_evt.clone()], vec![])
+                            };
+
+                            if let Some(d) = parse_digest_from_json(&vpe.event_json) {
+                                known.insert(id, d);
+                            }
+
+                            let json = serde_json::to_string(&ServerMsg::DiffPatch {
+                                added,
+                                removed: vec![],
+                                updated,
+                            }).unwrap();
+                            if socket.send(Message::Text(json)).await.is_err() { break; }
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::warn!("viewport WS lagged by {n}, sending snapshot");
+                        if let Ok(events) =
+                            query_viewport_events(&state.db, &current_bounds, &filters, current_zoom).await
+                        {
+                            known = events.iter()
+                                .map(|e| (e.id, EventDigest {
+                                    severity: e.severity.clone(),
+                                    state: e.state.clone(),
+                                }))
+                                .collect();
+                            let json = serde_json::to_string(&ServerMsg::Snapshot {
+                                events,
+                            }).unwrap();
+                            if socket.send(Message::Text(json)).await.is_err() { break; }
+                        }
+                        rx = state.event_tx.subscribe();
+                    }
+                    Err(_) => break,
+                }
+            }
+
+            // Message from client
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Text(text))) => {
+                        match serde_json::from_str::<ClientMsg>(&text) {
+                            Ok(ClientMsg::ViewportChanged { bounds, zoom }) => {
+                                pending_viewport = Some((bounds, zoom));
+                                debounce_sleep
+                                    .as_mut()
+                                    .reset(tokio::time::Instant::now() + debounce_dur);
+                                debounce_active = true;
+                            }
+                            Ok(ClientMsg::SnapshotRequest) => {
+                                if let Ok(events) = query_viewport_events(
+                                    &state.db, &current_bounds, &filters, current_zoom
+                                ).await {
+                                    known = events.iter()
+                                        .map(|e| (e.id, EventDigest {
+                                            severity: e.severity.clone(),
+                                            state: e.state.clone(),
+                                        }))
+                                        .collect();
+                                    let json = serde_json::to_string(
+                                        &ServerMsg::Snapshot { events }
+                                    ).unwrap();
+                                    if socket.send(Message::Text(json)).await.is_err() { break; }
+                                }
+                            }
+                            Ok(ClientMsg::Subscribe { .. }) => {} // ignore re-subscribe
+                            Err(_) => {} // ignore unparseable
+                        }
+                    }
+                    Some(Ok(Message::Close(_))) | None => break,
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DiffResult and helpers
+// ---------------------------------------------------------------------------
+
+struct DiffResult {
+    added: Vec<WsEvent>,
+    removed: Vec<Uuid>,
+    updated: Vec<WsEvent>,
+}
+
+impl DiffResult {
+    fn has_changes(&self) -> bool {
+        !self.added.is_empty() || !self.removed.is_empty() || !self.updated.is_empty()
+    }
+}
+
+fn compute_diff(known: &std::collections::HashMap<Uuid, EventDigest>, new_events: &[WsEvent]) -> DiffResult {
+    let mut added = vec![];
+    let mut updated = vec![];
+
+    for e in new_events {
+        let new_digest = EventDigest { severity: e.severity.clone(), state: e.state.clone() };
+        match known.get(&e.id) {
+            None => added.push(e.clone()),
+            Some(old) if old != &new_digest => updated.push(e.clone()),
+            _ => {}
+        }
+    }
+
+    let new_ids: std::collections::HashSet<Uuid> = new_events.iter().map(|e| e.id).collect();
+    let removed = known.keys().filter(|id| !new_ids.contains(id)).copied().collect();
+
+    DiffResult { added, removed, updated }
+}
+
+fn parse_digest_from_json(json: &str) -> Option<EventDigest> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    Some(EventDigest {
+        severity: v["severity"].as_str()?.to_string(),
+        state: v["state"].as_str()?.to_string(),
+    })
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -231,5 +548,31 @@ mod tests {
         assert_eq!(added.len(), 1);
         assert_eq!(added[0].id, id_new);
         assert_eq!(removed, vec![Uuid::nil()]);
+    }
+
+    #[test]
+    fn viewport_event_limit_at_low_zoom() {
+        assert_eq!(viewport_event_limit(8.0), 400); // 800/1=800, clamp→400
+    }
+
+    #[test]
+    fn viewport_event_limit_at_mid_zoom() {
+        assert_eq!(viewport_event_limit(12.0), 200); // 800/4=200
+    }
+
+    #[test]
+    fn viewport_event_limit_at_high_zoom() {
+        assert_eq!(viewport_event_limit(30.0), 50); // 800/22=36, clamp→50
+    }
+
+    #[test]
+    fn bounds_west_south_east_north_order_for_st_make_envelope() {
+        // ST_MakeEnvelope(xmin, ymin, xmax, ymax) = (west, south, east, north)
+        let b = Bounds { north: 1.0, south: -1.0, east: 38.0, west: 36.0 };
+        let (w, s, e, n) = (b.west, b.south, b.east, b.north);
+        assert_eq!(w, 36.0);
+        assert_eq!(s, -1.0);
+        assert_eq!(e, 38.0);
+        assert_eq!(n, 1.0);
     }
 }
