@@ -7,8 +7,7 @@ import { useInitialViewport } from '../hooks/useInitialViewport'
 import { useAppSelector, useAppDispatch } from '../store'
 import { setOverlayIntent } from '../store/uiSlice'
 import { selectMapStats, selectEventItems } from '../store/eventsSlice'
-import { Marker } from 'react-map-gl/maplibre'
-import EventMarker from '../components/EventMarker'
+import { EventClusterLayer } from '../components/map/EventClusterLayer'
 import { MapCanvas } from '../components/map/MapCanvas'
 import { MapStatsBar } from '../components/map/MapStatsBar'
 import { MapFeatureStrip } from '../components/map/MapFeatureStrip'
@@ -98,11 +97,7 @@ export function LiveMapPage() {
 
           <MapCanvas initialViewState={initialViewport} onMapLoad={handleMapLoad}>
             <RadiusZoneLayer events={visibleEvents} />
-            {visibleEvents.filter(e => e.is_active).map(event => (
-              <Marker key={event.id} longitude={event.lng} latitude={event.lat} anchor="center">
-                <EventMarker event={event} onClick={() => {}} />
-              </Marker>
-            ))}
+            <EventClusterLayer zoom={2} />
             {currentLocation && <LocationMarker location={currentLocation} />}
             <SafeRouteOverlay />
             <HomeRouteLayer />
