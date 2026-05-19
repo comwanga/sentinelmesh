@@ -148,17 +148,14 @@ async fn handle_message(
     sqlx::query(
         "INSERT INTO safety_events
            (id, event_type, severity, title, lat, lng, started_at,
-            summary, place_name, county, is_active, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+            summary, place_name, county, is_active, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          ON CONFLICT (id) DO UPDATE SET
-           severity   = EXCLUDED.severity,
-           title      = EXCLUDED.title,
-           summary    = EXCLUDED.summary,
-           state      = CASE WHEN EXCLUDED.is_active
-                             THEN COALESCE(safety_events.state, 'ACTIVE')
-                             ELSE 'RESOLVED'
-                        END,
-           updated_at = NOW()",
+           severity     = EXCLUDED.severity,
+           title        = EXCLUDED.title,
+           summary      = EXCLUDED.summary,
+           is_active    = EXCLUDED.is_active,
+           last_updated = NOW()",
     )
     .bind(event.id)
     .bind(&event.event_type)
@@ -167,8 +164,8 @@ async fn handle_message(
     .bind(event.lat)
     .bind(event.lng)
     .bind(event.started_at)
-    .bind(&event.summary)
-    .bind(&event.place_name)
+    .bind(event.summary.as_deref())
+    .bind(event.place_name.as_deref())
     .bind(county.as_deref())
     .bind(event.is_active)
     .bind(event.created_at)
