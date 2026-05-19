@@ -4,4 +4,4 @@ pub mod types;
 
 pub use mapbox_adapter::MapboxAdapter;
 pub use provider::MapProvider;
-pub use types::{RouteResult, SearchResult};
+pub use types::SearchResult;

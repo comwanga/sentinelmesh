@@ -5,7 +5,8 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
-# Copy workspace manifests for all three crates
+# Copy workspace manifests and compile-time assets
+COPY event_schema.json ./
 COPY Cargo.toml Cargo.lock ./
 COPY sentinel-core/Cargo.toml sentinel-core/Cargo.toml
 COPY blockchain/Cargo.toml blockchain/Cargo.toml

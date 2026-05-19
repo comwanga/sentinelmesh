@@ -38,7 +38,7 @@ function backoffDelay(attempt: number): number {
 }
 
 function toBoundsMsg(b: ViewportBounds) {
-  return { min_lat: b.south, max_lat: b.north, min_lng: b.west, max_lng: b.east }
+  return { north: b.north, south: b.south, east: b.east, west: b.west }
 }
 
 function toSafetyEvent(e: WsEvent): SafetyEvent {
