@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Marker, useMap } from 'react-map-gl/maplibre'
 import { useAppSelector } from '../../store'
-import { selectEventItems } from '../../store/eventsSlice'
+import { selectViewportEventItems } from '../../store/viewportEventsSlice'
 import EventMarker from '../EventMarker'
 import { ClusterMarker } from './ClusterMarker'
 import type { SafetyEvent } from '../../../../../shared/types'
@@ -69,7 +69,7 @@ export function EventClusterLayer({ zoom: zoomProp, onEventClick }: Props) {
 
   const zoom = zoomProp ?? mapZoom
 
-  const allEvents = useAppSelector(selectEventItems)
+  const allEvents = useAppSelector(selectViewportEventItems)
   const activeEvents = useMemo(() => allEvents.filter(e => e.is_active), [allEvents])
 
   const clusteredRef = useRef(zoom < DISSOLVE_ZOOM)

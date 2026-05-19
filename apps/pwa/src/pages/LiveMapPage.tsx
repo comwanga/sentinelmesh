@@ -4,9 +4,12 @@ import { useBreakpoint } from '../hooks/useBreakpoint'
 import { useNearestThreat } from '../hooks/useNearestThreat'
 import { useCurrentLocation } from '../hooks/useCurrentLocation'
 import { useInitialViewport } from '../hooks/useInitialViewport'
+import { useViewportWs } from '../hooks/useViewportWs'
+import type { ViewportBounds } from '../hooks/useViewportWs'
 import { useAppSelector, useAppDispatch } from '../store'
 import { setOverlayIntent } from '../store/uiSlice'
-import { selectMapStats, selectEventItems } from '../store/eventsSlice'
+import { selectMapStats } from '../store/eventsSlice'
+import { selectViewportEventItems } from '../store/viewportEventsSlice'
 import { EventClusterLayer } from '../components/map/EventClusterLayer'
 import { MapCanvas } from '../components/map/MapCanvas'
 import { MapStatsBar } from '../components/map/MapStatsBar'
@@ -33,7 +36,11 @@ const FILTER_DEFS: { id: FilterId; label: string; color: string; types: EventTyp
 export function LiveMapPage() {
   const [mapLoaded, setMapLoaded] = useState(false)
   const [activeFilters, setActiveFilters] = useState<Set<FilterId>>(new Set())
+  const [viewport, setViewport] = useState<{ bounds: ViewportBounds; zoom: number } | null>(null)
   const handleMapLoad = useCallback(() => setMapLoaded(true), [])
+  const handleBoundsChange = useCallback((bounds: ViewportBounds, zoom: number) => {
+    setViewport({ bounds, zoom })
+  }, [])
   const initialViewport = useInitialViewport()
   const { layout } = useBreakpoint()
   const { nearest: nearestThreat, distanceKm, geoError } = useNearestThreat()
@@ -41,7 +48,8 @@ export function LiveMapPage() {
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const { activeAlerts, verified, verifiedPct, communityScore, sources } = useAppSelector(selectMapStats)
-  const events = useAppSelector(selectEventItems)
+  const events = useAppSelector(selectViewportEventItems)
+  useViewportWs(viewport?.bounds ?? null, viewport?.zoom ?? 12)
 
   function toggleFilter(id: FilterId) {
     setActiveFilters(prev => {
@@ -95,7 +103,7 @@ export function LiveMapPage() {
             </div>
           )}
 
-          <MapCanvas initialViewState={initialViewport} onMapLoad={handleMapLoad}>
+          <MapCanvas initialViewState={initialViewport} onMapLoad={handleMapLoad} onBoundsChange={handleBoundsChange}>
             <RadiusZoneLayer events={visibleEvents} />
             <EventClusterLayer />
             {currentLocation && <LocationMarker location={currentLocation} />}

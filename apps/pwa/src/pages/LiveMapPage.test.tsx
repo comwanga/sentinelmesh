@@ -5,51 +5,49 @@ import { configureStore } from '@reduxjs/toolkit'
 import type { ReactNode } from 'react'
 import eventsReducer from '../store/eventsSlice'
 import uiReducer from '../store/uiSlice'
+import viewportEventsReducer from '../store/viewportEventsSlice'
 import { LiveMapPage } from './LiveMapPage'
 import type { SafetyEvent } from '../../../../shared/types'
 
-// Mock MapCanvas to avoid mapboxgl errors in jsdom
 vi.mock('../components/map/MapCanvas', () => ({
   MapCanvas: () => <div data-testid="map-canvas" />,
 }))
 
-// Mock react-map-gl used by sub-components
 vi.mock('react-map-gl/maplibre', () => ({
   default: ({ children }: { children: ReactNode }) => <div data-testid="mapbox">{children}</div>,
   Marker: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   Map: ({ children }: { children: ReactNode }) => <div data-testid="mapbox">{children}</div>,
 }))
 
-// Mock useNearestThreat so we can control the return value per test
+vi.mock('../hooks/useViewportWs', () => ({
+  useViewportWs: vi.fn(),
+}))
+
 const mockUseNearestThreat = vi.fn(() => ({ nearest: null as SafetyEvent | null, distanceKm: null as number | null, geoError: null }))
 vi.mock('../hooks/useNearestThreat', () => ({
   useNearestThreat: () => mockUseNearestThreat(),
 }))
 
-// Mock useBreakpoint so we can control layout per test
 const mockUseBreakpoint = vi.fn(() => ({ layout: 'desktop' as 'desktop' | 'mobile' }))
 vi.mock('../hooks/useBreakpoint', () => ({
   useBreakpoint: () => mockUseBreakpoint(),
 }))
 
-// Mock MapOverlayHost — uses its own internal hooks, simplify to a stub
 vi.mock('../components/map/MapOverlayHost', () => ({
   MapOverlayHost: () => <div data-testid="map-overlay-host" />,
 }))
 
-// Mock useCurrentLocation to avoid watchPosition in jsdom
 vi.mock('../hooks/useCurrentLocation', () => ({
   useCurrentLocation: () => ({ location: null, error: null }),
 }))
 
-// Mock react-router-dom navigate used in LiveMapPage
 vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
 }))
 
 function makeStore() {
   return configureStore({
-    reducer: { events: eventsReducer, ui: uiReducer },
+    reducer: { events: eventsReducer, ui: uiReducer, viewportEvents: viewportEventsReducer },
   })
 }
 
@@ -69,23 +67,19 @@ beforeEach(() => {
 describe('LiveMapPage', () => {
   it('renders MapStatsBar', () => {
     renderPage()
-    // MapStatsBar renders these stat labels
     expect(screen.getByText('Active Alerts')).toBeInTheDocument()
   })
 
   it('desktop: renders AlertsDock, not AlertsSheet', () => {
     mockUseBreakpoint.mockReturnValue({ layout: 'desktop' })
     renderPage()
-    // AlertsDock renders "LIVE ALERTS" header
     expect(screen.getByText('LIVE ALERTS')).toBeInTheDocument()
   })
 
   it('mobile: renders AlertsSheet, not AlertsDock', () => {
     mockUseBreakpoint.mockReturnValue({ layout: 'mobile' })
     renderPage()
-    // AlertsSheet renders a "0 ALERTS" count in the handle
     expect(screen.getByText(/0 ALERTS/)).toBeInTheDocument()
-    // AlertsDock "LIVE ALERTS" header should not be present
     expect(screen.queryByText('LIVE ALERTS')).not.toBeInTheDocument()
   })
 
@@ -113,6 +107,7 @@ describe('LiveMapPage', () => {
       place_name: null,
       county: null,
       is_active: true,
+      state: 'ACTIVE',
       started_at: '',
       created_at: '',
       nostr_event_id: null,

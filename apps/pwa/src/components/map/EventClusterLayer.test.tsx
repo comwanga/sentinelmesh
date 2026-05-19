@@ -28,8 +28,8 @@ vi.mock('../../store', () => ({
   useAppSelector: vi.fn(),
 }))
 
-vi.mock('../../store/eventsSlice', () => ({
-  selectEventItems: vi.fn(),
+vi.mock('../../store/viewportEventsSlice', () => ({
+  selectViewportEventItems: vi.fn(),
 }))
 
 import { useAppSelector } from '../../store'
@@ -63,7 +63,6 @@ describe('EventClusterLayer', () => {
   it('renders cluster marker at low zoom (< 12.8) for nearby events', async () => {
     render(<EventClusterLayer zoom={10} />)
     const clusterMarkers = screen.queryAllByTestId('cluster-marker')
-    // event1 and event2 are ~0.01° apart at zoom=10 (cellSize≈0.176°) → same cell, count=2
     const clusterWith2 = clusterMarkers.find(el => el.getAttribute('data-count') === '2')
     expect(clusterWith2).toBeDefined()
   })
