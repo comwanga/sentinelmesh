@@ -52,6 +52,7 @@ async fn zap_request(
         &lnd_url,
         &lnd_mac,
         state.config.lnd_tls_skip_verify,
+        state.config.lnd_tls_cert_pem.as_deref(),
     )
     .map_err(AppError::Internal)?;
 
