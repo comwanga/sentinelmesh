@@ -93,6 +93,14 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("NOSTR_PRIVATE_KEY not set — receipt retry worker disabled");
     }
 
+    // Spawn invoice expiry worker (polls every 5 minutes for stale pending invoices)
+    {
+        let pool_expiry = db.clone();
+        tokio::spawn(async move {
+            lightning::invoice_expiry::run(pool_expiry).await;
+        });
+    }
+
     // CORS: allow any origin (public-read API — safety events, community reports)
     let cors = CorsLayer::new()
         .allow_origin(Any)
