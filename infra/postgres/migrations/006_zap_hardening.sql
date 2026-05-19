@@ -2,7 +2,7 @@
 
 -- 1. Extend status enum to include 'failed'
 ALTER TABLE lightning_zaps
-  DROP CONSTRAINT lightning_zaps_status_check;
+  DROP CONSTRAINT IF EXISTS lightning_zaps_status_check;
 
 ALTER TABLE lightning_zaps
   ADD CONSTRAINT lightning_zaps_status_check
