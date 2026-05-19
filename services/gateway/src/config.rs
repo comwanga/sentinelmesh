@@ -107,6 +107,10 @@ fn load_nostr_private_key() -> Result<Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Serialize env-mutating tests — Rust test threads share the process environment
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn missing_required_var_returns_error() {
@@ -117,6 +121,7 @@ mod tests {
 
     #[test]
     fn nostr_relays_parse_from_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("NOSTR_RELAYS", "wss://a.example,wss://b.example");
         let relays: Vec<String> = std::env::var("NOSTR_RELAYS")
             .unwrap_or_default()
@@ -130,6 +135,7 @@ mod tests {
 
     #[test]
     fn nostr_relays_default_when_unset() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::remove_var("NOSTR_RELAYS");
         let relays: Vec<String> = std::env::var("NOSTR_RELAYS")
             .unwrap_or_else(|_| "wss://nos.lol".into())
