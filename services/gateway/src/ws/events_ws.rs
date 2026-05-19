@@ -410,6 +410,7 @@ fn compute_diff(known: &std::collections::HashMap<Uuid, EventDigest>, new_events
     DiffResult { added, removed, updated }
 }
 
+#[cfg(test)]
 fn parse_digest_from_json(json: &str) -> Option<EventDigest> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     Some(EventDigest {

@@ -20,6 +20,7 @@ struct ZapRow {
     pub status: String,
     pub bolt11_invoice: String,
     pub recipient_pubkey: String,
+    #[allow(dead_code)]
     pub amount_sats: i64,
 }
 

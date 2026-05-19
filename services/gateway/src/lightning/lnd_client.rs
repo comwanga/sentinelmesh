@@ -58,6 +58,7 @@ impl LndClient {
         })
     }
 
+    #[allow(dead_code)]
     pub async fn get_invoice(&self, payment_hash_hex: &str) -> Result<serde_json::Value> {
         let hash_bytes = hex::decode(payment_hash_hex)?;
         let b64url = general_purpose::URL_SAFE_NO_PAD.encode(hash_bytes);

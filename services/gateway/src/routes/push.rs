@@ -61,7 +61,7 @@ pub fn router() -> Router<AppState> {
 pub async fn broadcast_push(
     pool: &sqlx::PgPool,
     vapid_private_key: &str,
-    vapid_subject: &str,
+    _vapid_subject: &str,
     title: &str,
     body: &str,
     event_id: &str,
