@@ -122,13 +122,17 @@ pub async fn query_viewport_events(
     zoom: f64,
 ) -> sqlx::Result<Vec<WsEvent>> {
     let limit = viewport_event_limit(zoom);
-    // ST_MakeEnvelope(xmin, ymin, xmax, ymax, srid) = (west, south, east, north, 4326)
+    // Table uses lat/lng numerics — no PostGIS. Simple bounding-box range filter.
+    // $1=west $2=south $3=east $4=north; state derived from is_active.
     if filters.is_empty() {
         sqlx::query_as::<_, WsEvent>(
-            "SELECT id, event_type, severity, state, title, lat, lng, started_at
+            "SELECT id, event_type, severity,
+                    CASE WHEN is_active THEN 'ACTIVE' ELSE 'INACTIVE' END AS state,
+                    title, lat::float8 AS lat, lng::float8 AS lng, started_at
                FROM safety_events
-              WHERE geog && ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
-                AND state NOT IN ('RESOLVED', 'EXPIRED')
+              WHERE lat BETWEEN $2 AND $4
+                AND lng BETWEEN $1 AND $3
+                AND is_active = true
               ORDER BY
                 CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1
                               WHEN 'MEDIUM' THEN 2 ELSE 3 END ASC
@@ -140,10 +144,13 @@ pub async fn query_viewport_events(
         .await
     } else {
         sqlx::query_as::<_, WsEvent>(
-            "SELECT id, event_type, severity, state, title, lat, lng, started_at
+            "SELECT id, event_type, severity,
+                    CASE WHEN is_active THEN 'ACTIVE' ELSE 'INACTIVE' END AS state,
+                    title, lat::float8 AS lat, lng::float8 AS lng, started_at
                FROM safety_events
-              WHERE geog && ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
-                AND state NOT IN ('RESOLVED', 'EXPIRED')
+              WHERE lat BETWEEN $2 AND $4
+                AND lng BETWEEN $1 AND $3
+                AND is_active = true
                 AND event_type = ANY($5)
               ORDER BY
                 CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1
