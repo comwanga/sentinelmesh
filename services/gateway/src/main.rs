@@ -82,6 +82,17 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Spawn receipt retry worker (polls every 60s for undelivered zap receipts)
+    if let Some(nostr_key) = config.nostr_private_key.clone() {
+        let pool_retry = db.clone();
+        let relays_retry = config.nostr_relays.clone();
+        tokio::spawn(async move {
+            lightning::receipt_retry::run(pool_retry, relays_retry, nostr_key).await;
+        });
+    } else {
+        tracing::warn!("NOSTR_PRIVATE_KEY not set — receipt retry worker disabled");
+    }
+
     // CORS: allow any origin (public-read API — safety events, community reports)
     let cors = CorsLayer::new()
         .allow_origin(Any)
