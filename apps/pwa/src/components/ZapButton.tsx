@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { signAuthEvent } from '../services/nostrService'
 
 const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
 const DEFAULT_SATS = 21
@@ -20,13 +21,26 @@ export function ZapButton({ reportId, amountSats = DEFAULT_SATS }: Props) {
   const handleZap = useCallback(async () => {
     setState({ status: 'loading' })
     try {
+      let authHeader: string
+      try {
+        const authEvent = await signAuthEvent()
+        authHeader = JSON.stringify(authEvent)
+      } catch {
+        setState({ status: 'error', message: 'Signing failed — install a Nostr extension or reload' })
+        return
+      }
+
       const res = await fetch(`${API_BASE}/api/zaps/request`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Nostr-Auth': authHeader,
+        },
         body: JSON.stringify({ report_id: reportId, amount_sats: amountSats }),
       })
       if (!res.ok) {
-        setState({ status: 'error', message: `Request failed (${res.status})` })
+        const body = await res.json().catch(() => ({})) as { message?: string }
+        setState({ status: 'error', message: body.message ?? `Request failed (${res.status})` })
         return
       }
       const data = await res.json() as { payment_request: string }

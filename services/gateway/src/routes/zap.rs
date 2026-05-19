@@ -41,8 +41,10 @@ fn verify_hmac(secret: &str, body: &[u8], provided_hex_sig: &str) -> bool {
 
 async fn zap_request(
     State(state): State<AppState>,
+    auth: crate::middleware::nostr_auth::NostrAuth,
     Json(body): Json<ZapRequestBody>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    tracing::info!(pubkey = %auth.pubkey, report_id = %body.report_id, amount_sats = body.amount_sats, "zap request");
     let (lnd_url, lnd_mac) = match (&state.config.lnd_rest_url, &state.config.lnd_macaroon_hex) {
         (Some(u), Some(m)) => (u.clone(), m.clone()),
         _ => return Err(AppError::BadRequest("LND not configured".into())),
