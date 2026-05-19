@@ -45,6 +45,10 @@ async fn zap_request(
     Json(body): Json<ZapRequestBody>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     tracing::info!(pubkey = %auth.pubkey, report_id = %body.report_id, amount_sats = body.amount_sats, "zap request");
+    if state.zap_limiter.check_key(&auth.pubkey).is_err() {
+        tracing::warn!(pubkey = %auth.pubkey, "zap rate limit exceeded");
+        return Err(AppError::RateLimited);
+    }
     let (lnd_url, lnd_mac) = match (&state.config.lnd_rest_url, &state.config.lnd_macaroon_hex) {
         (Some(u), Some(m)) => (u.clone(), m.clone()),
         _ => return Err(AppError::BadRequest("LND not configured".into())),
@@ -145,5 +149,20 @@ mod tests {
         mac.update(body);
         let sig = hex::encode(mac.finalize().into_bytes());
         assert!(!verify_hmac(secret, b"tampered", &sig));
+    }
+
+    #[test]
+    fn rate_limiter_blocks_after_limit() {
+        use governor::{Quota, RateLimiter};
+        use std::num::NonZeroU32;
+
+        let quota = Quota::per_minute(NonZeroU32::new(2).unwrap());
+        let limiter: std::sync::Arc<governor::DefaultKeyedRateLimiter<String>> =
+            std::sync::Arc::new(RateLimiter::keyed(quota));
+
+        let key = "pubkey_test".to_string();
+        assert!(limiter.check_key(&key).is_ok(), "first request allowed");
+        assert!(limiter.check_key(&key).is_ok(), "second request allowed");
+        assert!(limiter.check_key(&key).is_err(), "third request blocked");
     }
 }

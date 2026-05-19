@@ -17,6 +17,8 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 use axum::http::{Method, HeaderName};
 use ws::{circle_hub::CircleHub, hub::WsHub};
+use governor::{DefaultKeyedRateLimiter, Quota, RateLimiter};
+use std::num::NonZeroU32;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -27,6 +29,7 @@ pub struct AppState {
     pub circle_hub: Arc<CircleHub>,
     pub redis_healthy: Arc<AtomicBool>,
     pub map_provider: std::sync::Arc<dyn maps::MapProvider>,
+    pub zap_limiter: Arc<DefaultKeyedRateLimiter<String>>,
 }
 
 #[tokio::main]
@@ -51,6 +54,12 @@ async fn main() -> anyhow::Result<()> {
         )
     );
 
+    let zap_quota = Quota::per_minute(
+        NonZeroU32::new(config.zap_rate_limit_per_minute.max(1)).unwrap(),
+    );
+    let zap_limiter: Arc<DefaultKeyedRateLimiter<String>> =
+        Arc::new(RateLimiter::keyed(zap_quota));
+
     let state = AppState {
         db: db.clone(),
         config: config.clone(),
@@ -59,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
         circle_hub,
         redis_healthy: redis_healthy.clone(),
         map_provider,
+        zap_limiter,
     };
 
     // Spawn Redis subscriber task (supervised, runs for the lifetime of the process)
