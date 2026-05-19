@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import reportReducer from '../store/reportSlice'
-import type { CommunityReport } from '../../../../shared/types'
+import type { CommunityReport, ReportStatus } from '../../../../shared/types'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
@@ -27,7 +27,7 @@ vi.mock('../services/nostrService', () => ({
 
 import { ReportList } from './ReportList'
 
-function makeReport(id: string, status = 'PENDING'): CommunityReport {
+function makeReport(id: string, status: ReportStatus = 'PENDING'): CommunityReport {
   return {
     report_id: id, report_type: 'FLOODING', description: 'road blocked',
     lat: -1.29, lng: 36.82, place_name: 'Mathare',

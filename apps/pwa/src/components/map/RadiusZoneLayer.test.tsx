@@ -50,15 +50,15 @@ describe('RadiusZoneLayer', () => {
     const high: SafetyEvent = { ...critical, id: 'h1', severity: 'HIGH' }
     mockSource.mockClear()
     render(<RadiusZoneLayer events={[critical, high, low]} />)
-    const call = mockSource.mock.calls[mockSource.mock.calls.length - 1][0]
-    const data = call.data as { features: unknown[] }
+    const call = mockSource.mock.calls[mockSource.mock.calls.length - 1][0] as Record<string, unknown>
+    const data = call['data'] as { features: unknown[] }
     expect(data.features).toHaveLength(2) // CRITICAL + HIGH, not LOW
   })
 
   it('sets circle-pitch-alignment to map on Layer', () => {
     mockLayer.mockClear()
     render(<RadiusZoneLayer events={[critical]} />)
-    const call = mockLayer.mock.calls[mockLayer.mock.calls.length - 1][0]
-    expect(call.paint['circle-pitch-alignment']).toBe('map')
+    const call = (mockLayer.mock.calls as unknown as Array<[Record<string, unknown>]>)[mockLayer.mock.calls.length - 1]?.[0]
+    expect((call?.['paint'] as Record<string, unknown>)['circle-pitch-alignment']).toBe('map')
   })
 })

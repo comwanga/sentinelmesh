@@ -8,10 +8,10 @@ import type { SafetyEvent } from '../../../../../shared/types'
 import { Header } from './Header'
 
 const baseEvent: SafetyEvent = {
-  event_id: 'e1', event_type: 'SECURITY_INCIDENT', severity: 'HIGH',
-  title: 'Test', summary: null, location: null, confidence: 0.9,
-  source_count: 1, source_breakdown: {}, is_active: true,
-  started_at: '2026-01-01T00:00:00Z', last_updated: '2026-01-01T00:00:00Z',
+  id: 'e1', event_type: 'SECURITY_INCIDENT', severity: 'HIGH',
+  title: 'Test', summary: null, lat: -1.28, lng: 36.82,
+  place_name: null, county: null, is_active: true, state: 'ACTIVE',
+  started_at: '2026-01-01T00:00:00Z', created_at: '2026-01-01T00:00:00Z',
   nostr_event_id: null, bitcoin_txid: null,
 }
 

@@ -23,7 +23,7 @@ vi.mock('../hooks/useViewportWs', () => ({
   useViewportWs: vi.fn(),
 }))
 
-const mockUseNearestThreat = vi.fn(() => ({ nearest: null as SafetyEvent | null, distanceKm: null as number | null, geoError: null }))
+const mockUseNearestThreat = vi.fn(() => ({ nearest: null as SafetyEvent | null, distanceKm: null as number | null, geoError: null as GeolocationPositionError | null }))
 vi.mock('../hooks/useNearestThreat', () => ({
   useNearestThreat: () => mockUseNearestThreat(),
 }))

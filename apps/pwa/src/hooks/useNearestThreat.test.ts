@@ -16,7 +16,7 @@ function makeStore(events: SafetyEvent[] = []) {
 
 function makeWrapper(store: ReturnType<typeof makeStore>) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return React.createElement(Provider, { store }, children)
+    return React.createElement(Provider, { store, children })
   }
 }
 
@@ -32,6 +32,7 @@ function makeEvent(overrides: Partial<SafetyEvent> = {}): SafetyEvent {
     place_name: null,
     county: null,
     is_active: true,
+    state: 'ACTIVE',
     started_at: '',
     created_at: '',
     nostr_event_id: null,
