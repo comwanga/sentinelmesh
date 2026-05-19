@@ -22,6 +22,7 @@ describe('ZapButton', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   test('renders with default 21 sats label', () => {
@@ -48,7 +49,7 @@ describe('ZapButton', () => {
       expect(fetchMock).toHaveBeenCalledOnce()
     })
 
-    const [_url, opts] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const [_url, opts] = fetchMock.mock.calls[0]! as [string, RequestInit]
     const headers = opts.headers as Record<string, string>
     expect(headers['X-Nostr-Auth']).toBeDefined()
     expect(headers['X-Nostr-Auth']).toContain('"kind":27235')
