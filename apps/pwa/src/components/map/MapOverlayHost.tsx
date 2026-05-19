@@ -35,7 +35,7 @@ export function MapOverlayHost() {
       if (!mounted) return
       const userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude }
       const eventLocation = { lat: activeEvent.lat, lng: activeEvent.lng }
-      const radiusKm = (Number((activeEvent as Record<string, unknown>).radius_meters) || 500) / 1000
+      const radiusKm = (Number((activeEvent as unknown as Record<string, unknown>).radius_meters) || 500) / 1000
       try {
         const result = await fetchSafeRoutes(userLocation, eventLocation, radiusKm)
         if (!mounted) return

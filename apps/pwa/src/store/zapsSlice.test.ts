@@ -3,11 +3,10 @@ import zapsReducer, { zapSent, zapsCleared, ZapRecord } from './zapsSlice'
 
 function makeRecord(overrides: Partial<ZapRecord> & { id: string }): ZapRecord {
   return {
-    id: overrides.id,
-    amount: overrides.amount ?? 21,
-    recipientPubkey: overrides.recipientPubkey ?? 'npub1abc',
-    reportId: overrides.reportId ?? 'report-1',
-    timestamp: overrides.timestamp ?? Date.now(),
+    amount: 21,
+    recipientPubkey: 'npub1abc',
+    reportId: 'report-1',
+    timestamp: Date.now(),
     ...overrides,
   }
 }

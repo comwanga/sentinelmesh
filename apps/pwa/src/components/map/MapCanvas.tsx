@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { Map, useMap } from 'react-map-gl/maplibre'
+import type { StyleSpecification } from 'maplibre-gl'
 import { loadMapStyle, MAP_STYLE_URL, WORLD_CENTER } from '../../config/mapConfig'
 import { persistViewport } from '../../hooks/useInitialViewport'
 import type { ViewportBounds } from '../../hooks/useViewportWs'
@@ -44,10 +45,10 @@ function ViewportReporter({ onBoundsChange }: ViewportReporterProps) {
 
 export function MapCanvas({ initialViewState = WORLD_CENTER, children, onMapLoad, onBoundsChange }: Props = {}) {
   const [viewState, setViewState] = useState<ViewState>(initialViewState)
-  const [mapStyle, setMapStyle] = useState<object | string>(MAP_STYLE_URL)
+  const [mapStyle, setMapStyle] = useState<StyleSpecification | string>(MAP_STYLE_URL)
 
   useEffect(() => {
-    loadMapStyle().then(setMapStyle).catch(err => {
+    loadMapStyle().then(style => setMapStyle(style as StyleSpecification)).catch(err => {
       console.error('Map style load failed, using fallback:', err)
     })
   }, [])
