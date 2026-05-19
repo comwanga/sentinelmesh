@@ -110,6 +110,7 @@ async fn webhook(
         &state.db,
         &parsed.payment_hash,
         state.config.nostr_private_key.as_deref(),
+        &state.config.nostr_relays,
     )
     .await?;
 
