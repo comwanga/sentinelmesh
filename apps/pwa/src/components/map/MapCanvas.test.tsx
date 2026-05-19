@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { MapCanvas } from './MapCanvas'
+import type { ViewportBounds } from '../../hooks/useViewportWs'
 
 const mockStyle = vi.hoisted(() => ({ version: 8, name: 'test', layers: [] }))
 
@@ -14,6 +15,23 @@ vi.mock('../../config/mapConfig', () => ({
 vi.mock('../../hooks/useInitialViewport', () => ({
   persistViewport: vi.fn(),
 }))
+
+// Mutable mock map used by ViewportReporter tests
+const mockMap = vi.hoisted(() => {
+  const handlers = new Map<string, () => void>()
+  return {
+    getBounds: vi.fn(() => ({
+      getNorth: () => 1,
+      getSouth: () => -1,
+      getEast: () => 38,
+      getWest: () => 36,
+    })),
+    getZoom: vi.fn(() => 10),
+    on: vi.fn((event: string, fn: () => void) => { handlers.set(event, fn) }),
+    off: vi.fn((event: string) => { handlers.delete(event) }),
+    _fire: (event: string) => handlers.get(event)?.(),
+  }
+})
 
 vi.mock('react-map-gl/maplibre', () => ({
   Map: ({ children, longitude, latitude, zoom, onMove, mapStyle }: {
@@ -35,6 +53,7 @@ vi.mock('react-map-gl/maplibre', () => ({
       {children}
     </div>
   ),
+  useMap: () => ({ current: mockMap }),
 }))
 
 describe('MapCanvas', () => {
@@ -73,5 +92,36 @@ describe('MapCanvas', () => {
     const { container } = await act(async () => render(<MapCanvas />))
     const wrapper = container.firstElementChild
     expect(wrapper?.tagName).toBe('DIV')
+  })
+
+  it('calls onBoundsChange with initial bounds immediately after map mounts', async () => {
+    const onBoundsChange = vi.fn()
+    await act(async () => {
+      render(<MapCanvas onBoundsChange={onBoundsChange} />)
+    })
+    expect(onBoundsChange).toHaveBeenCalledOnce()
+    const [bounds, zoom] = onBoundsChange.mock.calls[0] as [ViewportBounds, number]
+    expect(bounds.north).toBe(1)
+    expect(bounds.south).toBe(-1)
+    expect(bounds.east).toBe(38)
+    expect(bounds.west).toBe(36)
+    expect(zoom).toBe(10)
+  })
+
+  it('calls onBoundsChange again when moveend fires', async () => {
+    const onBoundsChange = vi.fn()
+    await act(async () => {
+      render(<MapCanvas onBoundsChange={onBoundsChange} />)
+    })
+    onBoundsChange.mockClear()
+    act(() => mockMap._fire('moveend'))
+    expect(onBoundsChange).toHaveBeenCalledOnce()
+  })
+
+  it('does not mount ViewportReporter when onBoundsChange is not provided', async () => {
+    mockMap.on.mockClear()
+    await act(async () => { render(<MapCanvas />) })
+    const moveendCalls = (mockMap.on.mock.calls as Array<[string, () => void]>).filter(c => c[0] === 'moveend')
+    expect(moveendCalls).toHaveLength(0)
   })
 })
