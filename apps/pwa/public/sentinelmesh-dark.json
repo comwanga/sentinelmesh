@@ -21,7 +21,7 @@
       "type": "fill",
       "source": "openmaptiles",
       "source-layer": "water",
-      "paint": { "fill-color": "#0c1828" }
+      "paint": { "fill-color": "#142d4a" }
     },
     {
       "id": "waterway",
@@ -30,7 +30,7 @@
       "source-layer": "waterway",
       "minzoom": 8,
       "layout": { "line-cap": "round", "line-join": "round" },
-      "paint": { "line-color": "#0c1828", "line-width": 1 }
+      "paint": { "line-color": "#152e4c", "line-width": 1 }
     },
     {
       "id": "landcover",
@@ -38,7 +38,7 @@
       "source": "openmaptiles",
       "source-layer": "landcover",
       "filter": ["in", "class", "park", "forest", "scrub", "grass"],
-      "paint": { "fill-color": "#0b1c10", "fill-opacity": 0.7 }
+      "paint": { "fill-color": "#0f2415", "fill-opacity": 0.7 }
     },
     {
       "id": "landuse",
@@ -49,10 +49,10 @@
       "paint": {
         "fill-color": [
           "match", ["get", "class"],
-          "residential",  "#0c1320",
-          "commercial",   "#0d1525",
-          "industrial",   "#0d1525",
-          "#0c1320"
+          "residential",  "#0f1c2e",
+          "commercial",   "#111e32",
+          "industrial",   "#111e32",
+          "#0f1c2e"
         ],
         "fill-opacity": 0.5
       }
@@ -63,7 +63,7 @@
       "source": "openmaptiles",
       "source-layer": "building",
       "minzoom": 14,
-      "paint": { "fill-color": "#101520", "fill-opacity": 0.9 }
+      "paint": { "fill-color": "#141e2e", "fill-opacity": 0.9 }
     },
     {
       "id": "building-outline",
@@ -71,7 +71,7 @@
       "source": "openmaptiles",
       "source-layer": "building",
       "minzoom": 14,
-      "paint": { "line-color": "#1a2030", "line-width": 0.7 }
+      "paint": { "line-color": "#1e2d44", "line-width": 0.7 }
     },
     {
       "id": "road-casing-motorway-trunk",
@@ -128,7 +128,7 @@
       "filter": ["==", "class", "motorway"],
       "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#2c3a52",
+        "line-color": "#425e80",
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           6, 2, 10, 6, 14, 12, 18, 22
@@ -143,7 +143,7 @@
       "filter": ["==", "class", "trunk"],
       "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#253347",
+        "line-color": "#374f6e",
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           6, 1.5, 10, 5, 14, 10, 18, 18
@@ -159,7 +159,7 @@
       "minzoom": 10,
       "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#1f2c3e",
+        "line-color": "#2d4460",
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           10, 3.5, 14, 8, 18, 16
@@ -175,7 +175,7 @@
       "minzoom": 12,
       "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#182030",
+        "line-color": "#243752",
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           12, 3, 14, 3, 18, 7
@@ -191,7 +191,7 @@
       "minzoom": 12,
       "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#131820",
+        "line-color": "#1c2e44",
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           12, 2, 14, 2, 18, 5
@@ -207,7 +207,7 @@
       "minzoom": 13,
       "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#10131a",
+        "line-color": "#151f30",
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           13, 1, 14, 1.5, 18, 3.5
@@ -239,10 +239,10 @@
       "paint": {
         "line-color": [
           "match", ["get", "class"],
-          "motorway", "#2c3a52",
-          "trunk",    "#253347",
-          "primary",  "#1f2c3e",
-          "#182030"
+          "motorway", "#425e80",
+          "trunk",    "#374f6e",
+          "primary",  "#2d4460",
+          "#243752"
         ],
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
