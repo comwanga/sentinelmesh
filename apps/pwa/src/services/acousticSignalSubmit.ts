@@ -36,7 +36,7 @@ export async function submitAcousticSignal(
     signal: AbortSignal.timeout(10_000),
     body: JSON.stringify(payload),
   })
-  if (!response.ok && response.status !== 200) {
+  if (!response.ok) {
     throw new Error(`acoustic signal submission failed: ${response.status}`)
   }
 }

@@ -48,7 +48,7 @@ describe('submitAcousticSignal', () => {
     expect(init.method).toBe('POST')
   })
 
-  test('request body contains threat_class, confidence, lat, lng', async () => {
+  test('request body contains all required payload fields', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 201 })
     await submitAcousticSignal(detection, location)
     const [, init] = fetchMock.mock.calls[0]
@@ -57,6 +57,12 @@ describe('submitAcousticSignal', () => {
     expect(body.confidence).toBe(0.95)
     expect(body.lat).toBe(-1.2921)
     expect(body.lng).toBe(36.8219)
+    expect(body.model_version).toBe('yamnet-tfjs-1')
+    expect(body.threshold_profile).toBe('default-v1')
+    expect(body.inference_backend).toBe('webgl')
+    expect(body.dropped_frames).toBe(0)
+    expect(typeof body.client_id).toBe('string')
+    expect(body.client_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
   })
 
   test('X-Nostr-Auth header is set to JSON-stringified auth event', async () => {
