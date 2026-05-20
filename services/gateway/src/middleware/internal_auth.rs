@@ -85,6 +85,9 @@ mod tests {
         let zap_limiter = Arc::new(RateLimiter::keyed(
             Quota::per_minute(NonZeroU32::new(10).unwrap()),
         ));
+        let acoustic_limiter = Arc::new(RateLimiter::keyed(
+            Quota::per_minute(NonZeroU32::new(5).unwrap()),
+        ));
         let (event_tx_inner, _) = tokio::sync::broadcast::channel::<crate::ws::ViewportEvent>(1);
         let redis_client = redis::Client::open("redis://localhost").unwrap();
         let redis = redis::aio::ConnectionManager::new(redis_client)
@@ -121,6 +124,7 @@ mod tests {
             redis_healthy: Arc::new(AtomicBool::new(false)),
             map_provider,
             zap_limiter,
+            acoustic_limiter,
             event_tx: Arc::new(event_tx_inner),
             redis,
         }
