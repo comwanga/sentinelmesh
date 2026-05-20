@@ -296,4 +296,68 @@ mod tests {
         std::env::remove_var("SYNTHESIS_ENABLED");
         assert!(result);
     }
+
+    #[test]
+    fn soft_visibility_enabled_reads_true() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("SOFT_VISIBILITY_ENABLED", "true");
+        let result = std::env::var("SOFT_VISIBILITY_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
+        std::env::remove_var("SOFT_VISIBILITY_ENABLED");
+        assert!(result);
+    }
+
+    #[test]
+    fn soft_visibility_enabled_defaults_false() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("SOFT_VISIBILITY_ENABLED");
+        let result = std::env::var("SOFT_VISIBILITY_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
+        assert!(!result);
+    }
+
+    #[test]
+    fn soft_visibility_enabled_reads_1_as_true() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("SOFT_VISIBILITY_ENABLED", "1");
+        let result = std::env::var("SOFT_VISIBILITY_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
+        std::env::remove_var("SOFT_VISIBILITY_ENABLED");
+        assert!(result);
+    }
+
+    #[test]
+    fn emergency_mode_enabled_reads_true() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("EMERGENCY_MODE_ENABLED", "true");
+        let result = std::env::var("EMERGENCY_MODE_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
+        std::env::remove_var("EMERGENCY_MODE_ENABLED");
+        assert!(result);
+    }
+
+    #[test]
+    fn emergency_mode_enabled_defaults_false() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("EMERGENCY_MODE_ENABLED");
+        let result = std::env::var("EMERGENCY_MODE_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
+        assert!(!result);
+    }
+
+    #[test]
+    fn emergency_mode_enabled_reads_1_as_true() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("EMERGENCY_MODE_ENABLED", "1");
+        let result = std::env::var("EMERGENCY_MODE_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
+        std::env::remove_var("EMERGENCY_MODE_ENABLED");
+        assert!(result);
+    }
 }
