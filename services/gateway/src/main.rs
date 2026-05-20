@@ -21,6 +21,8 @@ use ws::{circle_hub::CircleHub, hub::WsHub};
 use governor::{DefaultKeyedRateLimiter, Quota, RateLimiter};
 use std::num::NonZeroU32;
 
+const ACOUSTIC_RATE_LIMIT_PER_MINUTE: u32 = 5;
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: sqlx::PgPool,
@@ -65,7 +67,9 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(RateLimiter::keyed(zap_quota));
 
     let acoustic_limiter: Arc<DefaultKeyedRateLimiter<String>> =
-        Arc::new(RateLimiter::keyed(Quota::per_minute(NonZeroU32::new(5).unwrap())));
+        Arc::new(RateLimiter::keyed(Quota::per_minute(
+            NonZeroU32::new(ACOUSTIC_RATE_LIMIT_PER_MINUTE).unwrap(),
+        )));
 
     // Capacity 512: allows slow viewport-WS clients up to 512 events of lag
     // before Lagged errors force them into snapshot mode.
