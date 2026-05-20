@@ -33,6 +33,11 @@ CREATE TABLE acoustic_signals (
     h3_r7         TEXT NOT NULL,           -- H3 cell at resolution 7 (~5km²), for cluster grouping
     received_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
 
+    -- coordinate precision: exact coords retained transiently, coarsened on schedule (see Privacy section)
+    -- lat/lng: nulled after 24h via scheduled job
+    -- h3_r9: retained 7 days, then nulled
+    -- h3_r7: retained indefinitely (lowest precision)
+
     -- model governance
     model_version      TEXT NOT NULL,
     threshold_profile  TEXT NOT NULL,
@@ -91,13 +96,27 @@ Score is a float in [0.0, 1.0]. Updated asynchronously by a background worker, n
 
 New accounts default to 0.40 until sufficient history is available.
 
+### Trust decay and ceilings (Sybil maturity defence)
+
+The trust score system is vulnerable to "slow farming": an attacker behaves honestly for weeks, accumulates reputation, then coordinates false incidents. This is the Sybil maturity problem. Three mechanisms limit it:
+
+**Asymptotic growth ceiling.** Trust score growth rate slows as the score approaches 1.0. The effective increment per confirmed detection is `Δ = base_increment × (1 - current_score)`. A new account at 0.40 gains trust quickly; an account at 0.90 gains trust very slowly regardless of activity volume.
+
+**Inactivity decay.** Trust scores decay toward 0.50 (not 0.0) at a rate of 0.01 per week of no confirmed contributions. An account built up over months and then unused for 3 months returns to near-baseline before it can be deployed. Decay is computed lazily at score-read time using `stored_score × decay_factor(weeks_idle)`.
+
+**Nonlinear dispute penalty.** A disputed signal applies a penalty of `0.20 × current_score` (not a fixed subtraction). A high-trust account loses more from a dispute than a low-trust account. This makes reputation-farming costly to deploy: the attacker's most valuable asset is the most damaged by a single failed false incident.
+
+**Trust ceiling for new accounts.** Accounts less than 30 days old cannot exceed trust score 0.60, regardless of activity. This prevents rapid farming via scripted corroboration loops.
+
 ### Cluster confidence score
 
 ```
-cluster_score = Σ (reporter_trust[i] × acoustic_confidence[i]) / N
-
-where N = count of distinct pubkeys in cluster
+cluster_score = Σ (trust_i × confidence_i)
+                ──────────────────────────
+                        Σ trust_i
 ```
+
+The denominator is the sum of trust scores, not the count of contributors. Dividing by N would allow a swarm of low-trust accounts to dilute the score only weakly — many low-confidence submissions average up toward a passing score. Dividing by trust mass means a swarm of low-trust accounts contributes little to the numerator and dominates the denominator, driving the score toward zero. Sybil inflation fails because more low-trust accounts makes the score worse, not better.
 
 Threshold to promote `corroborating` → `confirmed`: `cluster_score ≥ 0.60` with N ≥ 2 distinct pubkeys.
 
@@ -177,7 +196,7 @@ Evaluated by the synthesis worker, not in the request path. Flagging a signal se
 
 **Impossible travel detection:** If the same pubkey submits signals from two locations more than 50km apart within 5 minutes, flag both signals as disputed.
 
-**Synchronized burst detection:** If N ≥ 5 distinct pubkeys submit the same `threat_class` within the same H3 r9 cell within 10 seconds, flag the cluster for moderator review. Real incidents spread through physical space; simultaneous detection by many devices suggests coordination.
+**Synchronized burst detection:** If N ≥ 5 distinct pubkeys submit the same `threat_class` within the same H3 r9 cell within 10 seconds, apply elevated scrutiny: reduce automatic trust weighting for those signals by 30% and increase moderator queue priority. Do not auto-dispute the cluster. Real incidents — gunshots, explosions, crowd panic, alarms — naturally synchronize humans. Simultaneous detection is evidence of a real event, not evidence of coordination. Auto-disputing a synchronized burst during a genuine emergency would suppress the signal when it is most needed. Elevated scrutiny means the cluster requires moderator confirmation to reach `confirmed` state, but does not prevent it from reaching `corroborating` for soft visibility.
 
 **Waveform fingerprint deduplication:** The client computes a sha256 of normalised waveform characteristics (spectral centroid, zero-crossing rate, RMS per band) and sends it as `signal_fingerprint`. If the same fingerprint appears from 3+ distinct pubkeys, it suggests a shared audio source or replay of a recorded sample. Flag for review.
 
@@ -253,6 +272,19 @@ Moderator decisions are stored in an `acoustic_moderation_log` table with the mo
 
 A locked incident accepts no new contributing signals. Used when an event is determined to be a false alarm to prevent continued corroboration from late-arriving signals.
 
+### Moderation scalability
+
+The current model — moderator reviews every CRITICAL event and every anti-spoof flag — does not scale. At meaningful user volume, the CRITICAL queue alone becomes a bottleneck, and moderation fatigue degrades review quality.
+
+This spec does not solve scalability, but acknowledges it. Future evolution will require:
+
+- Auto-expiration rules with SLAs: unflagged CRITICAL events older than N minutes without moderator action are automatically expired rather than staying in limbo.
+- Trusted responder tier: a higher-trust class of users whose confirmation can substitute for a moderator action on non-CRITICAL events.
+- Delegated regional moderation: moderators have jurisdiction over a geographic area, reducing queue size per moderator.
+- Probabilistic moderation queues: not every anti-spoof flag requires human review; a confidence score on the flag determines whether it is auto-actioned, queued, or silently monitored.
+
+These are out of scope for Phase 1–3. They must be designed before Phase 5 (reputation system) because the trusted responder tier feeds directly into the reputation weight for `trusted_responder_score`.
+
 ---
 
 ## Sensor Quorum Architecture
@@ -297,6 +329,20 @@ These are governance contracts, not implementation details. Any future feature t
 
 Violations of these invariants — even partial, even in test environments — must be escalated to architectural review before merging.
 
+### Coordinate precision degradation
+
+H3 resolution 9 (~100m) is precise enough to reveal home address, workplace, and movement patterns from repeated submissions by the same pubkey, even without continuous tracking. A user who submits 10 signals from the same r9 cell over several weeks is effectively registering a location.
+
+Exact coordinates and fine-grained cells are retained only transiently. A scheduled job (nightly) nulls columns on a rolling basis:
+
+| Age | `lat`/`lng` | `h3_r9` | `h3_r7` |
+|-----|-------------|---------|---------|
+| < 24h | retained | retained | retained |
+| 24h – 7d | nulled | retained | retained |
+| > 7d | nulled | nulled | retained |
+
+`h3_r7` (~5km²) is the permanent precision floor. It retains statistical value for hotspot analysis without enabling individual location inference. Synthesis worker and clustering algorithms use `h3_r9` during the active corroboration window (< 120s), at which point the cluster has already been resolved and fine precision is no longer needed.
+
 ---
 
 ## Observability
@@ -328,6 +374,89 @@ Required dashboards before production rollout:
 - Synchronized burst detection events per hour
 - Impossible travel flags per hour
 - Moderator queue depth
+
+---
+
+## Evidence Lineage
+
+Every `public_events` record must carry immutable provenance back to its source signals, synthesis decisions, and any moderator actions. Without lineage, retroactive debugging, dispute review, and ML recalibration are all impossible — you can see the output but not reconstruct how it was produced.
+
+### Schema additions to `public_events`
+
+```sql
+ALTER TABLE public_events ADD COLUMN lineage JSONB NOT NULL DEFAULT '{}';
+```
+
+The `lineage` column stores:
+
+```json
+{
+  "derived_from": ["signal_uuid_1", "signal_uuid_2"],
+  "synthesis_version": "synth-v1",
+  "synthesis_run_id": "uuid",
+  "score_breakdown": {
+    "acoustic": 0.72,
+    "crowd": 0.00,
+    "trusted_responder": 0.00,
+    "historical_hotspot": 0.08
+  },
+  "cluster_score": 0.68,
+  "threshold_profile": "default-v1",
+  "n_contributors": 3,
+  "moderator_actions": [
+    {
+      "action": "confirm",
+      "moderator_pubkey": "...",
+      "at": "2026-05-20T14:23:00Z"
+    }
+  ]
+}
+```
+
+The `lineage` column is append-only. The synthesis worker writes the initial snapshot. Moderator actions append to `moderator_actions`. No field is ever overwritten — revisions are new array entries.
+
+### Why this matters
+
+- **Forensic reconstruction:** Given a disputed event, you can replay exactly what signals contributed, what scores they had, and which synthesis version ran.
+- **Retroactive recalibration:** If a model version is found to have systematic errors, all events with `lineage->>'synthesis_version' = 'synth-v1'` and `lineage->'score_breakdown'->>'acoustic' > '0.5'` can be batch-reprocessed.
+- **ML evaluation:** Ground-truth labels (disputes, moderator confirmations) can be joined back to signals via `derived_from` UUIDs for training data.
+- **Trust transparency:** A user disputing a map marker can see the score breakdown and signal count that produced it, without exposing individual reporter identities.
+
+---
+
+## Phased Implementation Order
+
+This architecture is too large to implement in a single PR stream. Debugging becomes nearly impossible when reputation, clustering, anti-spoofing, and moderation are all in flight simultaneously. Each phase must be stable and observable before the next begins.
+
+### Phase 1 — Secure ingest
+NIP-98 auth on acoustic ingest, `client_id` UUIDv7 deduplication, per-pubkey rate limits, `acoustic_signals` table, server-side H3 derivation, remove direct public event creation from the acoustic path. ADR-001 enforcement as a review checklist item.
+
+**Exit criterion:** Acoustic signals are stored, authenticated, deduplicated, rate-limited, and never touch `public_events` directly.
+
+### Phase 2 — Signal staging and soft visibility
+Trust state machine (`pending` → `corroborating` → `confirmed` → `disputed` → `expired`), WS broadcast carries `trust_state`, map layer renders soft visibility per state, per-class cooldown in PWA, `visibilitychange` lifecycle stop.
+
+**Exit criterion:** Unconfirmed signals are visible locally at low opacity; confirmed signals are visible globally; disputed signals are hidden; states transition correctly.
+
+### Phase 3 — Synthesis worker
+DBSCAN/H3 clustering, trust-mass-weighted scoring formula, temporal decay, cluster promotion, rolling threat score, evidence lineage written to `public_events`. No reputation system yet — all trust scores are default (0.40).
+
+**Exit criterion:** Clusters form, score, and promote correctly under load. Lineage records are complete and queryable. Observable via the synthesis worker cycle time dashboard.
+
+### Phase 4 — Anti-spoofing
+Impossible travel detection, waveform fingerprint deduplication, synchronized burst elevated-scrutiny (not auto-dispute). Moderation queue integration.
+
+**Exit criterion:** All three heuristics fire correctly in abuse simulation tests without suppressing genuine incident clusters.
+
+### Phase 5 — Reputation system
+Trust scoring, history weighting, inactivity decay, asymptotic ceiling, dispute penalty, 30-day new-account ceiling. Requires Phase 3 data (confirmed event history) for meaningful inputs.
+
+**Exit criterion:** Trust scores diverge meaningfully between honest long-term users and new accounts. Farming simulation (scripted corroboration loop) does not produce high trust within a 7-day window.
+
+### Phase 6 — Multi-sensor synthesis
+Crowd reports feed into the composite confidence formula alongside acoustic. Responder tier confirmation. Sensor quorum enforcement for CRITICAL severity.
+
+**Exit criterion:** CRITICAL events require multi-sensor corroboration. Single-sensor acoustic alone cannot produce a CRITICAL marker.
 
 ---
 
