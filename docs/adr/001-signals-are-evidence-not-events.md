@@ -46,6 +46,6 @@ These are governance contracts. Violations — even in test environments — req
 ## References
 
 - Privacy schedule: `infra/postgres/migrations/008_synthesis.sql`
-- State machine + trigger: `infra/postgres/migrations/008_synthesis.sql` (`enforce_trust_state_monotonicity`)
+- State machine + trigger: `infra/postgres/migrations/008_synthesis.sql` (`trg_trust_state_monotonicity` via `enforce_trust_state_monotonicity()`)
 - Synthesis worker: `services/gateway/src/subscribers/synthesis_worker.rs`
 - Design spec: `docs/superpowers/specs/2026-05-20-acoustic-trust-pipeline-design.md` §Signal vs Event, §Privacy Invariants
