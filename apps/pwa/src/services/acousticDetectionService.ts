@@ -29,7 +29,7 @@ export class AcousticDetectionService {
     let outputTensor: TF.Tensor | null = null
     try {
       const raw = this.model.predict(inputTensor)
-      outputTensor = Array.isArray(raw) ? raw[0]! : raw
+      outputTensor = Array.isArray(raw) ? raw[0]! : raw as TF.Tensor
       const scores = await outputTensor.data() as Float32Array
       const threat = getThreatFromScores(scores)
       if (threat) this.onThreat(threat)

@@ -39,13 +39,12 @@ function makeTestStore(
 
 function makeReport(overrides: Partial<CommunityReport> & { report_id: string }): CommunityReport {
   return {
-    report_id: overrides.report_id,
-    report_type: overrides.report_type ?? 'SECURITY_INCIDENT',
+    report_type: 'SECURITY_INCIDENT',
     description: null,
     lat: -1.286,
     lng: 36.817,
-    place_name: overrides.place_name ?? 'Nairobi CBD',
-    nostr_pubkey: overrides.nostr_pubkey ?? 'npub1testpubkey',
+    place_name: 'Nairobi CBD',
+    nostr_pubkey: 'npub1testpubkey',
     nostr_signature: 'sig',
     nostr_event_id: null,
     reporter_tier: 'TRUSTED',
@@ -63,11 +62,10 @@ function makeReport(overrides: Partial<CommunityReport> & { report_id: string })
 
 function makeZapRecord(overrides: Partial<ZapRecord> & { id: string }): ZapRecord {
   return {
-    id: overrides.id,
-    amount: overrides.amount ?? 21,
-    recipientPubkey: overrides.recipientPubkey ?? 'npub1abc',
-    reportId: overrides.reportId ?? 'report-1',
-    timestamp: overrides.timestamp ?? Date.now(),
+    amount: 21,
+    recipientPubkey: 'npub1abc',
+    reportId: 'report-1',
+    timestamp: Date.now(),
     ...overrides,
   }
 }

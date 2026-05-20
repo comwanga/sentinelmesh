@@ -28,7 +28,7 @@ export async function generateEphemeralKeypair(): Promise<{ publicKey: Uint8Arra
 }
 
 async function deriveWrappingKey(myPrivKey: CryptoKey, theirPubBytes: Uint8Array): Promise<CryptoKey> {
-  const theirPub = await crypto.subtle.importKey('raw', theirPubBytes, { name: 'X25519' } as AlgorithmIdentifier, false, [])
+  const theirPub = await crypto.subtle.importKey('raw', theirPubBytes as unknown as BufferSource, { name: 'X25519' } as AlgorithmIdentifier, false, [])
   const bits = await crypto.subtle.deriveBits({ name: 'X25519', public: theirPub } as AlgorithmIdentifier, myPrivKey, 256)
   return crypto.subtle.importKey('raw', bits, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
 }
@@ -73,7 +73,7 @@ export async function unwrapCircleKey(
   const wrappingKey = await deriveWrappingKey(myPrivKey, theirPubBytes)
   const decoded = decodeB64(wrappedB64)
   if (!decoded) throw new Error('Invalid wrapped key encoding')
-  const rawCircleKey = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: decoded.iv }, wrappingKey, decoded.data)
+  const rawCircleKey = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: decoded.iv as unknown as BufferSource }, wrappingKey, decoded.data as unknown as BufferSource)
   return crypto.subtle.importKey('raw', rawCircleKey, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
 }
 
@@ -92,7 +92,7 @@ export async function decryptLocation(
   try {
     const decoded = decodeB64(ciphertextB64)
     if (!decoded) return null
-    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: decoded.iv }, circleKey, decoded.data)
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: decoded.iv as unknown as BufferSource }, circleKey, decoded.data as unknown as BufferSource)
     return JSON.parse(new TextDecoder().decode(plain)) as { lat: number; lng: number; ts: string }
   } catch {
     return null

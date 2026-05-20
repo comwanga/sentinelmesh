@@ -21,6 +21,7 @@ const nearbyEvent: SafetyEvent = {
   place_name: 'Nairobi CBD',
   county: 'Nairobi',
   is_active: true,
+  state: 'ACTIVE',
   started_at: '',
   created_at: '',
   nostr_event_id: null,

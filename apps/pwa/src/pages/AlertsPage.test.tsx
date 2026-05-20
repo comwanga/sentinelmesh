@@ -26,18 +26,18 @@ function makeStore(events: SafetyEvent[] = []) {
 
 function makeEvent(overrides: Partial<SafetyEvent> & { id: string }): SafetyEvent {
   return {
-    id: overrides.id,
-    event_type: overrides.event_type ?? 'SECURITY_INCIDENT',
-    severity: overrides.severity ?? 'HIGH',
-    title: overrides.title ?? 'Test alert',
+    event_type: 'SECURITY_INCIDENT',
+    severity: 'HIGH',
+    title: 'Test alert',
     summary: null,
     lat: -1.286,
     lng: 36.817,
     place_name: 'Nairobi CBD',
     county: null,
     is_active: true,
+    state: 'ACTIVE',
     started_at: new Date().toISOString(),
-    created_at: overrides.created_at ?? new Date().toISOString(),
+    created_at: new Date().toISOString(),
     nostr_event_id: null,
     bitcoin_txid: null,
     ...overrides,

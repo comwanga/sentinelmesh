@@ -15,6 +15,7 @@ function makeEvent(overrides: Partial<SafetyEvent> = {}): SafetyEvent {
     place_name: 'CBD',
     county: 'Nairobi',
     is_active: true,
+    state: 'ACTIVE',
     started_at: '2026-05-11T00:00:00Z',
     created_at: '2026-05-11T00:00:00Z',
     nostr_event_id: null,

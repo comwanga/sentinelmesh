@@ -22,9 +22,9 @@ interface WsEvent {
 }
 
 type ViewportServerMsg =
-  | { type: 'INITIAL_BATCH'; payload: { events: WsEvent[] } }
-  | { type: 'SNAPSHOT';      payload: { events: WsEvent[] } }
-  | { type: 'DIFF_PATCH';    payload: { added: WsEvent[]; removed: string[]; updated: WsEvent[] } }
+  | { type: 'INITIAL_BATCH'; events: WsEvent[] }
+  | { type: 'SNAPSHOT';      events: WsEvent[] }
+  | { type: 'DIFF_PATCH';    added: WsEvent[]; removed: string[]; updated: WsEvent[] }
 
 const WS_HOST = import.meta.env.DEV ? 'localhost:3000' : window.location.host
 const WS_BASE = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${WS_HOST}`
@@ -38,7 +38,7 @@ function backoffDelay(attempt: number): number {
 }
 
 function toBoundsMsg(b: ViewportBounds) {
-  return { min_lat: b.south, max_lat: b.north, min_lng: b.west, max_lng: b.east }
+  return { north: b.north, south: b.south, east: b.east, west: b.west }
 }
 
 function toSafetyEvent(e: WsEvent): SafetyEvent {
@@ -79,12 +79,14 @@ export function useViewportWs(bounds: ViewportBounds | null, zoom: number): void
     if (subscribedRef.current) {
       ws.send(JSON.stringify({
         type: 'VIEWPORT_CHANGED',
-        payload: { bounds: toBoundsMsg(bounds), zoom },
+        bounds: toBoundsMsg(bounds),
+        zoom,
       }))
     } else {
       ws.send(JSON.stringify({
         type: 'SUBSCRIBE',
-        payload: { bounds: toBoundsMsg(bounds), zoom },
+        bounds: toBoundsMsg(bounds),
+        zoom,
       }))
       subscribedRef.current = true
     }
@@ -101,7 +103,8 @@ export function useViewportWs(bounds: ViewportBounds | null, zoom: number): void
         if (boundsRef.current) {
           ws.send(JSON.stringify({
             type: 'SUBSCRIBE',
-            payload: { bounds: toBoundsMsg(boundsRef.current), zoom: zoomRef.current },
+            bounds: toBoundsMsg(boundsRef.current),
+            zoom: zoomRef.current,
           }))
           subscribedRef.current = true
         }
@@ -111,12 +114,12 @@ export function useViewportWs(bounds: ViewportBounds | null, zoom: number): void
         try {
           const msg: ViewportServerMsg = JSON.parse(event.data as string)
           if (msg.type === 'INITIAL_BATCH' || msg.type === 'SNAPSHOT') {
-            dispatch(viewportEventsSet(msg.payload.events.map(toSafetyEvent)))
+            dispatch(viewportEventsSet(msg.events.map(toSafetyEvent)))
           } else if (msg.type === 'DIFF_PATCH') {
             dispatch(viewportEventsBatchApply({
-              added:   msg.payload.added.map(toSafetyEvent),
-              removed: msg.payload.removed,
-              updated: msg.payload.updated.map(toSafetyEvent),
+              added:   msg.added.map(toSafetyEvent),
+              removed: msg.removed,
+              updated: msg.updated.map(toSafetyEvent),
             }))
           }
         } catch {

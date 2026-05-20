@@ -21,7 +21,7 @@ const mockCtx = {
 
 // Patch the jsdom prototype so document.createElement('canvas') works
 beforeAll(() => {
-  HTMLCanvasElement.prototype.getContext = () => mockCtx as unknown as CanvasRenderingContext2D
+  ;(HTMLCanvasElement.prototype as { getContext: unknown }).getContext = () => mockCtx
   HTMLCanvasElement.prototype.toBlob = function (cb: BlobCallback) {
     cb(new Blob(['img'], { type: 'image/jpeg' }))
   }

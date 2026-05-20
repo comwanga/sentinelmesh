@@ -30,6 +30,7 @@ pub async fn run(
     pool: PgPool,
     hub: Arc<WsHub>,
     redis_healthy: Arc<AtomicBool>,
+    event_tx: Arc<tokio::sync::broadcast::Sender<crate::ws::ViewportEvent>>,
 ) {
     let schema: serde_json::Value = serde_json::from_str(SCHEMA_JSON)
         .expect("event_schema.json is invalid JSON — regenerate with export_schema binary");
@@ -38,7 +39,7 @@ pub async fn run(
 
     let mut backoff_ms = BASE_BACKOFF_MS;
     loop {
-        match read_loop(&redis_url, &pool, &hub, &redis_healthy, &validator).await {
+        match read_loop(&redis_url, &pool, &hub, &redis_healthy, &validator, &event_tx).await {
             Ok(()) => break,
             Err(e) => {
                 let was_healthy = redis_healthy.swap(false, Ordering::Relaxed);
@@ -59,6 +60,7 @@ async fn read_loop(
     hub: &Arc<WsHub>,
     redis_healthy: &Arc<AtomicBool>,
     validator: &jsonschema::Validator,
+    event_tx: &Arc<tokio::sync::broadcast::Sender<crate::ws::ViewportEvent>>,
 ) -> Result<()> {
     let client = redis::Client::open(redis_url)?;
     let mut conn = client.get_multiplexed_async_connection().await?;
@@ -123,7 +125,7 @@ async fn read_loop(
                     }
                 };
 
-                if let Err(e) = handle_message(pool, hub, &event).await {
+                if let Err(e) = handle_message(pool, hub, &event, event_tx).await {
                     tracing::warn!("failed to handle stream entry {msg_id}: {e:#}");
                     // Do not ACK — will be redelivered after visibility timeout
                     continue;
@@ -139,23 +141,21 @@ async fn handle_message(
     pool: &PgPool,
     hub: &Arc<WsHub>,
     event: &sentinel_core::RedisEventPayload,
+    event_tx: &Arc<tokio::sync::broadcast::Sender<crate::ws::ViewportEvent>>,
 ) -> Result<()> {
     let county = event.county.clone();
 
     sqlx::query(
         "INSERT INTO safety_events
            (id, event_type, severity, title, lat, lng, started_at,
-            summary, place_name, county, is_active, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+            summary, place_name, county, is_active, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          ON CONFLICT (id) DO UPDATE SET
-           severity   = EXCLUDED.severity,
-           title      = EXCLUDED.title,
-           summary    = EXCLUDED.summary,
-           state      = CASE WHEN EXCLUDED.is_active
-                             THEN COALESCE(safety_events.state, 'ACTIVE')
-                             ELSE 'RESOLVED'
-                        END,
-           updated_at = NOW()",
+           severity     = EXCLUDED.severity,
+           title        = EXCLUDED.title,
+           summary      = EXCLUDED.summary,
+           is_active    = EXCLUDED.is_active,
+           last_updated = NOW()",
     )
     .bind(event.id)
     .bind(&event.event_type)
@@ -164,13 +164,33 @@ async fn handle_message(
     .bind(event.lat)
     .bind(event.lng)
     .bind(event.started_at)
-    .bind(&event.summary)
-    .bind(&event.place_name)
+    .bind(event.summary.as_deref())
+    .bind(event.place_name.as_deref())
     .bind(county.as_deref())
     .bind(event.is_active)
     .bind(event.created_at)
     .execute(pool)
     .await?;
+
+    // Publish to viewport broadcast channel (fire-and-forget; Err means no receivers)
+    let state_str = event.state.clone().unwrap_or_else(|| "ACTIVE".into());
+    let ws_event_json = serde_json::json!({
+        "id": event.id,
+        "event_type": event.event_type,
+        "severity": event.severity,
+        "state": state_str,
+        "title": event.title,
+        "lat": event.lat,
+        "lng": event.lng,
+        "started_at": event.started_at,
+    });
+    let _ = event_tx.send(crate::ws::ViewportEvent {
+        id: event.id,
+        lat: event.lat,
+        lng: event.lng,
+        severity: event.severity.clone(),
+        event_json: ws_event_json.to_string().into(),
+    });
 
     let ws_msg = serde_json::json!({
         "type": "NEW_EVENT",

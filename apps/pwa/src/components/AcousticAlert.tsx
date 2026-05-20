@@ -18,7 +18,7 @@ export function AcousticAlert({ onClose }: Props) {
   useAcousticDetection() // starts only while this overlay is mounted
   const dispatch = useAppDispatch()
   const detection = useAppSelector(s => s.acoustic.currentAlert)
-  const running = useAppSelector(s => s.acoustic.running)
+  const running = useAppSelector(s => s.acoustic.isRunning)
 
   function dismiss() {
     dispatch(alertDismissed())
