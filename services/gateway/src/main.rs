@@ -21,6 +21,8 @@ use ws::{circle_hub::CircleHub, hub::WsHub};
 use governor::{DefaultKeyedRateLimiter, Quota, RateLimiter};
 use std::num::NonZeroU32;
 
+const ACOUSTIC_RATE_LIMIT_PER_MINUTE: u32 = 5;
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: sqlx::PgPool,
@@ -31,6 +33,7 @@ pub struct AppState {
     pub redis_healthy: Arc<AtomicBool>,
     pub map_provider: std::sync::Arc<dyn maps::MapProvider>,
     pub zap_limiter: Arc<DefaultKeyedRateLimiter<String>>,
+    pub acoustic_limiter: Arc<DefaultKeyedRateLimiter<String>>,
     pub event_tx: Arc<broadcast::Sender<ws::ViewportEvent>>,
     pub redis: redis::aio::ConnectionManager,
 }
@@ -63,6 +66,11 @@ async fn main() -> anyhow::Result<()> {
     let zap_limiter: Arc<DefaultKeyedRateLimiter<String>> =
         Arc::new(RateLimiter::keyed(zap_quota));
 
+    let acoustic_limiter: Arc<DefaultKeyedRateLimiter<String>> =
+        Arc::new(RateLimiter::keyed(Quota::per_minute(
+            NonZeroU32::new(ACOUSTIC_RATE_LIMIT_PER_MINUTE).unwrap(),
+        )));
+
     // Capacity 512: allows slow viewport-WS clients up to 512 events of lag
     // before Lagged errors force them into snapshot mode.
     let (event_tx_inner, _) = broadcast::channel::<ws::ViewportEvent>(512);
@@ -83,6 +91,7 @@ async fn main() -> anyhow::Result<()> {
         redis_healthy: redis_healthy.clone(),
         map_provider,
         zap_limiter,
+        acoustic_limiter,
         event_tx: event_tx.clone(),
         redis,
     };
