@@ -21,7 +21,7 @@
       "type": "fill",
       "source": "openmaptiles",
       "source-layer": "water",
-      "paint": { "fill-color": "#142d4a" }
+      "paint": { "fill-color": "#163c5e" }
     },
     {
       "id": "waterway",
@@ -30,7 +30,7 @@
       "source-layer": "waterway",
       "minzoom": 8,
       "layout": { "line-cap": "round", "line-join": "round" },
-      "paint": { "line-color": "#152e4c", "line-width": 1 }
+      "paint": { "line-color": "#163c5e", "line-width": 1 }
     },
     {
       "id": "landcover",
@@ -38,7 +38,7 @@
       "source": "openmaptiles",
       "source-layer": "landcover",
       "filter": ["in", "class", "park", "forest", "scrub", "grass"],
-      "paint": { "fill-color": "#0f2415", "fill-opacity": 0.7 }
+      "paint": { "fill-color": "#152e1a", "fill-opacity": 0.7 }
     },
     {
       "id": "landuse",
@@ -49,10 +49,10 @@
       "paint": {
         "fill-color": [
           "match", ["get", "class"],
-          "residential",  "#0f1c2e",
-          "commercial",   "#111e32",
-          "industrial",   "#111e32",
-          "#0f1c2e"
+          "residential",  "#111f2e",
+          "commercial",   "#131e32",
+          "industrial",   "#131e32",
+          "#111f2e"
         ],
         "fill-opacity": 0.5
       }
@@ -72,6 +72,38 @@
       "source-layer": "building",
       "minzoom": 14,
       "paint": { "line-color": "#1e2d44", "line-width": 0.7 }
+    },
+    {
+      "id": "admin-boundary-country",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "boundary",
+      "filter": ["==", "admin_level", 2],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#2e4d6e",
+        "line-width": [
+          "interpolate", ["linear"], ["zoom"],
+          2, 0.6, 5, 1.0, 10, 1.6
+        ]
+      }
+    },
+    {
+      "id": "admin-boundary-state",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "boundary",
+      "filter": ["all", [">=", "admin_level", 3], ["<=", "admin_level", 5]],
+      "minzoom": 4,
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#243d58",
+        "line-dasharray": [4, 3],
+        "line-width": [
+          "interpolate", ["linear"], ["zoom"],
+          4, 0.4, 8, 0.8, 12, 1.2
+        ]
+      }
     },
     {
       "id": "road-casing-motorway-trunk",
@@ -128,7 +160,7 @@
       "filter": ["==", "class", "motorway"],
       "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#425e80",
+        "line-color": "#5a7da8",
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           6, 2, 10, 6, 14, 12, 18, 22
@@ -143,7 +175,7 @@
       "filter": ["==", "class", "trunk"],
       "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#374f6e",
+        "line-color": "#4e6e96",
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           6, 1.5, 10, 5, 14, 10, 18, 18
@@ -159,7 +191,7 @@
       "minzoom": 10,
       "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#2d4460",
+        "line-color": "#3d5c84",
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           10, 3.5, 14, 8, 18, 16
@@ -175,7 +207,7 @@
       "minzoom": 12,
       "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#243752",
+        "line-color": "#304e72",
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           12, 3, 14, 3, 18, 7
@@ -191,7 +223,7 @@
       "minzoom": 12,
       "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#1c2e44",
+        "line-color": "#243d5e",
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           12, 2, 14, 2, 18, 5
@@ -207,7 +239,7 @@
       "minzoom": 13,
       "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#151f30",
+        "line-color": "#1a2a3e",
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           13, 1, 14, 1.5, 18, 3.5
@@ -239,10 +271,10 @@
       "paint": {
         "line-color": [
           "match", ["get", "class"],
-          "motorway", "#425e80",
-          "trunk",    "#374f6e",
-          "primary",  "#2d4460",
-          "#243752"
+          "motorway", "#5a7da8",
+          "trunk",    "#4e6e96",
+          "primary",  "#3d5c84",
+          "#304e72"
         ],
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
@@ -269,7 +301,7 @@
         "symbol-sort-key": 4
       },
       "paint": {
-        "text-color": "#4e6a85",
+        "text-color": "#6b8daa",
         "text-halo-color": "#0B0E14",
         "text-halo-width": 1.2
       }
@@ -293,7 +325,7 @@
         "symbol-sort-key": 6
       },
       "paint": {
-        "text-color": "#4e6a85",
+        "text-color": "#5d7fa0",
         "text-halo-color": "#0B0E14",
         "text-halo-width": 1
       }
@@ -385,6 +417,29 @@
         "text-color": "#a8b8cc",
         "text-halo-color": "#0B0E14",
         "text-halo-width": 2
+      }
+    },
+    {
+      "id": "place-label-country",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "filter": ["==", "class", "country"],
+      "maxzoom": 8,
+      "layout": {
+        "text-field": ["coalesce", ["get", "name:en"], ["get", "name"]],
+        "text-font": ["Noto Sans Bold"],
+        "text-size": [
+          "interpolate", ["linear"], ["zoom"],
+          2, 10, 5, 13, 8, 14
+        ],
+        "text-max-width": 6,
+        "symbol-sort-key": 0
+      },
+      "paint": {
+        "text-color": "#8fa8c4",
+        "text-halo-color": "#0B0E14",
+        "text-halo-width": 1.5
       }
     }
   ]
