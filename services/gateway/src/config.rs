@@ -21,6 +21,7 @@ pub struct Config {
     pub vapid_public_key: Option<String>,
     pub vapid_subject: Option<String>,
     pub ws_events_rate_cap: u32,
+    pub public_base_url: Option<String>,
 }
 
 impl Config {
@@ -71,6 +72,7 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(30),
+            public_base_url: load_public_base_url()?,
         })
     }
 }
@@ -86,6 +88,42 @@ fn load_cert_pem() -> Result<Option<Vec<u8>>> {
     let bytes = std::fs::read(&path)
         .map_err(|e| anyhow::anyhow!("failed to read LND_TLS_CERT_PATH={path}: {e}"))?;
     Ok(Some(bytes))
+}
+
+fn load_public_base_url() -> anyhow::Result<Option<String>> {
+    let Some(raw) = std::env::var("PUBLIC_BASE_URL").ok() else {
+        return Ok(None);
+    };
+    let lowered = raw.to_lowercase();
+    let trimmed = lowered.trim_end_matches('/');
+    let uri: axum::http::Uri = trimmed.parse().map_err(|e| {
+        anyhow::anyhow!("PUBLIC_BASE_URL is not a valid URL ({e}): {raw}")
+    })?;
+    let scheme = uri.scheme_str().ok_or_else(|| {
+        anyhow::anyhow!("PUBLIC_BASE_URL must include scheme (e.g. https://): {raw}")
+    })?;
+    let path = uri.path();
+    if !path.is_empty() && path != "/" {
+        anyhow::bail!(
+            "PUBLIC_BASE_URL must not include a path component (got {path:?}): {raw}"
+        );
+    }
+    if scheme != "http" && scheme != "https" {
+        anyhow::bail!(
+            "PUBLIC_BASE_URL scheme must be http or https (got {scheme:?}): {raw}"
+        );
+    }
+    let authority = uri.authority().ok_or_else(|| {
+        anyhow::anyhow!("PUBLIC_BASE_URL must include a host: {raw}")
+    })?;
+    let host = authority.host();
+    let port = authority.port_u16();
+    let host_part = match (scheme, port) {
+        ("https", Some(443)) | ("http", Some(80)) => host.to_string(),
+        (_, Some(p)) => format!("{host}:{p}"),
+        (_, None) => host.to_string(),
+    };
+    Ok(Some(format!("{scheme}://{host_part}")))
 }
 
 fn load_nostr_private_key() -> Result<Option<String>> {
@@ -114,6 +152,7 @@ mod tests {
 
     #[test]
     fn missing_required_var_returns_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let result = require("GATEWAY_TEST_MISSING_VAR_XYZ");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("GATEWAY_TEST_MISSING_VAR_XYZ"));
@@ -144,5 +183,73 @@ mod tests {
             .filter(|s| !s.is_empty())
             .collect();
         assert_eq!(relays, vec!["wss://nos.lol"]);
+    }
+
+    #[test]
+    fn public_base_url_normalizes_uppercase_and_default_port() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("PUBLIC_BASE_URL", "HTTPS://API.EXAMPLE.COM:443/");
+        let result = load_public_base_url().unwrap();
+        std::env::remove_var("PUBLIC_BASE_URL");
+        assert_eq!(result, Some("https://api.example.com".to_string()));
+    }
+
+    #[test]
+    fn public_base_url_preserves_non_default_port() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("PUBLIC_BASE_URL", "https://api.example.com:8443");
+        let result = load_public_base_url().unwrap();
+        std::env::remove_var("PUBLIC_BASE_URL");
+        assert_eq!(result, Some("https://api.example.com:8443".to_string()));
+    }
+
+    #[test]
+    fn public_base_url_none_when_unset() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("PUBLIC_BASE_URL");
+        assert_eq!(load_public_base_url().unwrap(), None);
+    }
+
+    #[test]
+    fn public_base_url_missing_scheme_is_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("PUBLIC_BASE_URL", "api.example.com");
+        let result = load_public_base_url();
+        std::env::remove_var("PUBLIC_BASE_URL");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("PUBLIC_BASE_URL"), "missing PUBLIC_BASE_URL in: {msg}");
+        assert!(msg.contains("scheme") || msg.contains("valid URL"), "missing error detail in: {msg}");
+    }
+
+    #[test]
+    fn public_base_url_strips_http_port_80() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("PUBLIC_BASE_URL", "http://api.example.com:80");
+        let result = load_public_base_url().unwrap();
+        std::env::remove_var("PUBLIC_BASE_URL");
+        assert_eq!(result, Some("http://api.example.com".to_string()));
+    }
+
+    #[test]
+    fn public_base_url_with_path_is_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("PUBLIC_BASE_URL", "https://api.example.com/v1");
+        let result = load_public_base_url();
+        std::env::remove_var("PUBLIC_BASE_URL");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("path"), "expected 'path' in error: {msg}");
+    }
+
+    #[test]
+    fn public_base_url_non_http_scheme_is_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("PUBLIC_BASE_URL", "ftp://api.example.com");
+        let result = load_public_base_url();
+        std::env::remove_var("PUBLIC_BASE_URL");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("scheme"), "expected 'scheme' in error: {msg}");
     }
 }
