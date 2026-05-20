@@ -179,7 +179,7 @@ async fn handle_message(
         "event_type": event.event_type,
         "severity": event.severity,
         "state": state_str,
-        "trust_state": "CONFIRMED",
+        "trust_state": "confirmed",
         "title": event.title,
         "lat": event.lat,
         "lng": event.lng,
