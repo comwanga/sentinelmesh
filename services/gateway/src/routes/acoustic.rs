@@ -22,7 +22,7 @@ pub struct SubmitSignalBody {
     pub signal_fingerprint:  Option<String>,
 }
 
-pub fn validate_signal_body(body: &SubmitSignalBody) -> Result<(), AppError> {
+fn validate_signal_body(body: &SubmitSignalBody) -> Result<(), AppError> {
     if !(0.0..=1.0).contains(&body.confidence) {
         return Err(AppError::BadRequest("confidence must be 0.0–1.0".into()));
     }
@@ -49,7 +49,7 @@ pub fn validate_signal_body(body: &SubmitSignalBody) -> Result<(), AppError> {
     Ok(())
 }
 
-pub fn h3_cells_from(lat: f64, lng: f64) -> Result<(String, String), AppError> {
+fn h3_cells_from(lat: f64, lng: f64) -> Result<(String, String), AppError> {
     let ll = LatLng::new(lat, lng)
         .map_err(|_| AppError::BadRequest("invalid coordinates for H3".into()))?;
     let r9 = ll.to_cell(Resolution::Nine).to_string();
@@ -102,7 +102,7 @@ async fn submit_signal(
 
     match row {
         Some(r) => {
-            let id: uuid::Uuid = r.try_get("id").map_err(|e| AppError::Internal(e.into()))?;
+            let id: uuid::Uuid = r.try_get("id")?;
             Ok((
                 StatusCode::CREATED,
                 Json(serde_json::json!({ "id": id, "trust_state": "pending" })),
