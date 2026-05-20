@@ -109,6 +109,7 @@ mod tests {
                 vapid_public_key: None,
                 vapid_subject: None,
                 ws_events_rate_cap: 30,
+                public_base_url: None,
             }),
             http_client,
             hub: Arc::new(WsHub::new()),
