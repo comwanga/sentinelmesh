@@ -19,6 +19,7 @@ import {
   getOrCreateEphemeralKeypair,
   hasNip07,
   signAuthEvent,
+  signNip98AuthEvent,
   clearStoredKey,
 } from '../services/nostrService'
 
@@ -73,6 +74,43 @@ describe('signAuthEvent', () => {
   test('falls back to in-memory key when NIP-07 absent', async () => {
     const result = await signAuthEvent()
     expect(result.kind).toBe(27235)
+    expect(result.id).toMatch(/^[0-9a-f]{64}$/)
+    expect(result.sig).toMatch(/^[0-9a-f]{128}$/)
+  })
+})
+
+describe('signNip98AuthEvent', () => {
+  test('event kind is 27235', async () => {
+    const result = await signNip98AuthEvent('https://api.example.com/api/acoustic/signals', 'POST')
+    expect(result.kind).toBe(27235)
+  })
+
+  test('u tag contains the provided URL', async () => {
+    const url = 'https://api.example.com/api/acoustic/signals'
+    const result = await signNip98AuthEvent(url, 'POST')
+    const uTag = result.tags.find(t => t[0] === 'u')
+    expect(uTag).toBeDefined()
+    expect(uTag![1]).toBe(url)
+  })
+
+  test('method tag contains the provided HTTP method', async () => {
+    const result = await signNip98AuthEvent('https://api.example.com/api/acoustic/signals', 'POST')
+    const methodTag = result.tags.find(t => t[0] === 'method')
+    expect(methodTag).toBeDefined()
+    expect(methodTag![1]).toBe('POST')
+  })
+
+  test('uses NIP-07 when available', async () => {
+    const fakeEvent = { id: 'abc', pubkey: 'xyz', created_at: 1, kind: 27235, tags: [['u', 'x'], ['method', 'POST']], content: '', sig: 'sig' }
+    const signEvent = vi.fn().mockResolvedValue(fakeEvent)
+    ;(window as unknown as Record<string, unknown>).nostr = { signEvent, getPublicKey: vi.fn() }
+    const result = await signNip98AuthEvent('https://api.example.com/api/acoustic/signals', 'POST')
+    expect(signEvent).toHaveBeenCalledOnce()
+    expect(result).toBe(fakeEvent)
+  })
+
+  test('falls back to ephemeral key when NIP-07 absent', async () => {
+    const result = await signNip98AuthEvent('https://api.example.com/api/acoustic/signals', 'POST')
     expect(result.id).toMatch(/^[0-9a-f]{64}$/)
     expect(result.sig).toMatch(/^[0-9a-f]{128}$/)
   })

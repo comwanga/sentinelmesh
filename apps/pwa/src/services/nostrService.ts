@@ -112,6 +112,19 @@ export async function signAuthEvent(): Promise<SignedReportEvent> {
 }
 
 /**
+ * Sign a fully spec-compliant NIP-98 auth event with `u` and `method` tags.
+ * The gateway validates these tags for exact URL and method match.
+ */
+export async function signNip98AuthEvent(url: string, method: string): Promise<SignedReportEvent> {
+  return signEventAsync({
+    kind: 27235,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [['u', url], ['method', method]],
+    content: '',
+  })
+}
+
+/**
  * Get the current user's public key (from NIP-07 or in-memory fallback).
  */
 export async function getPublicKeyAsync(): Promise<string> {
