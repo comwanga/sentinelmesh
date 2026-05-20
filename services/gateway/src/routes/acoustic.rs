@@ -20,6 +20,7 @@ pub struct SubmitSignalBody {
     pub dropped_frames:      i32,
     pub device_category:     Option<String>,
     pub signal_fingerprint:  Option<String>,
+    pub schema_version:      Option<i32>,
 }
 
 fn validate_signal_body(body: &SubmitSignalBody) -> Result<(), AppError> {
@@ -75,8 +76,8 @@ async fn submit_signal(
             (client_id, pubkey, threat_class, confidence, confidence_variance,
              lat, lng, h3_r9, h3_r7, model_version, threshold_profile,
              inference_backend, processing_latency, dropped_frames,
-             device_category, signal_fingerprint)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+             device_category, signal_fingerprint, schema_version)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
         ON CONFLICT (client_id) DO NOTHING
         RETURNING id
         "#,
@@ -97,6 +98,7 @@ async fn submit_signal(
     .bind(body.dropped_frames)
     .bind(&body.device_category)
     .bind(&body.signal_fingerprint)
+    .bind(body.schema_version.unwrap_or(1))
     .fetch_optional(&state.db)
     .await?;
 
@@ -139,6 +141,7 @@ mod tests {
             dropped_frames: 0,
             device_category: None,
             signal_fingerprint: None,
+            schema_version: None,
         }
     }
 
@@ -207,6 +210,12 @@ mod tests {
     fn h3_cells_poles_valid() {
         assert!(h3_cells_from(90.0, 0.0).is_ok());
         assert!(h3_cells_from(-90.0, 0.0).is_ok());
+    }
+
+    #[test]
+    fn schema_version_field_accepted_as_optional() {
+        let b = valid_body();
+        assert_eq!(b.schema_version, None);
     }
 
     #[test]
