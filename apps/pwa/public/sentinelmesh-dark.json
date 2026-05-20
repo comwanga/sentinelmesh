@@ -1,12 +1,13 @@
 {
   "version": 8,
   "name": "SentinelMesh Dark",
-  "glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+  "glyphs": "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
   "sprite": "",
   "sources": {
     "openmaptiles": {
       "type": "vector",
-      "url": "pmtiles://{MAPTILES_URL}"
+      "url": "{TILE_SOURCE}",
+      "attribution": "© <a href='https://openfreemap.org' target='_blank'>OpenFreeMap</a> contributors, © <a href='https://www.openstreetmap.org/copyright' target='_blank'>OpenStreetMap</a> contributors"
     }
   },
   "layers": [

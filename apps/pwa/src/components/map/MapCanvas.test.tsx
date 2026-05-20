@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { MapCanvas } from './MapCanvas'
+import { loadMapStyle } from '../../config/mapConfig'
 import type { ViewportBounds } from '../../hooks/useViewportWs'
 
 const mockStyle = vi.hoisted(() => ({ version: 8, name: 'test', layers: [] }))
@@ -8,7 +9,6 @@ const mockStyle = vi.hoisted(() => ({ version: 8, name: 'test', layers: [] }))
 vi.mock('../../config/mapConfig', () => ({
   MAP_STYLE_URL: 'https://demotiles.maplibre.org/style.json',
   WORLD_CENTER: { longitude: 0, latitude: 20, zoom: 2 },
-  MAPTILES_URL: '',
   loadMapStyle: vi.fn().mockResolvedValue(mockStyle),
 }))
 
@@ -123,5 +123,18 @@ describe('MapCanvas', () => {
     await act(async () => { render(<MapCanvas />) })
     const moveendCalls = (mockMap.on.mock.calls as Array<[string, () => void]>).filter(c => c[0] === 'moveend')
     expect(moveendCalls).toHaveLength(0)
+  })
+
+  it('does not render Map while loadMapStyle is pending', () => {
+    vi.mocked(loadMapStyle).mockReturnValueOnce(new Promise(() => {}))
+    render(<MapCanvas />)
+    expect(screen.queryByTestId('mapbox')).toBeNull()
+  })
+
+  it('falls back to demo tiles when loadMapStyle rejects', async () => {
+    vi.mocked(loadMapStyle).mockRejectedValueOnce(new Error('network failure'))
+    await act(async () => { render(<MapCanvas />) })
+    const map = screen.getByTestId('mapbox')
+    expect(map.getAttribute('data-style-type')).toBe('string')
   })
 })

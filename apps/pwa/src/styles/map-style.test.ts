@@ -39,14 +39,24 @@ describe('sentinelmesh-dark.json', () => {
     expect(firstFill).toBeGreaterThan(firstCasing)
   })
 
-  it('contains {MAPTILES_URL} placeholder (substituted at runtime by loadMapStyle)', () => {
-    const text = readFileSync(STYLE_PATH, 'utf-8')
-    expect(text).toContain('{MAPTILES_URL}')
-  })
-
   it('uses openmaptiles source name', () => {
     const style = JSON.parse(readFileSync(STYLE_PATH, 'utf-8'))
     expect(style.sources).toHaveProperty('openmaptiles')
+  })
+
+  it('openmaptiles source URL is the {TILE_SOURCE} placeholder (injected at runtime by loadMapStyle)', () => {
+    const style = JSON.parse(readFileSync(STYLE_PATH, 'utf-8'))
+    expect(style.sources.openmaptiles.url).toBe('{TILE_SOURCE}')
+  })
+
+  it('source URL does not hardcode any tile provider', () => {
+    const style = JSON.parse(readFileSync(STYLE_PATH, 'utf-8'))
+    expect(style.sources.openmaptiles.url).not.toContain('://')
+  })
+
+  it('glyphs URL points to OpenFreeMap fonts', () => {
+    const style = JSON.parse(readFileSync(STYLE_PATH, 'utf-8'))
+    expect(style.glyphs).toBe('https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf')
   })
 
   it('symbol-sort-key is set on place-label-city', () => {
