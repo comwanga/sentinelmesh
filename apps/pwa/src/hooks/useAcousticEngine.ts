@@ -3,7 +3,7 @@ import { useAppDispatch } from '../store'
 import { detectionReceived, detectionStarted, detectionStopped } from '../store/acousticSlice'
 import { AudioCapture } from '../services/audioCapture'
 import { AcousticDetectionService } from '../services/acousticDetectionService'
-import { autoSubmitAcousticReport } from '../services/reportAutoSubmit'
+import { submitAcousticSignal } from '../services/acousticSignalSubmit'
 
 export function useAcousticEngine() {
   const dispatch = useAppDispatch()
@@ -15,9 +15,14 @@ export function useAcousticEngine() {
     async function start() {
       detector = new AcousticDetectionService((detection) => {
         dispatch(detectionReceived(detection))
-        navigator.geolocation?.getCurrentPosition(pos => {
-          autoSubmitAcousticReport(detection, { lat: pos.coords.latitude, lng: pos.coords.longitude })
-        })
+        navigator.geolocation?.getCurrentPosition(
+          (pos) => {
+            submitAcousticSignal(detection, { lat: pos.coords.latitude, lng: pos.coords.longitude })
+              .catch(err => console.warn('[acoustic] signal submission failed:', err))
+          },
+          undefined,
+          { maximumAge: 5000 },
+        )
       })
       try {
         await detector.init()
@@ -30,6 +35,27 @@ export function useAcousticEngine() {
     }
 
     start()
-    return () => { capture?.stop(); dispatch(detectionStopped()) }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'hidden') {
+        capture?.stop()
+        dispatch(detectionStopped())
+      }
+    }
+
+    function handleBeforeUnload() {
+      capture?.stop()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    return () => {
+      capture?.stop()
+      detector = null
+      dispatch(detectionStopped())
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
   }, [dispatch])
 }
