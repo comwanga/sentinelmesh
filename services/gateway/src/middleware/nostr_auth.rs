@@ -1,151 +1,152 @@
 use axum::{
-    async_trait,
-    extract::FromRequestParts,
+    extract::{FromRef, FromRequestParts},
     http::{request::Parts, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 
+use crate::AppState;
+
+// ── Public extractor ────────────────────────────────────────────────────────
+
 pub struct NostrAuth {
     pub pubkey: String,
 }
 
-#[derive(Debug)]
-pub enum NostrAuthRejection {
-    MissingHeader,
-    InvalidJson,
-    WrongKind,
-    Expired,
-    InvalidSignature,
+// ── Internal validated result ────────────────────────────────────────────────
+
+pub struct ValidatedNostrAuth {
+    pub pubkey:     String,
+    pub event_id:   String,
+    pub created_at: i64,
 }
 
-impl IntoResponse for NostrAuthRejection {
+// ── Error types ──────────────────────────────────────────────────────────────
+
+#[derive(Debug)]
+pub enum AuthError {
+    MissingHeader,
+    InvalidBase64,
+    InvalidEventJson,
+    InvalidKind,
+    InvalidCreatedAt,
+    TimestampExpired,
+    InvalidSignature,
+    MissingUrlTag,
+    DuplicateUrlTag,
+    MissingMethodTag,
+    DuplicateMethodTag,
+    UrlMismatch { expected: String, got: String },
+    MethodMismatch { expected: String, got: String },
+    ReplayDetected,
+    RedisUnavailable,
+}
+
+impl AuthError {
+    fn code(&self) -> &'static str {
+        match self {
+            Self::MissingHeader      => "AUTH_MISSING_HEADER",
+            Self::InvalidBase64      => "AUTH_INVALID_BASE64",
+            Self::InvalidEventJson   => "AUTH_INVALID_EVENT_JSON",
+            Self::InvalidKind        => "AUTH_INVALID_KIND",
+            Self::InvalidCreatedAt   => "AUTH_INVALID_CREATED_AT",
+            Self::TimestampExpired   => "AUTH_TIMESTAMP_EXPIRED",
+            Self::InvalidSignature   => "AUTH_INVALID_SIGNATURE",
+            Self::MissingUrlTag      => "AUTH_MISSING_URL_TAG",
+            Self::DuplicateUrlTag    => "AUTH_DUPLICATE_URL_TAG",
+            Self::MissingMethodTag   => "AUTH_MISSING_METHOD_TAG",
+            Self::DuplicateMethodTag => "AUTH_DUPLICATE_METHOD_TAG",
+            Self::UrlMismatch { .. } => "AUTH_URL_MISMATCH",
+            Self::MethodMismatch { .. } => "AUTH_METHOD_MISMATCH",
+            Self::ReplayDetected     => "AUTH_REPLAY_DETECTED",
+            Self::RedisUnavailable   => "SERVICE_UNAVAILABLE",
+        }
+    }
+}
+
+impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
-        let msg = match &self {
-            Self::MissingHeader    => "missing X-Nostr-Auth header",
-            Self::InvalidJson      => "X-Nostr-Auth is not valid JSON",
-            Self::WrongKind        => "event kind must be 27235",
-            Self::Expired          => "event created_at is outside ±60s window",
-            Self::InvalidSignature => "invalid Nostr signature",
+        let (status, retryable) = match &self {
+            Self::RedisUnavailable => (StatusCode::SERVICE_UNAVAILABLE, true),
+            _ => (StatusCode::UNAUTHORIZED, false),
         };
         (
-            StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({ "code": "UNAUTHORIZED", "message": msg, "retryable": false })),
+            status,
+            Json(serde_json::json!({
+                "code": self.code(),
+                "retryable": retryable,
+            })),
         )
             .into_response()
     }
 }
 
-#[async_trait]
-impl<S: Send + Sync> FromRequestParts<S> for NostrAuth {
-    type Rejection = NostrAuthRejection;
+// ── Extractor (thin orchestrator — implemented in Task 4) ────────────────────
 
-    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
-        let header = parts
-            .headers
-            .get("x-nostr-auth")
-            .ok_or(NostrAuthRejection::MissingHeader)?;
+#[async_trait::async_trait]
+impl<S> FromRequestParts<S> for NostrAuth
+where
+    S: Send + Sync,
+    AppState: FromRef<S>,
+{
+    type Rejection = AuthError;
 
-        let raw = header.to_str().map_err(|_| NostrAuthRejection::InvalidJson)?;
-        let event: nostr_sdk::Event =
-            serde_json::from_str(raw).map_err(|_| NostrAuthRejection::InvalidJson)?;
-
-        if event.kind != nostr_sdk::Kind::Custom(27235) {
-            return Err(NostrAuthRejection::WrongKind);
-        }
-
-        let now = chrono::Utc::now().timestamp();
-        let event_ts = event.created_at.as_u64() as i64;
-        if (now - event_ts).abs() > 60 {
-            return Err(NostrAuthRejection::Expired);
-        }
-
-        event.verify().map_err(|_| NostrAuthRejection::InvalidSignature)?;
-
-        Ok(NostrAuth { pubkey: event.pubkey.to_hex() })
+    async fn from_request_parts(
+        parts: &mut Parts,
+        _state: &S,
+    ) -> Result<Self, AuthError> {
+        let _ = parts;
+        Err(AuthError::MissingHeader)
     }
 }
+
+// ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::Body, http::Request, routing::get, Router};
-    use nostr_sdk::{EventBuilder, Keys, Kind, Timestamp};
-    use tower::ServiceExt;
+    use axum::body::to_bytes;
+    use axum::http::StatusCode;
 
-    fn make_auth_event(keys: &Keys, kind: u16, offset_secs: i64) -> String {
-        let ts = Timestamp::from(
-            (chrono::Utc::now().timestamp() + offset_secs) as u64
-        );
-        let event = EventBuilder::new(Kind::Custom(kind), "")
-            .custom_created_at(ts)
-            .sign_with_keys(keys)
-            .unwrap();
-        serde_json::to_string(&event).unwrap()
-    }
-
-    async fn test_app() -> Router {
-        Router::new().route("/protected", get(|_auth: NostrAuth| async { "ok" }))
+    #[tokio::test]
+    async fn auth_error_returns_401() {
+        for err in [
+            AuthError::MissingHeader,
+            AuthError::InvalidBase64,
+            AuthError::InvalidEventJson,
+            AuthError::InvalidKind,
+            AuthError::InvalidCreatedAt,
+            AuthError::TimestampExpired,
+            AuthError::InvalidSignature,
+            AuthError::MissingUrlTag,
+            AuthError::DuplicateUrlTag,
+            AuthError::MissingMethodTag,
+            AuthError::DuplicateMethodTag,
+            AuthError::UrlMismatch { expected: "a".into(), got: "b".into() },
+            AuthError::MethodMismatch { expected: "POST".into(), got: "GET".into() },
+            AuthError::ReplayDetected,
+        ] {
+            let resp = err.into_response();
+            assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "expected 401 for {resp:?}");
+        }
     }
 
     #[tokio::test]
-    async fn missing_header_returns_401() {
-        let app = test_app().await;
-        let resp = app
-            .oneshot(Request::get("/protected").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    async fn auth_error_body_has_code_and_retryable_false() {
+        let resp = AuthError::TimestampExpired.into_response();
+        let body = to_bytes(resp.into_body(), 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["code"], "AUTH_TIMESTAMP_EXPIRED");
+        assert_eq!(json["retryable"], false);
     }
 
     #[tokio::test]
-    async fn wrong_kind_returns_401() {
-        let keys = Keys::generate();
-        let header = make_auth_event(&keys, 1, 0);
-        let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::get("/protected")
-                    .header("x-nostr-auth", header)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-    }
-
-    #[tokio::test]
-    async fn expired_event_returns_401() {
-        let keys = Keys::generate();
-        let header = make_auth_event(&keys, 27235, -120);
-        let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::get("/protected")
-                    .header("x-nostr-auth", header)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-    }
-
-    #[tokio::test]
-    async fn valid_event_passes() {
-        let keys = Keys::generate();
-        let header = make_auth_event(&keys, 27235, 0);
-        let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::get("/protected")
-                    .header("x-nostr-auth", header)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
+    async fn redis_unavailable_returns_503_with_retryable_true() {
+        let resp = AuthError::RedisUnavailable.into_response();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = to_bytes(resp.into_body(), 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["code"], "SERVICE_UNAVAILABLE");
+        assert_eq!(json["retryable"], true);
     }
 }
