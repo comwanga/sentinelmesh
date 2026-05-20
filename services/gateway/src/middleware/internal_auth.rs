@@ -74,7 +74,7 @@ mod tests {
     use axum::{body::Body, extract::State, http::Request, routing::post, Router};
     use tower::ServiceExt;
 
-    fn make_state(secret: &str) -> AppState {
+    async fn make_state(secret: &str) -> AppState {
         use crate::{config::Config, maps::{MapboxAdapter, MapProvider}, ws::{hub::WsHub, circle_hub::CircleHub}};
         use governor::{Quota, RateLimiter};
         use std::num::NonZeroU32;
@@ -86,6 +86,10 @@ mod tests {
             Quota::per_minute(NonZeroU32::new(10).unwrap()),
         ));
         let (event_tx_inner, _) = tokio::sync::broadcast::channel::<crate::ws::ViewportEvent>(1);
+        let redis_client = redis::Client::open("redis://localhost").unwrap();
+        let redis = redis::aio::ConnectionManager::new(redis_client)
+            .await
+            .expect("Redis required for gateway tests — ensure Redis is running on localhost:6379");
         AppState {
             db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
             config: Arc::new(Config {
@@ -118,11 +122,12 @@ mod tests {
             map_provider,
             zap_limiter,
             event_tx: Arc::new(event_tx_inner),
+            redis,
         }
     }
 
-    fn test_app(secret: &str) -> Router {
-        let state = make_state(secret);
+    async fn test_app(secret: &str) -> Router {
+        let state = make_state(secret).await;
         Router::new()
             .route(
                 "/protected",
@@ -133,7 +138,7 @@ mod tests {
 
     #[tokio::test]
     async fn missing_header_returns_401() {
-        let app = test_app("supersecret");
+        let app = test_app("supersecret").await;
         let resp = app
             .oneshot(Request::post("/protected").body(Body::empty()).unwrap())
             .await
@@ -143,7 +148,7 @@ mod tests {
 
     #[tokio::test]
     async fn wrong_token_returns_401() {
-        let app = test_app("supersecret");
+        let app = test_app("supersecret").await;
         let resp = app
             .oneshot(
                 Request::post("/protected")
@@ -158,7 +163,7 @@ mod tests {
 
     #[tokio::test]
     async fn correct_token_passes() {
-        let app = test_app("supersecret");
+        let app = test_app("supersecret").await;
         let resp = app
             .oneshot(
                 Request::post("/protected")

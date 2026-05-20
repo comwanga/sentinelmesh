@@ -32,6 +32,7 @@ pub struct AppState {
     pub map_provider: std::sync::Arc<dyn maps::MapProvider>,
     pub zap_limiter: Arc<DefaultKeyedRateLimiter<String>>,
     pub event_tx: Arc<broadcast::Sender<ws::ViewportEvent>>,
+    pub redis: redis::aio::ConnectionManager,
 }
 
 #[tokio::main]
@@ -67,6 +68,12 @@ async fn main() -> anyhow::Result<()> {
     let (event_tx_inner, _) = broadcast::channel::<ws::ViewportEvent>(512);
     let event_tx = Arc::new(event_tx_inner);
 
+    let redis_client = redis::Client::open(config.redis_url.as_str())
+        .expect("invalid REDIS_URL");
+    let redis = redis::aio::ConnectionManager::new(redis_client)
+        .await
+        .expect("failed to connect to Redis — check REDIS_URL");
+
     let state = AppState {
         db: db.clone(),
         config: config.clone(),
@@ -77,6 +84,7 @@ async fn main() -> anyhow::Result<()> {
         map_provider,
         zap_limiter,
         event_tx: event_tx.clone(),
+        redis,
     };
 
     // Spawn Redis subscriber task (supervised, runs for the lifetime of the process)
