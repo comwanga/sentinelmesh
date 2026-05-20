@@ -15,6 +15,7 @@ pub struct NostrAuth {
 // ── Internal validated result ────────────────────────────────────────────────
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ValidatedNostrAuth {
     pub pubkey:     String,
     pub event_id:   String,
@@ -24,6 +25,7 @@ pub struct ValidatedNostrAuth {
 // ── Error types ──────────────────────────────────────────────────────────────
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum AuthError {
     MissingHeader,
     InvalidBase64,
