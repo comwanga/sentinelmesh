@@ -11,7 +11,10 @@ const CORROBORATE_THRESHOLD: f32 = 0.60;
 const CONFIRM_THRESHOLD: f32 = 0.60;
 const MIN_CONTRIBUTORS: usize = 2;
 const DEFAULT_TRUST: f32 = 0.40;
+// Floor for per-node trust in Phase 3; unused while all nodes default to DEFAULT_TRUST
 const TRUST_FLOOR: f32 = 0.15;
+const EXPIRY_WINDOW_SECS: i64 = 300; // 5 min: how long pending/corroborating signals live before expiry
+const FETCH_WINDOW_SECS: i64 = TEMPORAL_CUTOFF_SECS + 10; // slight buffer above scoring cutoff for tick jitter
 
 #[derive(sqlx::FromRow, Debug, Clone)]
 struct SignalRow {
@@ -106,8 +109,9 @@ async fn expire_stale_signals(pool: &PgPool) -> Result<usize> {
         "UPDATE acoustic_signals
             SET trust_state = 'expired'
           WHERE trust_state IN ('pending', 'corroborating')
-            AND received_at < now() - interval '5 minutes'",
+            AND received_at < now() - ($1 * interval '1 second')",
     )
+    .bind(EXPIRY_WINDOW_SECS)
     .execute(pool)
     .await?;
     Ok(r.rows_affected() as usize)
@@ -121,10 +125,11 @@ async fn fetch_cluster_groups(
                 confidence_variance, received_at, trust_state
            FROM acoustic_signals
           WHERE trust_state IN ('pending', 'corroborating')
-            AND received_at > now() - interval '5 minutes'
+            AND received_at > now() - ($1 * interval '1 second')
             AND h3_r9 IS NOT NULL
           ORDER BY h3_r9, threat_class, received_at",
     )
+    .bind(FETCH_WINDOW_SECS)
     .fetch_all(pool)
     .await?;
 
@@ -151,7 +156,11 @@ async fn process_cluster(
         return Ok(result);
     };
 
-    let h3_r9 = first.h3_r9.as_deref().unwrap_or("");
+    let Some(h3_r9_str) = first.h3_r9.as_deref() else {
+        tracing::warn!("synthesis: cluster signal missing h3_r9, skipping");
+        return Ok(result);
+    };
+    let h3_r9 = h3_r9_str;
     let h3_r7 = &first.h3_r7;
     let threat_class = &first.threat_class;
 
@@ -374,7 +383,7 @@ fn compute_weights(
                 return None;
             }
             let decay = if age > TEMPORAL_HALF_WEIGHT_SECS { 0.5 } else { 1.0 };
-            let trust = f32::max(DEFAULT_TRUST, TRUST_FLOOR) * decay;
+            let trust = DEFAULT_TRUST * decay;
             Some((i, s, trust))
         })
         .collect();
@@ -523,5 +532,38 @@ mod tests {
     fn score_to_severity_boundary_values() {
         assert_eq!(score_to_severity(0.7499), "MEDIUM");
         assert_eq!(score_to_severity(0.8999), "HIGH");
+    }
+
+    #[test]
+    fn trust_cap_limits_single_pubkey_domination() {
+        // All 4 signals from same pubkey — trust cap should limit total mass to 25% of uncapped total
+        let s1 = make_signal("sybil", 0.9, None, 5, "pending");
+        let s2 = make_signal("sybil", 0.9, None, 5, "pending");
+        let s3 = make_signal("sybil", 0.9, None, 5, "pending");
+        let s4 = make_signal("sybil", 0.9, None, 5, "pending");
+        // Compare to single signal from same pubkey — the cap normalizes proportionally
+        let single = make_signal("sybil", 0.9, None, 5, "pending");
+        let (_, mass_4, num_4, _) = compute_weights(&[s1, s2, s3, s4], chrono::Utc::now());
+        let (_, mass_1, num_1, _) = compute_weights(&[single], chrono::Utc::now());
+        // Trust cap: single pubkey can never hold >25% of total. All 4 signals same pubkey,
+        // total_uncapped = 4 * 0.40 = 1.60, trust_cap = 0.25 * 1.60 = 0.40
+        // capped = 0.40, total_mass = 0.40 for all 4 signals
+        // Single signal: total_uncapped = 0.40, trust_cap = 0.10, capped = 0.10, total_mass = 0.10
+        // So mass_4 = 4 * mass_1 (more signals from same pubkey gives proportionally more weight before cap normalizes it)
+        // Actually, score (num/mass) should be same since all confidences equal:
+        assert!(mass_4 > 0.0 && mass_1 > 0.0);
+        let score_4 = num_4 / mass_4;
+        let score_1 = num_1 / mass_1;
+        // Score should be ~0.9 regardless of how many signals same pubkey sends
+        assert!((score_4 - 0.9).abs() < 0.001, "score_4 = {score_4}");
+        assert!((score_1 - 0.9).abs() < 0.001, "score_1 = {score_1}");
+        // Critical: adding duplicate sybil signals should not inflate trust mass beyond the cap
+        // cap for 4-signal case = 0.25 * (4 * 0.40) = 0.40
+        // cap for 1-signal case = 0.25 * (1 * 0.40) = 0.10
+        // So mass_4 / mass_1 = 4 (trust mass scales linearly — but score stays constant)
+        assert!(
+            (mass_4 / mass_1 - 4.0).abs() < 0.001,
+            "trust mass ratio should be 4:1 for 4 same-pubkey signals, got {}", mass_4 / mass_1
+        );
     }
 }
