@@ -96,12 +96,23 @@ fn load_public_base_url() -> anyhow::Result<Option<String>> {
     };
     let lowered = raw.to_lowercase();
     let trimmed = lowered.trim_end_matches('/');
-    let uri: axum::http::Uri = trimmed.parse().map_err(|_| {
-        anyhow::anyhow!("PUBLIC_BASE_URL is not a valid URL: {raw}")
+    let uri: axum::http::Uri = trimmed.parse().map_err(|e| {
+        anyhow::anyhow!("PUBLIC_BASE_URL is not a valid URL ({e}): {raw}")
     })?;
     let scheme = uri.scheme_str().ok_or_else(|| {
         anyhow::anyhow!("PUBLIC_BASE_URL must include scheme (e.g. https://): {raw}")
     })?;
+    let path = uri.path();
+    if !path.is_empty() && path != "/" {
+        anyhow::bail!(
+            "PUBLIC_BASE_URL must not include a path component (got {path:?}): {raw}"
+        );
+    }
+    if scheme != "http" && scheme != "https" {
+        anyhow::bail!(
+            "PUBLIC_BASE_URL scheme must be http or https (got {scheme:?}): {raw}"
+        );
+    }
     let authority = uri.authority().ok_or_else(|| {
         anyhow::anyhow!("PUBLIC_BASE_URL must include a host: {raw}")
     })?;
@@ -141,6 +152,7 @@ mod tests {
 
     #[test]
     fn missing_required_var_returns_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let result = require("GATEWAY_TEST_MISSING_VAR_XYZ");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("GATEWAY_TEST_MISSING_VAR_XYZ"));
@@ -205,7 +217,9 @@ mod tests {
         let result = load_public_base_url();
         std::env::remove_var("PUBLIC_BASE_URL");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("PUBLIC_BASE_URL"));
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("PUBLIC_BASE_URL"), "missing PUBLIC_BASE_URL in: {msg}");
+        assert!(msg.contains("scheme") || msg.contains("valid URL"), "missing error detail in: {msg}");
     }
 
     #[test]
@@ -215,5 +229,27 @@ mod tests {
         let result = load_public_base_url().unwrap();
         std::env::remove_var("PUBLIC_BASE_URL");
         assert_eq!(result, Some("http://api.example.com".to_string()));
+    }
+
+    #[test]
+    fn public_base_url_with_path_is_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("PUBLIC_BASE_URL", "https://api.example.com/v1");
+        let result = load_public_base_url();
+        std::env::remove_var("PUBLIC_BASE_URL");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("path"), "expected 'path' in error: {msg}");
+    }
+
+    #[test]
+    fn public_base_url_non_http_scheme_is_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("PUBLIC_BASE_URL", "ftp://api.example.com");
+        let result = load_public_base_url();
+        std::env::remove_var("PUBLIC_BASE_URL");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("scheme"), "expected 'scheme' in error: {msg}");
     }
 }
