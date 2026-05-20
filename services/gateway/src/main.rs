@@ -127,6 +127,16 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Spawn synthesis worker (ticks every 5s, clusters acoustic signals into public_events)
+    {
+        let pool_synth = db.clone();
+        let synthesis_enabled = config.synthesis_enabled;
+        let tx_synth = event_tx.clone();
+        tokio::spawn(async move {
+            subscribers::synthesis_worker::run(pool_synth, synthesis_enabled, tx_synth).await;
+        });
+    }
+
     // CORS: allow any origin (public-read API — safety events, community reports)
     let cors = CorsLayer::new()
         .allow_origin(Any)
