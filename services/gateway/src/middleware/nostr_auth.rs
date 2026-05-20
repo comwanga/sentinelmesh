@@ -150,19 +150,25 @@ fn canonical_url(parts: &Parts, config: &crate::config::Config) -> String {
             .and_then(|v| v.to_str().ok())
             .unwrap_or("https")
             .to_lowercase();
-        let host = parts.headers
+        let host_raw = parts.headers
             .get("x-forwarded-host")
             .or_else(|| parts.headers.get("host"))
             .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_lowercase();
+            .unwrap_or("");
+        if host_raw.is_empty() {
+            tracing::warn!("NIP-98 canonical URL: no X-Forwarded-Host or Host header — auth will fail");
+        }
+        let host = host_raw.to_lowercase();
         (scheme, host)
     } else {
-        let host = parts.headers
+        let host_raw = parts.headers
             .get("host")
             .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_lowercase();
+            .unwrap_or("");
+        if host_raw.is_empty() {
+            tracing::warn!("NIP-98 canonical URL: no Host header and PUBLIC_BASE_URL not set — auth will fail");
+        }
+        let host = host_raw.to_lowercase();
         ("https".to_string(), host)
     };
 
@@ -251,7 +257,7 @@ pub async fn validate_nip98_request(
     let event_id = event.id.to_hex();
     let key = format!("nip98:v1:jti:{event_id}");
     let mut conn = state.redis.clone();
-    let result: Result<Option<String>, _> = tokio::time::timeout(
+    let set_result: Option<String> = tokio::time::timeout(
         std::time::Duration::from_millis(250),
         redis::cmd("SET")
             .arg(&key)
@@ -262,31 +268,19 @@ pub async fn validate_nip98_request(
             .query_async(&mut conn),
     )
     .await
-    .map_err(|_| AuthError::RedisUnavailable)?
-    .map_err(|_| AuthError::RedisUnavailable);
+    .map_err(|_| {
+        tracing::warn!(pubkey = %event.pubkey, event_id = %event_id, "NIP-98 auth rejected: Redis timeout");
+        AuthError::RedisUnavailable
+    })?
+    .map_err(|e| {
+        tracing::warn!(pubkey = %event.pubkey, event_id = %event_id, error = %e, "NIP-98 auth rejected: Redis error");
+        AuthError::RedisUnavailable
+    })?;
 
-    match result {
-        Err(e) => {
-            tracing::warn!(
-                pubkey = %event.pubkey,
-                event_id = %event_id,
-                error = ?e,
-                "NIP-98 auth rejected"
-            );
-            return Err(e);
-        }
-        Ok(None) => {
-            // SET NX failed — key already existed, replay detected
-            tracing::warn!(
-                pubkey = %event.pubkey,
-                event_id = %event_id,
-                "NIP-98 auth rejected"
-            );
-            return Err(AuthError::ReplayDetected);
-        }
-        Ok(Some(_)) => {
-            // SET NX succeeded — new event id, proceed
-        }
+    if set_result.is_none() {
+        // SET NX failed — key already existed, replay detected
+        tracing::warn!(pubkey = %event.pubkey, event_id = %event_id, "NIP-98 auth rejected: replay detected");
+        return Err(AuthError::ReplayDetected);
     }
 
     Ok(ValidatedNostrAuth {
@@ -711,10 +705,83 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replay_ttl_expires() {
+    async fn canonical_url_host_header_port_stripping() {
+        use crate::{
+            config::Config,
+            maps::{MapboxAdapter, MapProvider},
+            ws::{hub::WsHub, circle_hub::CircleHub},
+        };
+        use governor::{Quota, RateLimiter};
+        use std::{num::NonZeroU32, sync::{atomic::AtomicBool, Arc}};
+
+        let redis_client = redis::Client::open("redis://localhost").unwrap();
+        let redis = redis::aio::ConnectionManager::new(redis_client).await
+            .expect("Redis required");
+        let http_client = reqwest::Client::new();
+        let map_provider: std::sync::Arc<dyn MapProvider> = std::sync::Arc::new(
+            MapboxAdapter::new(http_client.clone(), String::new())
+        );
+        let zap_limiter = Arc::new(RateLimiter::keyed(
+            Quota::per_minute(NonZeroU32::new(10).unwrap()),
+        ));
+        let (event_tx_inner, _) = tokio::sync::broadcast::channel::<crate::ws::ViewportEvent>(1);
+        // No public_base_url — exercises the Host-header fallback
+        let state = AppState {
+            db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
+            config: Arc::new(Config {
+                database_url: "postgres://localhost/test".into(),
+                redis_url: "redis://localhost".into(),
+                port: 3000,
+                zap_webhook_secret: "test".into(),
+                blockchain_service_url: None,
+                lnd_rest_url: None,
+                lnd_macaroon_hex: None,
+                lnd_tls_skip_verify: false,
+                lnd_tls_cert_pem: None,
+                nostr_private_key: None,
+                nostr_relays: vec!["wss://nos.lol".into()],
+                zap_rate_limit_per_minute: 10,
+                internal_service_secret: "secret".into(),
+                trust_proxy: false,
+                max_db_connections: 5,
+                mapbox_token: None,
+                vapid_private_key: None,
+                vapid_public_key: None,
+                vapid_subject: None,
+                ws_events_rate_cap: 30,
+                public_base_url: None,
+            }),
+            http_client,
+            hub: Arc::new(WsHub::new()),
+            circle_hub: Arc::new(CircleHub::new()),
+            redis_healthy: Arc::new(AtomicBool::new(false)),
+            map_provider,
+            zap_limiter,
+            event_tx: Arc::new(event_tx_inner),
+            redis,
+        };
+
+        let keys = Keys::generate();
+        // Host header has :443 — canonical_url should strip it
+        // The u tag matches the normalised form (no :443)
+        let (mut parts, _) = Request::builder()
+            .method("POST")
+            .uri(ROUTE)
+            .header("host", "api.sentinelmesh.io:443")
+            .body(())
+            .unwrap()
+            .into_parts();
+        let _ = &mut parts; // suppress unused warning
+        let canonical = "https://api.sentinelmesh.io/api/zaps/request";
+        let event = make_nip98_event(&keys, 0, canonical, "POST");
+        let result = validate_nip98_request(&parts, &state, &event).await;
+        assert!(result.is_ok(), "port :443 must be stripped from Host header: {result:?}");
+    }
+
+    #[tokio::test]
+    async fn different_event_ids_are_independently_accepted() {
         // Simulates TTL expiry by using a fresh event id (different keys → different id).
-        // The 120s Redis TTL cannot be fast-forwarded in a unit test, so we verify
-        // the semantics: different event ids are independently accepted.
+        // Each unique event id gets its own replay-guard slot; different signers → different ids.
         let state = make_state().await;
         let keys = Keys::generate();
         let event = make_nip98_event(&keys, 0, &format!("{BASE}{ROUTE}"), "POST");
