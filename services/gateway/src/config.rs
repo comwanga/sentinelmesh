@@ -22,6 +22,9 @@ pub struct Config {
     pub vapid_subject: Option<String>,
     pub ws_events_rate_cap: u32,
     pub public_base_url: Option<String>,
+    pub synthesis_enabled: bool,
+    pub soft_visibility_enabled: bool,
+    pub emergency_mode_enabled: bool,
 }
 
 impl Config {
@@ -73,6 +76,15 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(30),
             public_base_url: load_public_base_url()?,
+            synthesis_enabled: std::env::var("SYNTHESIS_ENABLED")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
+            soft_visibility_enabled: std::env::var("SOFT_VISIBILITY_ENABLED")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
+            emergency_mode_enabled: std::env::var("EMERGENCY_MODE_ENABLED")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
         })
     }
 }
@@ -251,5 +263,37 @@ mod tests {
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("scheme"), "expected 'scheme' in error: {msg}");
+    }
+
+    #[test]
+    fn synthesis_enabled_reads_true() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("SYNTHESIS_ENABLED", "true");
+        let result = std::env::var("SYNTHESIS_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
+        std::env::remove_var("SYNTHESIS_ENABLED");
+        assert!(result);
+    }
+
+    #[test]
+    fn synthesis_enabled_defaults_false() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("SYNTHESIS_ENABLED");
+        let result = std::env::var("SYNTHESIS_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
+        assert!(!result);
+    }
+
+    #[test]
+    fn synthesis_enabled_reads_1_as_true() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("SYNTHESIS_ENABLED", "1");
+        let result = std::env::var("SYNTHESIS_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
+        std::env::remove_var("SYNTHESIS_ENABLED");
+        assert!(result);
     }
 }
