@@ -76,10 +76,15 @@ mod tests {
 
     fn make_state(secret: &str) -> AppState {
         use crate::{config::Config, maps::{MapboxAdapter, MapProvider}, ws::{hub::WsHub, circle_hub::CircleHub}};
+        use governor::{Quota, RateLimiter};
+        use std::num::NonZeroU32;
         let http_client = reqwest::Client::new();
         let map_provider: Arc<dyn MapProvider> = Arc::new(
             MapboxAdapter::new(http_client.clone(), String::new())
         );
+        let zap_limiter = Arc::new(RateLimiter::keyed(
+            Quota::per_minute(NonZeroU32::new(10).unwrap()),
+        ));
         let (event_tx_inner, _) = tokio::sync::broadcast::channel::<crate::ws::ViewportEvent>(1);
         AppState {
             db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
@@ -92,7 +97,10 @@ mod tests {
                 lnd_rest_url: None,
                 lnd_macaroon_hex: None,
                 lnd_tls_skip_verify: false,
+                lnd_tls_cert_pem: None,
                 nostr_private_key: None,
+                nostr_relays: vec!["wss://nos.lol".into()],
+                zap_rate_limit_per_minute: 10,
                 internal_service_secret: secret.into(),
                 trust_proxy: false,
                 max_db_connections: 5,
@@ -107,6 +115,7 @@ mod tests {
             circle_hub: Arc::new(CircleHub::new()),
             redis_healthy: Arc::new(AtomicBool::new(false)),
             map_provider,
+            zap_limiter,
             event_tx: Arc::new(event_tx_inner),
         }
     }

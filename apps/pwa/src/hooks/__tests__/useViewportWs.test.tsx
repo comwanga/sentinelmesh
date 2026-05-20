@@ -63,6 +63,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   vi.useRealTimers()
 })
 
@@ -82,11 +83,11 @@ describe('useViewportWs', () => {
     expect(ws.sent).toHaveLength(1)
     const msg = JSON.parse(ws.sent[0]!)
     expect(msg.type).toBe('SUBSCRIBE')
-    expect(msg.payload.bounds.south).toBe(-2)
-    expect(msg.payload.bounds.north).toBe(0)
-    expect(msg.payload.bounds.west).toBe(35)
-    expect(msg.payload.bounds.east).toBe(37)
-    expect(msg.payload.zoom).toBe(12)
+    expect(msg.bounds.south).toBe(-2)
+    expect(msg.bounds.north).toBe(0)
+    expect(msg.bounds.west).toBe(35)
+    expect(msg.bounds.east).toBe(37)
+    expect(msg.zoom).toBe(12)
   })
 
   it('does not send SUBSCRIBE on open when bounds are null', () => {
@@ -136,7 +137,7 @@ describe('useViewportWs', () => {
     renderHook(() => useViewportWs(bounds, 12), { wrapper: wrapper(store) })
     const ws = MockWebSocket.instances[0]!
     act(() => ws.simulateOpen())
-    act(() => ws.simulateMessage({ type: 'INITIAL_BATCH', payload: { events: [wsEvent] } }))
+    act(() => ws.simulateMessage({ type: 'INITIAL_BATCH', events: [wsEvent] }))
     expect(store.getState().viewportEvents.items).toHaveLength(1)
     expect(store.getState().viewportEvents.items[0]!.id).toBe('e1')
   })
@@ -146,7 +147,7 @@ describe('useViewportWs', () => {
     renderHook(() => useViewportWs(bounds, 12), { wrapper: wrapper(store) })
     const ws = MockWebSocket.instances[0]!
     act(() => ws.simulateOpen())
-    act(() => ws.simulateMessage({ type: 'SNAPSHOT', payload: { events: [wsEvent] } }))
+    act(() => ws.simulateMessage({ type: 'SNAPSHOT', events: [wsEvent] }))
     expect(store.getState().viewportEvents.items).toHaveLength(1)
   })
 
@@ -155,14 +156,12 @@ describe('useViewportWs', () => {
     renderHook(() => useViewportWs(bounds, 12), { wrapper: wrapper(store) })
     const ws = MockWebSocket.instances[0]!
     act(() => ws.simulateOpen())
-    act(() => ws.simulateMessage({ type: 'INITIAL_BATCH', payload: { events: [wsEvent] } }))
+    act(() => ws.simulateMessage({ type: 'INITIAL_BATCH', events: [wsEvent] }))
     act(() => ws.simulateMessage({
       type: 'DIFF_PATCH',
-      payload: {
-        added: [{ ...wsEvent, id: 'e2', title: 'New' }],
-        removed: ['e1'],
-        updated: [],
-      },
+      added: [{ ...wsEvent, id: 'e2', title: 'New' }],
+      removed: ['e1'],
+      updated: [],
     }))
     const items = store.getState().viewportEvents.items
     expect(items).toHaveLength(1)
@@ -176,7 +175,7 @@ describe('useViewportWs', () => {
     act(() => ws.simulateOpen())
     act(() => ws.simulateMessage({
       type: 'INITIAL_BATCH',
-      payload: { events: [{ ...wsEvent, state: 'RESOLVED' }] },
+      events: [{ ...wsEvent, state: 'RESOLVED' }],
     }))
     expect(store.getState().viewportEvents.items[0]!.is_active).toBe(false)
   })

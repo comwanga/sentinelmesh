@@ -1,31 +1,88 @@
-import { vi, describe, test, expect, beforeEach } from 'vitest'
+import { vi, describe, test, expect, beforeEach, afterEach } from 'vitest'
 
-const store: Record<string, string> = {}
-// vi.stubGlobal runs at module-eval time. nostrService accesses localStorage
-// only inside functions (never at module scope), so the static import above
-// resolves safely before the stub is needed.
-vi.stubGlobal('localStorage', {
-  getItem: (k: string) => store[k] ?? null,
-  setItem: (k: string, v: string) => { store[k] = v },
-  removeItem: (k: string) => { delete store[k] },
-  clear: () => { Object.keys(store).forEach(k => delete store[k]) },
-})
+// Minimal localStorage stub — used to verify we do NOT call it
+const lsStore: Record<string, string> = {}
+const localStorageMock = {
+  getItem:    (k: string) => lsStore[k] ?? null,
+  setItem:    (k: string, v: string) => { lsStore[k] = v },
+  removeItem: (k: string) => { delete lsStore[k] },
+  clear:      () => { Object.keys(lsStore).forEach(k => delete lsStore[k]) },
+}
+vi.stubGlobal('localStorage', localStorageMock)
 
-beforeEach(() => localStorage.clear())
+beforeEach(() => localStorageMock.clear())
+afterEach(() => { delete (window as unknown as Record<string, unknown>).nostr })
 
-import { loadOrCreateKeypair, signReport } from '../services/nostrService'
+import {
+  loadOrCreateKeypair,
+  signReport,
+  getOrCreateEphemeralKeypair,
+  hasNip07,
+  signAuthEvent,
+  clearStoredKey,
+} from '../services/nostrService'
 
 describe('loadOrCreateKeypair', () => {
-  test('generates and persists a keypair on first call', () => {
+  test('returns a valid hex pubkey', () => {
     const kp = loadOrCreateKeypair()
     expect(kp.publicKey).toMatch(/^[0-9a-f]{64}$/)
-    expect(localStorage.getItem('sentinel_nostr_sk')).not.toBeNull()
   })
 
-  test('returns the same keypair on subsequent calls', () => {
+  test('does NOT persist raw key to localStorage', () => {
+    loadOrCreateKeypair()
+    expect(localStorageMock.getItem('sentinel_nostr_sk')).toBeNull()
+  })
+
+  test('returns the same in-memory keypair on subsequent calls', () => {
     const kp1 = loadOrCreateKeypair()
     const kp2 = loadOrCreateKeypair()
     expect(kp1.publicKey).toBe(kp2.publicKey)
+  })
+})
+
+describe('getOrCreateEphemeralKeypair', () => {
+  test('consistent across calls within the same module lifetime', () => {
+    const k1 = getOrCreateEphemeralKeypair()
+    const k2 = getOrCreateEphemeralKeypair()
+    expect(k1.publicKey).toBe(k2.publicKey)
+  })
+})
+
+describe('hasNip07', () => {
+  test('returns false when window.nostr is absent', () => {
+    expect(hasNip07()).toBe(false)
+  })
+
+  test('returns true when window.nostr is present', () => {
+    ;(window as unknown as Record<string, unknown>).nostr = { getPublicKey: vi.fn(), signEvent: vi.fn() }
+    expect(hasNip07()).toBe(true)
+  })
+})
+
+describe('signAuthEvent', () => {
+  test('uses NIP-07 when available', async () => {
+    const fakeEvent = { id: 'abc', pubkey: 'xyz', created_at: 1, kind: 27235, tags: [], content: '', sig: 'sig' }
+    const signEvent = vi.fn().mockResolvedValue(fakeEvent)
+    ;(window as unknown as Record<string, unknown>).nostr = { signEvent, getPublicKey: vi.fn() }
+
+    const result = await signAuthEvent()
+    expect(signEvent).toHaveBeenCalledOnce()
+    expect(result).toBe(fakeEvent)
+  })
+
+  test('falls back to in-memory key when NIP-07 absent', async () => {
+    const result = await signAuthEvent()
+    expect(result.kind).toBe(27235)
+    expect(result.id).toMatch(/^[0-9a-f]{64}$/)
+    expect(result.sig).toMatch(/^[0-9a-f]{128}$/)
+  })
+})
+
+describe('clearStoredKey', () => {
+  test('removes sentinel_nostr_sk if present', () => {
+    lsStore['sentinel_nostr_sk'] = 'deadbeef'
+    clearStoredKey()
+    expect(localStorageMock.getItem('sentinel_nostr_sk')).toBeNull()
   })
 })
 

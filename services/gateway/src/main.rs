@@ -18,6 +18,8 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 use axum::http::{Method, HeaderName};
 use ws::{circle_hub::CircleHub, hub::WsHub};
+use governor::{DefaultKeyedRateLimiter, Quota, RateLimiter};
+use std::num::NonZeroU32;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -28,6 +30,7 @@ pub struct AppState {
     pub circle_hub: Arc<CircleHub>,
     pub redis_healthy: Arc<AtomicBool>,
     pub map_provider: std::sync::Arc<dyn maps::MapProvider>,
+    pub zap_limiter: Arc<DefaultKeyedRateLimiter<String>>,
     pub event_tx: Arc<broadcast::Sender<ws::ViewportEvent>>,
 }
 
@@ -53,6 +56,12 @@ async fn main() -> anyhow::Result<()> {
         )
     );
 
+    let zap_quota = Quota::per_minute(
+        NonZeroU32::new(config.zap_rate_limit_per_minute.max(1)).unwrap(),
+    );
+    let zap_limiter: Arc<DefaultKeyedRateLimiter<String>> =
+        Arc::new(RateLimiter::keyed(zap_quota));
+
     // Capacity 512: allows slow viewport-WS clients up to 512 events of lag
     // before Lagged errors force them into snapshot mode.
     let (event_tx_inner, _) = broadcast::channel::<ws::ViewportEvent>(512);
@@ -66,6 +75,7 @@ async fn main() -> anyhow::Result<()> {
         circle_hub,
         redis_healthy: redis_healthy.clone(),
         map_provider,
+        zap_limiter,
         event_tx: event_tx.clone(),
     };
 
@@ -78,6 +88,25 @@ async fn main() -> anyhow::Result<()> {
         let tx = event_tx.clone();
         tokio::spawn(async move {
             subscribers::event_subscriber::run(redis_url, pool, hub_ref, healthy, tx).await;
+        });
+    }
+
+    // Spawn receipt retry worker (polls every 60s for undelivered zap receipts)
+    if let Some(nostr_key) = config.nostr_private_key.clone() {
+        let pool_retry = db.clone();
+        let relays_retry = config.nostr_relays.clone();
+        tokio::spawn(async move {
+            lightning::receipt_retry::run(pool_retry, relays_retry, nostr_key).await;
+        });
+    } else {
+        tracing::warn!("NOSTR_PRIVATE_KEY not set — receipt retry worker disabled");
+    }
+
+    // Spawn invoice expiry worker (polls every 5 minutes for stale pending invoices)
+    {
+        let pool_expiry = db.clone();
+        tokio::spawn(async move {
+            lightning::invoice_expiry::run(pool_expiry).await;
         });
     }
 
