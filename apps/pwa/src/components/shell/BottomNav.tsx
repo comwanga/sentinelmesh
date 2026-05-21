@@ -30,7 +30,7 @@ export function BottomNav() {
             alignItems: 'center', justifyContent: 'center', gap: 2,
             textDecoration: 'none',
             color: isActive ? '#00E5FF' : '#4a5568',
-            fontFamily: "'Courier New', monospace", fontSize: 9, letterSpacing: '0.08em',
+            fontFamily: "'Courier New', monospace", fontSize: 11, letterSpacing: '0.08em',
             borderTop: isActive ? '2px solid #00E5FF' : '2px solid transparent',
           })}
         >

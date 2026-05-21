@@ -28,7 +28,7 @@ export function Header() {
           }}>SentinelMesh</span>
           {layout === 'desktop' && (
             <span style={{
-              fontFamily: "'Courier New', monospace", fontSize: 9,
+              fontFamily: "'Courier New', monospace", fontSize: 10,
               color: '#4a5568', letterSpacing: '0.04em',
             }}>Safer communities. Zero compromise.</span>
           )}

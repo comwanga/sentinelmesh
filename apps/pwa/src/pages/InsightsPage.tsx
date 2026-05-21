@@ -39,7 +39,7 @@ export function InsightsPage() {
               padding: '10px 20px', background: 'none', border: 'none', cursor: 'pointer',
               borderBottom: tab === t ? '2px solid #00E5FF' : '2px solid transparent',
               color: tab === t ? '#00E5FF' : '#4a5568',
-              fontFamily: "'Courier New', monospace", fontSize: 11, letterSpacing: '0.08em',
+              fontFamily: "'Courier New', monospace", fontSize: 12, letterSpacing: '0.08em',
               whiteSpace: 'nowrap',
             }}
           >{t}</button>
@@ -53,9 +53,9 @@ export function InsightsPage() {
               Total verified reports: <strong>{totalVerified}</strong>
             </div>
             {statsLoading ? (
-              <p style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: '#4a5568' }}>Loading...</p>
+              <p style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#4a5568' }}>Loading...</p>
             ) : reporters.length === 0 ? (
-              <p style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: '#4a5568' }}>No community data yet.</p>
+              <p style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#4a5568' }}>No community data yet.</p>
             ) : (
               reporters.map((r: any) => (
                 <div key={r.pubkey} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #1a2035' }}>
@@ -81,7 +81,7 @@ export function InsightsPage() {
         {tab === 'Personal Safety' && (
           <div>
             {safetyLog.length === 0 ? (
-              <p style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: '#4a5568' }}>No personal safety events logged yet.</p>
+              <p style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#4a5568' }}>No personal safety events logged yet.</p>
             ) : (
               safetyLog.map((entry: SafetyLogEntry) => (
                 <div key={entry.timestamp} style={{ padding: '8px 0', borderBottom: '1px solid #1a2035' }}>
