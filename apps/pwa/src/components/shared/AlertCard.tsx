@@ -1,4 +1,5 @@
 import type { EventType, SafetyEvent } from '../../../../../shared/types'
+import { Bookmark } from 'lucide-react'
 
 export interface AlertCardProps {
   eventId: string
@@ -112,9 +113,9 @@ export function AlertCard({
         <button
           aria-label="bookmark"
           onClick={() => onBookmark(eventId)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4a5568', fontSize: 14, padding: 2 }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4a5568', padding: 2 }}
         >
-          🔖
+          <Bookmark size={14} aria-hidden="true" />
         </button>
       </div>
 

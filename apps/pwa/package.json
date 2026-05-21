@@ -13,6 +13,7 @@
     "@tensorflow-models/blazeface": "^0.1.0",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-backend-webgl": "^4.22.0",
+    "lucide-react": "^1.16.0",
     "maplibre-gl": "^5.24.0",
     "nostr-tools": "^2.23.3",
     "react": "^18.3.1",
