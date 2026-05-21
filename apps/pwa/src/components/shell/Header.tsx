@@ -69,7 +69,7 @@ export function Header() {
             color: '#94a3b8',
           }}
         >
-          <SlidersHorizontal size={12} /><span>Filters</span>
+          <SlidersHorizontal size={12} aria-hidden={true} /><span>Filters</span>
         </button>
       )}
 
@@ -82,7 +82,7 @@ export function Header() {
           padding: 4, cursor: 'pointer', color: '#e2e8f0', fontSize: 18,
         }}
       >
-        <Bell size={18} />
+        <Bell size={18} aria-hidden={true} />
         {activeCount > 0 && (
           <span style={{
             position: 'absolute', top: 0, right: 0,
