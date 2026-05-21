@@ -1,5 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
+export type TravelMode = 'walking' | 'driving' | 'transit'
+
 export interface UiIntent {
   type: 'overlay' | 'modal'
   name: 'routes' | 'acoustic' | 'home-route' | null
@@ -16,13 +18,16 @@ export interface HomeRoute {
   distanceKm: number
   durationMin: number
   warnings: string[]
+  label: string
+  mode: TravelMode
 }
 
 interface UiState {
   uiIntent: UiIntent
   safeRoutes: { id: string; coordinates: [number, number][] }[]
   homeLocation: HomeLocation | null
-  homeRoute: HomeRoute | null
+  homeRoute: HomeRoute | null      // currently selected/displayed route
+  homeRoutes: HomeRoute[]          // all alternatives from last fetch
 }
 
 const initialState: UiState = {
@@ -30,6 +35,7 @@ const initialState: UiState = {
   safeRoutes: [],
   homeLocation: null,
   homeRoute: null,
+  homeRoutes: [],
 }
 
 const uiSlice = createSlice({
@@ -54,11 +60,27 @@ const uiSlice = createSlice({
     clearHomeLocation(state) {
       state.homeLocation = null
     },
+    // Set all alternatives at once; first becomes the selected route
+    homeRoutesSet(state, action: PayloadAction<HomeRoute[]>) {
+      state.homeRoutes = action.payload
+      state.homeRoute = action.payload[0] ?? null
+    },
+    // Select a specific alternative by index
+    homeRouteSelect(state, action: PayloadAction<number>) {
+      state.homeRoute = state.homeRoutes[action.payload] ?? state.homeRoute
+    },
+    homeRoutesCleared(state) {
+      state.homeRoutes = []
+      state.homeRoute = null
+    },
+    // Legacy single-route actions kept for backward compat
     homeRouteSet(state, action: PayloadAction<HomeRoute>) {
       state.homeRoute = action.payload
+      state.homeRoutes = [action.payload]
     },
     homeRouteCleared(state) {
       state.homeRoute = null
+      state.homeRoutes = []
     },
   },
 })
@@ -70,6 +92,9 @@ export const {
   safeRoutesCleared,
   setHomeLocation,
   clearHomeLocation,
+  homeRoutesSet,
+  homeRouteSelect,
+  homeRoutesCleared,
   homeRouteSet,
   homeRouteCleared,
 } = uiSlice.actions

@@ -52,26 +52,26 @@ describe('fetchSafeRoutes', () => {
 describe('fetchRouteToHome', () => {
   test('returns HomeRoute with distance and duration', async () => {
     mockFetch.mockResolvedValue(mockRouteResponse([[36.82, -1.29], [36.83, -1.28]], 1500, 900))
-    const route = await fetchRouteToHome(
+    const routes = await fetchRouteToHome(
       { lat: -1.29, lng: 36.82 },
       { lat: -1.28, lng: 36.83 },
       [],
     )
-    expect(route).not.toBeNull()
-    expect(route!.distanceKm).toBe(1.5)
-    expect(route!.durationMin).toBe(15)
-    expect(route!.warnings).toEqual([])
+    expect(routes).toHaveLength(1)
+    expect(routes[0].distanceKm).toBe(1.5)
+    expect(routes[0].durationMin).toBe(15)
+    expect(routes[0].warnings).toEqual([])
   })
-  test('returns null when fetch returns non-ok', async () => {
+  test('returns empty array when fetch returns non-ok', async () => {
     mockFetch.mockResolvedValue({ ok: false })
-    const route = await fetchRouteToHome({ lat: 0, lng: 0 }, { lat: 1, lng: 1 }, [])
-    expect(route).toBeNull()
+    const routes = await fetchRouteToHome({ lat: 0, lng: 0 }, { lat: 1, lng: 1 }, [])
+    expect(routes).toEqual([])
   })
   test('adds warning when route passes through danger zone', async () => {
     const coords: [number, number][] = [[36.8219, -1.3200]]
     mockFetch.mockResolvedValue(mockRouteResponse(coords))
     const dangerZones = [{ lat: -1.32, lng: 36.8219, radiusKm: 0.5 }]
-    const route = await fetchRouteToHome(userLocation, eventLocation, dangerZones)
-    expect(route!.warnings.length).toBeGreaterThan(0)
+    const routes = await fetchRouteToHome(userLocation, eventLocation, dangerZones)
+    expect(routes[0].warnings.length).toBeGreaterThan(0)
   })
 })

@@ -12,6 +12,15 @@ export interface RouteResult {
   duration: number
 }
 
+export type TravelMode = 'walking' | 'driving' | 'transit'
+
+const OSRM_BASE = 'https://router.project-osrm.org/route/v1'
+const OSRM_PROFILE: Record<TravelMode, string> = {
+  walking: 'foot',
+  driving: 'driving',
+  transit: 'driving', // OSRM has no transit; callers show a UI message for transit
+}
+
 export async function searchAddress(
   query: string,
   proximity?: { lat: number; lng: number },
@@ -31,18 +40,49 @@ export async function searchAddress(
   }
 }
 
-export async function getRoute(from: LatLng, to: LatLng): Promise<RouteResult | null> {
-  const params = new URLSearchParams({
-    from: `${from.lng},${from.lat}`,
-    to: `${to.lng},${to.lat}`,
-    mode: 'walking',
-  })
+export async function getRoute(
+  from: LatLng,
+  to: LatLng,
+  mode: TravelMode = 'walking',
+): Promise<RouteResult[]> {
+  // Try backend first (has danger-zone enrichment)
   try {
+    const params = new URLSearchParams({
+      from: `${from.lng},${from.lat}`,
+      to: `${to.lng},${to.lat}`,
+      mode,
+    })
     const res = await fetch(`/api/maps/route?${params}`)
-    if (!res.ok) return null
-    return await res.json() as RouteResult
+    if (res.ok) {
+      const data = await res.json() as RouteResult | RouteResult[]
+      return Array.isArray(data) ? data : [data]
+    }
+  } catch { /* fall through */ }
+
+  // Direct OSRM fallback — works without backend
+  try {
+    const profile = OSRM_PROFILE[mode]
+    const url =
+      `${OSRM_BASE}/${profile}/${from.lng},${from.lat};${to.lng},${to.lat}` +
+      `?geometries=geojson&alternatives=true&steps=false`
+    const res = await fetch(url)
+    if (!res.ok) return []
+    const data = await res.json() as {
+      code: string
+      routes: Array<{
+        geometry: { coordinates: [number, number][] }
+        distance: number
+        duration: number
+      }>
+    }
+    if (data.code !== 'Ok') return []
+    return data.routes.map(r => ({
+      coordinates: r.geometry.coordinates,
+      distance: r.distance,
+      duration: r.duration,
+    }))
   } catch {
-    return null
+    return []
   }
 }
 

@@ -44,7 +44,7 @@ describe('searchAddress', () => {
 })
 
 describe('getRoute', () => {
-  test('returns route on success', async () => {
+  test('returns route alternatives on success', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -53,15 +53,15 @@ describe('getRoute', () => {
         duration: 1500,
       }),
     })
-    const route = await getRoute({ lat: -1.29, lng: 36.82 }, { lat: -1.28, lng: 36.83 })
-    expect(route).not.toBeNull()
-    expect(route!.distance).toBe(2100)
-    expect(route!.coordinates).toHaveLength(2)
+    const routes = await getRoute({ lat: -1.29, lng: 36.82 }, { lat: -1.28, lng: 36.83 })
+    expect(routes).toHaveLength(1)
+    expect(routes[0].distance).toBe(2100)
+    expect(routes[0].coordinates).toHaveLength(2)
   })
 
-  test('returns null on failure', async () => {
+  test('returns empty array on failure', async () => {
     mockFetch.mockResolvedValue({ ok: false })
-    expect(await getRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 })).toBeNull()
+    expect(await getRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 })).toEqual([])
   })
 })
 
