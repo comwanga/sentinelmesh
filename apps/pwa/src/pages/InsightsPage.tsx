@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { useAppSelector, useAppDispatch } from '../store'
-import { fetchInsightsEvents, BucketedEvent } from '../store/insightsEventsSlice'
+import { fetchInsightsEvents } from '../store/insightsEventsSlice'
 import { fetchCommunityStats, ReporterStat } from '../store/communityStatsSlice'
 import { SafetyLogEntry } from '../store/safetyLogSlice'
 
