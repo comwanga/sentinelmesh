@@ -87,7 +87,7 @@ export function Header() {
           <span style={{
             position: 'absolute', top: 0, right: 0,
             background: '#FF2D2D', color: '#fff', borderRadius: '50%',
-            width: 16, height: 16, fontSize: 9,
+            width: 16, height: 16, fontSize: 11,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontFamily: "'Courier New', monospace",
           }}>{activeCount}</span>
