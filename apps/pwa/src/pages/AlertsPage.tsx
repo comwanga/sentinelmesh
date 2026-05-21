@@ -121,7 +121,7 @@ export function AlertsPage() {
               data-testid={`type-chip-${type}`}
               style={{
                 flexShrink: 0, border: 'none', borderRadius: 12, cursor: 'pointer',
-                fontFamily: "'Courier New', monospace", fontSize: 9, letterSpacing: '0.05em',
+                fontFamily: "'Courier New', monospace", fontSize: 11, letterSpacing: '0.05em',
                 padding: '4px 8px', whiteSpace: 'nowrap',
                 background: active ? '#00E5FF' : '#1a2035',
                 color: active ? '#0B0E14' : '#4a5568',
@@ -142,7 +142,7 @@ export function AlertsPage() {
             data-testid={`status-filter-${s}`}
             style={{
               flexShrink: 0, border: 'none', borderRadius: 12, cursor: 'pointer',
-              fontFamily: "'Courier New', monospace", fontSize: 9, letterSpacing: '0.05em',
+              fontFamily: "'Courier New', monospace", fontSize: 11, letterSpacing: '0.05em',
               padding: '4px 8px',
               background: statusFilter === s ? '#00E5FF' : '#1a2035',
               color: statusFilter === s ? '#0B0E14' : '#4a5568',
@@ -162,7 +162,7 @@ export function AlertsPage() {
             data-testid={`time-range-${t}`}
             style={{
               flexShrink: 0, border: 'none', borderRadius: 12, cursor: 'pointer',
-              fontFamily: "'Courier New', monospace", fontSize: 9, letterSpacing: '0.05em',
+              fontFamily: "'Courier New', monospace", fontSize: 11, letterSpacing: '0.05em',
               padding: '4px 8px',
               background: timeRange === t ? '#00E5FF' : '#1a2035',
               color: timeRange === t ? '#0B0E14' : '#4a5568',

@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { Bell, SlidersHorizontal } from 'lucide-react'
 import { useAppSelector } from '../../store'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 
@@ -19,7 +20,7 @@ export function Header() {
           width: 30, height: 30, background: '#00E5FF', borderRadius: 7,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 16, color: '#0B0E14', fontWeight: 900,
-        }}>⬡</div>
+        }}><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12,2 22,7 22,17 12,22 2,17 2,7"/></svg></div>
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
           <span style={{
             fontFamily: "'Courier New', monospace", fontSize: 14,
@@ -27,7 +28,7 @@ export function Header() {
           }}>SentinelMesh</span>
           {layout === 'desktop' && (
             <span style={{
-              fontFamily: "'Courier New', monospace", fontSize: 9,
+              fontFamily: "'Courier New', monospace", fontSize: 10,
               color: '#4a5568', letterSpacing: '0.04em',
             }}>Safer communities. Zero compromise.</span>
           )}
@@ -40,7 +41,7 @@ export function Header() {
           style={{
             flex: 1, maxWidth: 340, background: '#0d1118', border: '1px solid #1a2035',
             borderRadius: 8, padding: '6px 12px', color: '#e2e8f0',
-            fontFamily: "'Courier New', monospace", fontSize: 12, outline: 'none',
+            fontFamily: "'Courier New', monospace", fontSize: 12,
           }}
           placeholder="Search location in Kenya..."
           onKeyDown={e => { if (e.key === 'Enter') navigate('/map') }}
@@ -55,7 +56,7 @@ export function Header() {
         <span style={{ color: connected ? '#4CAF50' : '#4a5568' }}>{connected ? 'Live' : 'Offline'}</span>
       </div>
 
-      {layout === 'desktop' && <span style={{ fontSize: 18 }}>🇰🇪</span>}
+      {layout === 'desktop' && <span style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', letterSpacing: '0.05em' }}>KE</span>}
 
       {layout === 'desktop' && (
         <button
@@ -68,7 +69,7 @@ export function Header() {
             color: '#94a3b8',
           }}
         >
-          <span>⧉</span><span>Filters</span>
+          <SlidersHorizontal size={12} aria-hidden={true} /><span>Filters</span>
         </button>
       )}
 
@@ -81,12 +82,12 @@ export function Header() {
           padding: 4, cursor: 'pointer', color: '#e2e8f0', fontSize: 18,
         }}
       >
-        🔔
+        <Bell size={18} aria-hidden={true} />
         {activeCount > 0 && (
           <span style={{
             position: 'absolute', top: 0, right: 0,
             background: '#FF2D2D', color: '#fff', borderRadius: '50%',
-            width: 16, height: 16, fontSize: 9,
+            width: 16, height: 16, fontSize: 11,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontFamily: "'Courier New', monospace",
           }}>{activeCount}</span>

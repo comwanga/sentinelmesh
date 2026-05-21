@@ -1,4 +1,5 @@
 import type { EventType, SafetyEvent } from '../../../../../shared/types'
+import { Bookmark } from 'lucide-react'
 
 export interface AlertCardProps {
   eventId: string
@@ -78,7 +79,7 @@ function timeAgo(ts: number): string {
 function Stars({ rating }: { rating: number }) {
   const full = Math.round(rating)
   return (
-    <span style={{ color: '#FFB300', fontSize: 9, letterSpacing: 1 }}>
+    <span style={{ color: '#FFB300', fontSize: 11, letterSpacing: 1 }}>
       {'★'.repeat(full)}{'☆'.repeat(5 - full)}
       <span style={{ color: '#4a5568', marginLeft: 3 }}>{rating.toFixed(1)}</span>
     </span>
@@ -105,22 +106,22 @@ export function AlertCard({
           }}>
             {title}
           </div>
-          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#94a3b8' }}>
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: '#94a3b8' }}>
             {location}
           </div>
         </div>
         <button
           aria-label="bookmark"
           onClick={() => onBookmark(eventId)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4a5568', fontSize: 14, padding: 2 }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4a5568', padding: 2 }}
         >
-          🔖
+          <Bookmark size={14} aria-hidden="true" />
         </button>
       </div>
 
       {/* Time + confidence */}
       <div style={{
-        fontFamily: "'Courier New', monospace", fontSize: 9, color: '#4a5568', marginBottom: 6,
+        fontFamily: "'Courier New', monospace", fontSize: 11, color: '#4a5568', marginBottom: 6,
       }}>
         {timeAgo(timestamp)} · {pct}% confidence
       </div>
@@ -128,7 +129,7 @@ export function AlertCard({
       {/* Status + rating + sources + votes */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const }}>
         <span style={{
-          fontFamily: "'Courier New', monospace", fontSize: 9, padding: '2px 6px',
+          fontFamily: "'Courier New', monospace", fontSize: 11, padding: '2px 6px',
           borderRadius: 4, letterSpacing: '0.08em',
           background: status === 'VERIFIED' ? '#1B5E20' : '#1A237E',
           color: status === 'VERIFIED' ? '#4CAF50' : '#BB86FC',
@@ -140,13 +141,13 @@ export function AlertCard({
 
         {sources.map(src => (
           <span key={src} style={{
-            fontFamily: "'Courier New', monospace", fontSize: 9, padding: '1px 5px',
+            fontFamily: "'Courier New', monospace", fontSize: 11, padding: '1px 5px',
             borderRadius: 3, background: '#1a2035', color: '#4a5568',
           }}>{src}</span>
         ))}
 
         {voteCount > 0 && (
-          <span style={{ marginLeft: 'auto', fontFamily: "'Courier New', monospace", fontSize: 9, color: '#4a5568' }}>
+          <span style={{ marginLeft: 'auto', fontFamily: "'Courier New', monospace", fontSize: 11, color: '#4a5568' }}>
             +{voteCount} votes
           </span>
         )}
