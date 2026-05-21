@@ -1,4 +1,5 @@
 import { getRoute } from './mapApiService'
+import type { TravelMode } from './mapApiService'
 import { bearingBetween, destinationPoint, pointToLineDistance } from '../utils/geo'
 import type { LatLng } from '../utils/geo'
 
@@ -10,6 +11,8 @@ export interface HomeRoute {
   distanceKm: number
   durationMin: number
   warnings: string[]
+  label: string
+  mode: TravelMode
 }
 
 export interface SafeRoute {
@@ -19,29 +22,37 @@ export interface SafeRoute {
   label: string
 }
 
+const ROUTE_LABELS = ['Best route', 'Route B', 'Route C']
+
 export async function fetchRouteToHome(
   from: LatLng,
   to: LatLng,
   dangerZones: { lat: number; lng: number; radiusKm: number }[],
-): Promise<HomeRoute | null> {
-  const result = await getRoute(from, to)
-  if (!result) return null
-  const coords = result.coordinates
-  const warnings: string[] = []
-  for (const zone of dangerZones) {
-    const passes = coords.some(([lng, lat]) => {
-      const dx = lat - zone.lat
-      const dy = lng - zone.lng
-      return Math.sqrt(dx * dx + dy * dy) * 111 < zone.radiusKm
-    })
-    if (passes) warnings.push('Route passes near a danger zone')
-  }
-  return {
-    coordinates: coords,
-    distanceKm: Math.round(result.distance / 100) / 10,
-    durationMin: Math.round(result.duration / 60),
-    warnings: [...new Set(warnings)],
-  }
+  mode: TravelMode = 'walking',
+): Promise<HomeRoute[]> {
+  const results = await getRoute(from, to, mode)
+  if (!results.length) return []
+
+  return results.slice(0, 3).map((result, i) => {
+    const coords = result.coordinates
+    const warnings: string[] = []
+    for (const zone of dangerZones) {
+      const passes = coords.some(([lng, lat]) => {
+        const dx = lat - zone.lat
+        const dy = lng - zone.lng
+        return Math.sqrt(dx * dx + dy * dy) * 111 < zone.radiusKm
+      })
+      if (passes) warnings.push('Route passes near a danger zone')
+    }
+    return {
+      coordinates: coords,
+      distanceKm: Math.round(result.distance / 100) / 10,
+      durationMin: Math.round(result.duration / 60),
+      warnings: [...new Set(warnings)],
+      label: ROUTE_LABELS[i] ?? `Route ${i + 1}`,
+      mode,
+    }
+  })
 }
 
 export async function fetchSafeRoutes(
@@ -57,8 +68,9 @@ export async function fetchSafeRoutes(
 
   for (const wp of waypoints) {
     try {
-      const result = await getRoute(userLocation, wp)
-      if (!result) continue
+      const results = await getRoute(userLocation, wp)
+      if (!results.length) continue
+      const result = results[0]
 
       const coords = result.coordinates
       const passesThrough = coords.some(([lng, lat]) =>
@@ -76,7 +88,7 @@ export async function fetchSafeRoutes(
         label: `Route ${safeRoutes.length + 1} — ${Math.round(result.distance / 100) / 10} km`,
       })
     } catch {
-      // Partial failure — continue to next waypoint
+      // partial failure — continue to next waypoint
     }
   }
 
