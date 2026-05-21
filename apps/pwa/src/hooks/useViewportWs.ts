@@ -26,8 +26,7 @@ type ViewportServerMsg =
   | { type: 'SNAPSHOT';      events: WsEvent[] }
   | { type: 'DIFF_PATCH';    added: WsEvent[]; removed: string[]; updated: WsEvent[] }
 
-const WS_HOST = import.meta.env.DEV ? 'localhost:3000' : window.location.host
-const WS_BASE = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${WS_HOST}`
+const WS_BASE = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`
 
 const BACKOFF_BASE_MS = 1_000
 const BACKOFF_CAP_MS  = 30_000

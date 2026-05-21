@@ -4,10 +4,9 @@ import { eventReceived, eventResolved, setConnected } from '../store/eventsSlice
 import { reportReceived } from '../store/reportSlice'
 import type { WsMessage } from '../../../../shared/types'
 
-// In dev, connect directly to the gateway to avoid Vite WS proxy issues on Windows.
-// In production, the PWA and gateway share the same origin behind nginx.
-const WS_HOST = import.meta.env.DEV ? 'localhost:3000' : window.location.host
-const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${WS_HOST}/ws?county=global`
+// Always use window.location.host — in dev the Vite proxy forwards /ws to the gateway
+// (Node.js resolves localhost → 127.0.0.1, avoiding the Windows IPv6 pitfall).
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws?county=global`
 
 const BACKOFF_BASE_MS = 1000
 const BACKOFF_CAP_MS = 30_000
