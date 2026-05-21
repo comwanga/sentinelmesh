@@ -70,6 +70,7 @@ export function EventClusterLayer({ zoom: zoomProp, onEventClick }: Props) {
   const zoom = zoomProp ?? mapZoom
 
   const allEvents = useAppSelector(selectViewportEventItems)
+
   const activeEvents = useMemo(() => allEvents.filter(e => e.is_active), [allEvents])
 
   const clusteredRef = useRef(zoom < DISSOLVE_ZOOM)
