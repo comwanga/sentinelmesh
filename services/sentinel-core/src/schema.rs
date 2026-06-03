@@ -19,6 +19,10 @@ pub struct RedisEventPayload {
     pub is_active: bool,
     #[serde(default)]
     pub state: Option<String>,
+    #[serde(default)]
+    pub source_id: Option<String>,
+    #[serde(default)]
+    pub origin_channel: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -82,6 +86,8 @@ mod tests {
             county: Some("Nairobi".into()),
             is_active: true,
             state: Some("ACTIVE".into()),
+            source_id: Some("nation.africa".into()),
+            origin_channel: Some("rss".into()),
             created_at: Utc::now(),
         }
     }
@@ -148,5 +154,36 @@ mod tests {
         }"#;
         let p: RedisEventPayload = serde_json::from_str(json).unwrap();
         assert_eq!(p.state, None);
+    }
+
+    #[test]
+    fn carries_source_id_and_origin_channel() {
+        let mut payload = sample();
+        payload.source_id = Some("nation.africa".into());
+        payload.origin_channel = Some("rss".into());
+        let json = serde_json::to_string(&payload).unwrap();
+        let back: RedisEventPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.source_id.as_deref(), Some("nation.africa"));
+        assert_eq!(back.origin_channel.as_deref(), Some("rss"));
+    }
+
+    #[test]
+    fn deserialise_payload_without_provenance_fields() {
+        // Old payloads with neither field must still deserialise (fields default to None).
+        let json = r#"{
+            "schema_version": 1,
+            "id": "00000000-0000-0000-0000-000000000001",
+            "event_type": "FIRE",
+            "severity": "HIGH",
+            "title": "Test",
+            "lat": 0.0,
+            "lng": 0.0,
+            "started_at": "2024-01-01T00:00:00Z",
+            "is_active": true,
+            "created_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let p: RedisEventPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(p.source_id, None);
+        assert_eq!(p.origin_channel, None);
     }
 }
