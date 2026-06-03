@@ -21,6 +21,12 @@ pub struct Config {
     /// Default false: without explicit opt-in the synthesis worker corroborates
     /// (telemetry only) but never auto-publishes acoustic events to the map.
     pub acoustic_confirm_enabled: bool,
+    /// Gates the established-voter requirement for report consensus escalation.
+    /// Default false (usable at cold-start with no trusted accounts). When true,
+    /// VERIFIED/AUTHORITATIVE additionally require distinct non-NEWCOMER voters,
+    /// blocking pure-Sybil escalation. The reputation framework is always active;
+    /// this flag only toggles the gate, so it can be enabled with no code changes.
+    pub consensus_require_established: bool,
 }
 
 impl Config {
@@ -38,6 +44,9 @@ impl Config {
                 .unwrap_or_else(|_| "3000".into())
                 .parse()?,
             acoustic_confirm_enabled: std::env::var("ACOUSTIC_CONFIRM_ENABLED")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
+            consensus_require_established: std::env::var("CONSENSUS_REQUIRE_ESTABLISHED")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
             blockchain_service_url: std::env::var("BLOCKCHAIN_SERVICE_URL").ok(),
