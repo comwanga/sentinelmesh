@@ -65,7 +65,9 @@ async def start_twitter_stream() -> None:
             try:
                 async with http.stream(
                     "GET",
-                    "https://api.twitter.com/2/tweets/search/stream?tweet.fields=lang,geo,created_at",
+                    "https://api.twitter.com/2/tweets/search/stream"
+                    "?tweet.fields=lang,geo,created_at,author_id"
+                    "&expansions=author_id&user.fields=username",
                     headers=HEADERS,
                 ) as stream:
                     backoff = 1  # reset on successful connection
