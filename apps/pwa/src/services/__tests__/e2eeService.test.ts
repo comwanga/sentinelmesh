@@ -1,10 +1,12 @@
 // @vitest-environment node
+import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeAll } from 'vitest'
 import {
   generateCircleKey,
   saveCircleKey,
   loadCircleKey,
   clearCircleKey,
+  rotateCircleKey,
   encryptLocation,
   decryptLocation,
   generateEphemeralKeypair,
@@ -32,7 +34,7 @@ describe('generateCircleKey', () => {
 })
 
 describe('saveCircleKey / loadCircleKey / clearCircleKey', () => {
-  it('round-trips a circle key through localStorage', async () => {
+  it('round-trips a circle key through IndexedDB', async () => {
     const key = await generateCircleKey()
     await saveCircleKey('test-circle', key)
 
@@ -40,8 +42,40 @@ describe('saveCircleKey / loadCircleKey / clearCircleKey', () => {
     expect(loaded).not.toBeNull()
     expect(loaded!.type).toBe('secret')
 
-    clearCircleKey('test-circle')
+    await clearCircleKey('test-circle')
     expect(await loadCircleKey('test-circle')).toBeNull()
+  })
+
+  it('persists the key as non-extractable (XSS cannot export it)', async () => {
+    const key = await generateCircleKey()
+    expect(key.extractable).toBe(true) // generated extractable for distribution
+    await saveCircleKey('hardened-circle', key)
+    const loaded = await loadCircleKey('hardened-circle')
+    expect(loaded!.extractable).toBe(false)
+    await expect(crypto.subtle.exportKey('raw', loaded!)).rejects.toThrow()
+    await clearCircleKey('hardened-circle')
+  })
+})
+
+describe('rotateCircleKey', () => {
+  it('replaces the stored key; old key no longer decrypts new blobs', async () => {
+    const old = await generateCircleKey()
+    await saveCircleKey('rot-circle', old)
+    const oldCipher = await encryptLocation(old, 1.0, 2.0)
+
+    const fresh = await rotateCircleKey('rot-circle')
+    expect(fresh.extractable).toBe(true) // returned extractable for re-wrapping to remaining members
+
+    const loaded = await loadCircleKey('rot-circle')
+    expect(loaded!.extractable).toBe(false) // persisted copy is hardened
+    // The rotated key cannot read blobs encrypted under the pre-rotation key
+    expect(await decryptLocation(loaded!, oldCipher)).toBeNull()
+    // but does read blobs encrypted under the fresh key
+    const freshCipher = await encryptLocation(fresh, 3.0, 4.0)
+    const dec = await decryptLocation(loaded!, freshCipher)
+    expect(dec!.lat).toBeCloseTo(3.0)
+
+    await clearCircleKey('rot-circle')
   })
 })
 
