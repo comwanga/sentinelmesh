@@ -227,7 +227,7 @@ async fn vote(
 
     verify_nostr_event(&body.voter_nostr_event, &body.voter_pubkey, 300)?;
 
-    let (updated, old_score) = cast_vote(
+    let (updated, old_score, established_confirmations) = cast_vote(
         &state.db,
         report_id,
         CastVoteInput {
@@ -257,6 +257,8 @@ async fn vote(
         updated.consensus_score,
         updated.confirmation_count,
         updated.denial_count,
+        established_confirmations,
+        state.config.consensus_require_established,
     ) {
         apply_status_transition(&state.db, report_id, &new_status, &updated.nostr_pubkey)
             .await?;

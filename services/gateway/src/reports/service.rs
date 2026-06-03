@@ -66,6 +66,19 @@ fn tier_score(tier: &str) -> i32 {
     }
 }
 
+/// Reputation weight applied to a vote. Steeper than `tier_score` (which only
+/// seeds a new report): earned reputation dominates, so a swarm of fresh
+/// NEWCOMER keys (weight 1 each) contributes little. This is the heart of the
+/// Sybil-resistant consensus — see `reports::consensus`.
+pub fn vote_weight(tier: &str) -> i32 {
+    match tier {
+        "TRUSTED"  => 3,
+        "VETERAN"  => 6,
+        "SENTINEL" => 10,
+        _          => 1, // NEWCOMER
+    }
+}
+
 fn compute_tier(score: i64) -> &'static str {
     if score >= 50      { "SENTINEL" }
     else if score >= 20 { "VETERAN" }
@@ -122,12 +135,13 @@ pub async fn create_report(pool: &PgPool, input: CreateReportInput) -> Result<Re
     Ok(report)
 }
 
-/// Returns (updated_report, old_score) so callers can detect threshold crossings.
+/// Returns (updated_report, old_score, established_confirmations) so callers can
+/// detect threshold crossings and apply the established-voter gate.
 pub async fn cast_vote(
     pool: &PgPool,
     report_id: Uuid,
     input: CastVoteInput,
-) -> Result<(Report, i32)> {
+) -> Result<(Report, i32, i32)> {
     let mut tx = pool.begin().await?;
 
     let report = sqlx::query_as::<_, Report>(
@@ -144,6 +158,29 @@ pub async fn cast_vote(
 
     let old_score = report.consensus_score;
 
+    // Ensure the voter exists in users so they carry a reputation tier.
+    sqlx::query(
+        "INSERT INTO users (nostr_pubkey, last_active)
+         VALUES ($1, NOW())
+         ON CONFLICT (nostr_pubkey) DO UPDATE SET last_active = NOW()"
+    )
+    .bind(&input.voter_pubkey)
+    .execute(&mut *tx)
+    .await?;
+
+    let voter_tier: String = sqlx::query_scalar(
+        "SELECT reputation_tier FROM users WHERE nostr_pubkey = $1"
+    )
+    .bind(&input.voter_pubkey)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    // Reputation-weighted vote magnitude. NEWCOMER = 1; earned tiers weigh more.
+    let weight = vote_weight(&voter_tier);
+
+    // Proximity is a WEAK signal only: a flat +1 nudge, never a multiplier, and
+    // only for established voters (self-reported coordinates are spoofable, so we
+    // refuse to let proximity amplify cheap NEWCOMER keys).
     let nearby = match (input.voter_lat, input.voter_lng) {
         (Some(vlat), Some(vlng)) => {
             let dist: f64 = sqlx::query_scalar(
@@ -156,12 +193,12 @@ pub async fn cast_vote(
         }
         _ => false,
     };
+    let proximity_bonus = if nearby && voter_tier != "NEWCOMER" { 1 } else { 0 };
+    let magnitude = weight + proximity_bonus;
 
-    let (score_delta, conf_delta, deny_delta) = match (input.vote.as_str(), nearby) {
-        ("CONFIRM", true)  => (2i32, 1i32, 0i32),
-        ("CONFIRM", false) => (1,     1,    0),
-        ("DENY",    true)  => (-3,    0,    1),
-        ("DENY",    false) => (-2,    0,    1),
+    let (score_delta, conf_delta, deny_delta) = match input.vote.as_str() {
+        "CONFIRM" => (magnitude, 1i32, 0i32),
+        "DENY"    => (-magnitude, 0i32, 1i32),
         _ => anyhow::bail!("vote must be CONFIRM or DENY"),
     };
 
@@ -187,8 +224,19 @@ pub async fn cast_vote(
     .fetch_one(&mut *tx)
     .await?;
 
+    // Count distinct established (non-NEWCOMER) confirmers — input to the gate.
+    let established_confirmations: i64 = sqlx::query_scalar(
+        "SELECT COUNT(DISTINCT rv.voter_pubkey)
+         FROM report_votes rv
+         JOIN users u ON u.nostr_pubkey = rv.voter_pubkey
+         WHERE rv.report_id = $1 AND rv.vote = 'CONFIRM' AND u.reputation_tier <> 'NEWCOMER'"
+    )
+    .bind(report_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
     tx.commit().await?;
-    Ok((updated, old_score))
+    Ok((updated, old_score, established_confirmations as i32))
 }
 
 pub async fn apply_status_transition(

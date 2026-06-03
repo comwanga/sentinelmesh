@@ -110,6 +110,7 @@ mod tests {
                 soft_visibility_enabled: false,
                 emergency_mode_enabled: false,
                 acoustic_confirm_enabled: false,
+                consensus_require_established: false,
             }),
             http_client,
             hub: Arc::new(WsHub::new()),
