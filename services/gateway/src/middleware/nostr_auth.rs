@@ -10,6 +10,10 @@ use axum::{
 
 pub struct NostrAuth {
     pub pubkey: String,
+    /// Value of the NIP-98 `payload` tag (sha256 hex of the request body), if the
+    /// client included one. Handlers that need body binding compare this to the
+    /// hash of the received body (see AC-6 in the acoustic route).
+    pub payload: Option<String>,
 }
 
 // ── Internal validated result ────────────────────────────────────────────────
@@ -20,6 +24,7 @@ pub struct ValidatedNostrAuth {
     pub pubkey: String,
     pub event_id: String,
     pub created_at: i64,
+    pub payload: Option<String>,
 }
 
 // ── Error types ──────────────────────────────────────────────────────────────
@@ -99,6 +104,7 @@ where
         let auth = validate_nip98_request(parts, &state, &event).await?;
         Ok(NostrAuth {
             pubkey: auth.pubkey,
+            payload: auth.payload,
         })
     }
 }
@@ -236,6 +242,11 @@ pub async fn validate_nip98_request(
         _ => return Err(AuthError::DuplicateMethodTag),
     };
 
+    // Step 8b: optional NIP-98 payload tag (sha256 hex of the request body).
+    // Surfaced for handlers that enforce body binding; first value wins (a
+    // mismatching duplicate is harmless since the body-hash check must still pass).
+    let payload = tag_values(event, "payload").into_iter().next();
+
     // Step 9: Canonical URL
     let canonical = canonical_url(parts, &state.config);
     if u_tag != canonical {
@@ -299,6 +310,7 @@ pub async fn validate_nip98_request(
         pubkey: event.pubkey.to_hex(),
         event_id,
         created_at,
+        payload,
     })
 }
 

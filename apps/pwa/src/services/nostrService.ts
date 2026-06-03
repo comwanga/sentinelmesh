@@ -115,13 +115,26 @@ export async function signAuthEvent(): Promise<SignedReportEvent> {
  * Sign a fully spec-compliant NIP-98 auth event with `u` and `method` tags.
  * The gateway validates these tags for exact URL and method match.
  */
-export async function signNip98AuthEvent(url: string, method: string): Promise<SignedReportEvent> {
+export async function signNip98AuthEvent(
+  url: string,
+  method: string,
+  payloadHash?: string,
+): Promise<SignedReportEvent> {
+  const tags: string[][] = [['u', url], ['method', method]]
+  // NIP-98 body binding: include sha256(body) so the signature covers the payload.
+  if (payloadHash) tags.push(['payload', payloadHash])
   return signEventAsync({
     kind: 27235,
     created_at: Math.floor(Date.now() / 1000),
-    tags: [['u', url], ['method', method]],
+    tags,
     content: '',
   })
+}
+
+/** Lowercase hex sha256 of a UTF-8 string (for NIP-98 payload binding). */
+export async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
 /**

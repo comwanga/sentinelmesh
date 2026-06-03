@@ -1,9 +1,26 @@
-use axum::{extract::State, http::StatusCode, response::Json, routing::post, Router};
+use axum::{body::Bytes, extract::State, http::StatusCode, response::Json, routing::post, Router};
 use h3o::{LatLng, Resolution};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use sqlx::Row;
 
 use crate::{error::AppError, middleware::nostr_auth::NostrAuth, AppState};
+
+/// AC-6: the NIP-98 `payload` tag must equal sha256(body), so the signature
+/// covers the exact submitted signal content (class/confidence/coordinates),
+/// not merely the fact that some key called the endpoint.
+fn verify_payload_binding(auth_payload: Option<&str>, body: &[u8]) -> Result<(), AppError> {
+    let expected = hex::encode(Sha256::digest(body));
+    match auth_payload {
+        Some(p) if p.eq_ignore_ascii_case(&expected) => Ok(()),
+        Some(_) => Err(AppError::BadRequest(
+            "signed payload hash does not match request body".into(),
+        )),
+        None => Err(AppError::BadRequest(
+            "missing NIP-98 payload binding for acoustic signal".into(),
+        )),
+    }
+}
 
 #[derive(Deserialize)]
 pub struct SubmitSignalBody {
@@ -69,12 +86,16 @@ fn h3_cells_from(lat: f64, lng: f64) -> Result<(String, String), AppError> {
 async fn submit_signal(
     State(state): State<AppState>,
     auth: NostrAuth,
-    Json(body): Json<SubmitSignalBody>,
+    body: Bytes,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     if state.acoustic_limiter.check_key(&auth.pubkey).is_err() {
         tracing::warn!(pubkey = %auth.pubkey, "acoustic rate limit exceeded");
         return Err(AppError::RateLimited);
     }
+    // AC-6: bind the signature to the body before trusting any field.
+    verify_payload_binding(auth.payload.as_deref(), &body)?;
+    let body: SubmitSignalBody = serde_json::from_slice(&body)
+        .map_err(|_| AppError::BadRequest("invalid JSON body".into()))?;
     validate_signal_body(&body)?;
     let (h3_r9, h3_r7) = h3_cells_from(body.lat, body.lng)?;
 
@@ -234,6 +255,30 @@ mod tests {
         b.dropped_frames = -1;
         assert!(matches!(
             validate_signal_body(&b),
+            Err(AppError::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn payload_binding_accepts_matching_hash() {
+        let body = br#"{"threat_class":"gunshot","confidence":0.9}"#;
+        let hash = hex::encode(Sha256::digest(body));
+        assert!(verify_payload_binding(Some(&hash), body).is_ok());
+    }
+
+    #[test]
+    fn payload_binding_rejects_mismatch() {
+        let body = br#"{"threat_class":"gunshot"}"#;
+        assert!(matches!(
+            verify_payload_binding(Some("deadbeef"), body),
+            Err(AppError::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn payload_binding_rejects_missing_tag() {
+        assert!(matches!(
+            verify_payload_binding(None, b"{}"),
             Err(AppError::BadRequest(_))
         ));
     }
