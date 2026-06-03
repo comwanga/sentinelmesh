@@ -113,6 +113,15 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Spawn retention worker (acoustic coordinate degradation + event expiry).
+    // Always on — it is a privacy/safety hygiene control (audit AC-5, AC-7).
+    {
+        let pool_ret = db.clone();
+        tokio::spawn(async move {
+            subscribers::retention_worker::run(pool_ret).await;
+        });
+    }
+
     // CORS: allow any origin (public-read API — safety events, community reports)
     let cors = CorsLayer::new()
         .allow_origin(Any)
