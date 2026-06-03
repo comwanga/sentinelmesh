@@ -1,0 +1,8 @@
+# GitHub Pages (Jekyll) build configuration.
+#
+# Internal planning docs under docs/superpowers/ contain code snippets with
+# `{{ ... }}` / `${ ... }` that Liquid tries to parse as template variables,
+# breaking the Pages build. They are not meant to be a published site, so
+# exclude them. (A root .nojekyll also disables Liquid where the build honours it.)
+exclude:
+  - docs/superpowers/
