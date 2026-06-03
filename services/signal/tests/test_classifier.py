@@ -39,3 +39,46 @@ def test_result_has_required_fields():
 def test_low_confidence_for_unrelated():
     result = classify_event("Arsenal win the Premier League title")
     assert result["confidence"] < 0.5
+
+
+from nlp.classifier import classify_event, CONFIDENCE_CAP, NEGATION_WINDOW
+
+
+def test_negated_fire_is_false_alarm():
+    # "no" immediately precedes the keyword
+    result = classify_event("No fire, all clear at Gikomba market")
+    assert result["event_type"] == "FALSE_ALARM"
+
+
+def test_negation_within_window_suppresses_hit():
+    # negation cue is 3 tokens before the keyword (within window of 5)
+    result = classify_event("There is currently no evidence of a fire")
+    assert result["event_type"] == "FALSE_ALARM"
+
+
+def test_trailing_resolution_cue_suppresses_hit():
+    # resolution cue ("contained") follows the keyword
+    result = classify_event("Authorities confirmed the explosion has been contained")
+    assert result["event_type"] == "FALSE_ALARM"
+
+
+def test_swahili_negation_suppresses_hit():
+    result = classify_event("Hakuna moto, ni habari za uongo")
+    assert result["event_type"] == "FALSE_ALARM"
+
+
+def test_non_negated_event_still_classifies():
+    # negation word present but NOT near the keyword -> hit still counts
+    result = classify_event("Huge fire at the market, no one knows the cause yet")
+    assert result["event_type"] == "FIRE"
+
+
+def test_confidence_is_capped_at_0_6():
+    # text with many fire keywords would otherwise score 1.0
+    result = classify_event("Fire blaze inferno flames burning smoke at the market")
+    assert result["event_type"] == "FIRE"
+    assert result["confidence"] <= CONFIDENCE_CAP
+
+
+def test_window_constant_is_five():
+    assert NEGATION_WINDOW == 5
