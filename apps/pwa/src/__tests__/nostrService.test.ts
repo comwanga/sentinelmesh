@@ -16,6 +16,8 @@ afterEach(() => { delete (window as unknown as Record<string, unknown>).nostr })
 import {
   loadOrCreateKeypair,
   signReport,
+  reportBindingContent,
+  voteBindingContent,
   getOrCreateEphemeralKeypair,
   hasNip07,
   signAuthEvent,
@@ -127,17 +129,28 @@ describe('clearStoredKey', () => {
 describe('signReport', () => {
   test('returns a Nostr event with id, pubkey, sig fields', () => {
     const kp = loadOrCreateKeypair()
-    const event = signReport({ report_type: 'FLOODING', lat: -1.29, lng: 36.82 }, kp.secretKey)
+    const event = signReport(reportBindingContent('FLOODING', -1.29, 36.82, null), kp.secretKey)
     expect(event.id).toMatch(/^[0-9a-f]{64}$/)
     expect(event.sig).toMatch(/^[0-9a-f]{128}$/)
     expect(event.pubkey).toBe(kp.publicKey)
     expect(event.kind).toBe(30078)
   })
 
-  test('event content encodes the payload as JSON', () => {
+  test('event content is the canonical binding string', () => {
     const kp = loadOrCreateKeypair()
-    const event = signReport({ report_type: 'FIRE' }, kp.secretKey)
-    const content = JSON.parse(event.content)
-    expect(content.report_type).toBe('FIRE')
+    const content = reportBindingContent('FIRE', -1.29, 36.82, 'smoke')
+    const event = signReport(content, kp.secretKey)
+    expect(event.content).toBe(content)
+  })
+})
+
+describe('binding content', () => {
+  test('reportBindingContent uses fixed 6-decimal coordinates', () => {
+    expect(reportBindingContent('FIRE', -1.2921, 36.8219, 'smoke')).toBe('r1|FIRE|-1.292100|36.821900|smoke')
+    expect(reportBindingContent('FLOODING', 0, 0, null)).toBe('r1|FLOODING|0.000000|0.000000|')
+  })
+
+  test('voteBindingContent binds vote to report id', () => {
+    expect(voteBindingContent('CONFIRM', 'abc-123')).toBe('v1|CONFIRM|abc-123')
   })
 })

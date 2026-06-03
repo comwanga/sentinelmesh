@@ -142,6 +142,40 @@ fn verify_nostr_event(
     Ok(())
 }
 
+/// Canonical binding string for a report. Must byte-match the client's
+/// `reportBindingContent` (fixed 6-decimal coords keep JS/Rust formatting equal).
+fn report_binding_content(report_type: &str, lat: f64, lng: f64, description: Option<&str>) -> String {
+    format!("r1|{}|{:.6}|{:.6}|{}", report_type, lat, lng, description.unwrap_or(""))
+}
+
+/// Canonical binding string for a vote — binds the signature to this report + choice.
+fn vote_binding_content(vote: &str, report_id: &Uuid) -> String {
+    format!("v1|{}|{}", vote, report_id)
+}
+
+/// Per-event replay guard: SET NX with a TTL covering the freshness window.
+/// Returns BadRequest on replay, Internal if Redis is unavailable (fail closed).
+async fn replay_guard(redis: &redis::aio::ConnectionManager, event_id: &str) -> Result<(), AppError> {
+    if event_id.is_empty() {
+        return Err(AppError::BadRequest("nostr_event missing id".into()));
+    }
+    let key = format!("report:v1:jti:{event_id}");
+    let mut conn = redis.clone();
+    let set: Option<String> = redis::cmd("SET")
+        .arg(&key)
+        .arg(1)
+        .arg("NX")
+        .arg("EX")
+        .arg(600)
+        .query_async(&mut conn)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+    if set.is_none() {
+        return Err(AppError::BadRequest("duplicate submission (replay detected)".into()));
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -174,11 +208,28 @@ async fn post_report(
         return Err(AppError::BadRequest("lat must be in -90..90, lng in -180..180".into()));
     }
 
-    let sig = body.nostr_event["sig"]
+    // Bind the signature to the report content: the signed event's content must
+    // equal the canonical binding recomputed from the submitted fields. Without
+    // this, a valid signature proves only key possession, not what was reported.
+    let expected = report_binding_content(
+        &body.report_type,
+        body.lat,
+        body.lng,
+        body.description.as_deref(),
+    );
+    if body.nostr_event["content"].as_str() != Some(expected.as_str()) {
+        return Err(AppError::BadRequest(
+            "nostr_event content is not bound to the report fields".into(),
+        ));
+    }
+
+    let event_id = body.nostr_event["id"]
         .as_str()
         .unwrap_or("")
         .to_string();
-    let event_id = body.nostr_event["id"]
+    replay_guard(&state.redis, &event_id).await?;
+
+    let sig = body.nostr_event["sig"]
         .as_str()
         .unwrap_or("")
         .to_string();
@@ -226,6 +277,20 @@ async fn vote(
     }
 
     verify_nostr_event(&body.voter_nostr_event, &body.voter_pubkey, 300)?;
+
+    // Bind the vote signature to this report + choice, then guard against replay
+    // (closes cross-report replay of a captured signed vote event).
+    let expected = vote_binding_content(&body.vote, &report_id);
+    if body.voter_nostr_event["content"].as_str() != Some(expected.as_str()) {
+        return Err(AppError::BadRequest(
+            "voter_nostr_event content is not bound to this vote".into(),
+        ));
+    }
+    let vote_event_id = body.voter_nostr_event["id"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    replay_guard(&state.redis, &vote_event_id).await?;
 
     let (updated, old_score, established_confirmations) = cast_vote(
         &state.db,
@@ -362,5 +427,31 @@ mod tests {
         assert!(!rl.check("key2"));
         std::thread::sleep(Duration::from_millis(5));
         assert!(rl.check("key2"));
+    }
+
+    // These must byte-match the PWA's reportBindingContent / voteBindingContent.
+    #[test]
+    fn report_binding_format_with_description() {
+        assert_eq!(
+            report_binding_content("FIRE", -1.2921, 36.8219, Some("smoke")),
+            "r1|FIRE|-1.292100|36.821900|smoke"
+        );
+    }
+
+    #[test]
+    fn report_binding_format_no_description_and_zero_coords() {
+        assert_eq!(
+            report_binding_content("FLOODING", 0.0, 0.0, None),
+            "r1|FLOODING|0.000000|0.000000|"
+        );
+    }
+
+    #[test]
+    fn vote_binding_format() {
+        let id = Uuid::nil();
+        assert_eq!(
+            vote_binding_content("CONFIRM", &id),
+            format!("v1|CONFIRM|{}", id)
+        );
     }
 }

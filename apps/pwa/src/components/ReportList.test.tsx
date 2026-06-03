@@ -23,6 +23,7 @@ vi.mock('../services/nostrService', () => ({
     id: 'ev1', pubkey: 'pk1', created_at: 1000, kind: 30078,
     tags: [], content: '{}', sig: 'sig1',
   }),
+  voteBindingContent: vi.fn().mockReturnValue('v1|CONFIRM|r1'),
 }))
 
 import { ReportList } from './ReportList'
