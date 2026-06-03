@@ -73,6 +73,23 @@ Mirror the acoustic pattern: a staging table feeds a surfaced events table, prom
 synthesis tick. Unlike acoustic, a single HEURISTIC signal is surfaced immediately (labeled),
 because the product requirement is that automated detections are visible but untrusted.
 
+### Shared trust contract (convergence, not a parallel system)
+
+The NLP and acoustic synthesis workers must **converge on one trust contract**, not grow two
+divergent promotion engines. This PR extracts a small shared module
+(`services/gateway/src/trust/contract.rs`, name TBD in plan) that defines:
+- the tier vocabulary and ordering,
+- the promotion-decision interface: `decide(independence_evidence, thresholds) -> tier`, where
+  `independence_evidence` is expressed as distinct **provenance clusters** + distinct channels
+  (acoustic's distinct pubkeys/fingerprints map onto the same shape),
+- the monotonicity rule and the machine-never-AUTHORITATIVE invariant.
+
+The NLP worker is built **against this contract** from day one. Acoustic is **not** refactored in
+H-5 (per non-goals), but the contract is written so the later migration moves acoustic onto it by
+adapting its evidence into the same interface — no second set of thresholds, enums, or promotion
+logic. New trust logic added during H-5 lives in the shared contract, never inline in the NLP
+worker, so there is a single source of truth to converge on.
+
 ### Independence model (the crux)
 
 Trust is derived from **distinct independent origins**, never from raw row counts:
@@ -81,10 +98,20 @@ Trust is derived from **distinct independent origins**, never from raw row count
   - `origin_channel`: coarse channel, e.g. `rss`, `twitter`, `radio`.
   - `source_id`: within-channel identity — RSS feed domain, Twitter author handle, etc.
 - Authoritative trust metrics on the surfaced event:
-  - `distinct_source_count` = number of distinct `source_id`s.
+  - `distinct_source_count` = number of distinct **provenance clusters** (see below).
   - `distinct_channel_count` = number of distinct `origin_channel`s.
 - `source_count` is **display only** and must never drive a promotion decision (guards against
   duplicate-ingestion bugs inflating trust).
+
+**Independence evolves: `source_id` -> provenance cluster.** The authoritative metric is
+*distinct provenance clusters*, not distinct `source_id`s. In H-5 a provenance cluster is
+**approximated** 1:1 by `source_id` (feed domain / author handle), because that is the cheapest
+honest signal available now. The code and schema are framed around "provenance cluster" so the
+later trust-engine migration can replace the approximation — collapsing sources that derive from
+the same upstream origin (wire reposts, syndicated feeds, mirror accounts) into a single cluster
+— **without** changing the promotion thresholds or any consumer. `distinct_source_count` is
+therefore the count of clusters under the current approximation, not a raw `source_id` count that
+later has to be renamed.
 
 Promotion thresholds (launch defaults, tunable):
 
@@ -98,11 +125,11 @@ The channel requirement on CONFIRMED stops one noisy channel from self-confirmin
 accounts reposting the same Reuters wire are three `source_id`s but one channel -> stays
 CORROBORATING at most).
 
-> Documented caveat: author-level `source_id` independence (especially Twitter handles) is a
-> **temporary heuristic, not a strong trust guarantee**. The unified trust-engine migration will
-> replace it with something stronger. This is acceptable for H-5 because no machine-origin event
-> gains push/anchor/route influence below CONFIRMED, and CONFIRMED requires cross-channel
-> agreement.
+> Documented caveat: the current provenance-cluster approximation (one cluster per `source_id`,
+> author-level for Twitter) is a **temporary heuristic, not a strong trust guarantee**. The
+> unified trust-engine migration replaces it with real provenance clustering. This is acceptable
+> for H-5 because no machine-origin event gains push/anchor/route influence below CONFIRMED, and
+> CONFIRMED requires cross-channel agreement.
 
 ### Schema (new migration `infra/postgres/migrations/011_nlp_trust.sql`)
 
@@ -208,9 +235,16 @@ Rust (gateway synthesis tests, alongside existing `synthesis_worker` tests):
 ## Rollout / compatibility
 
 - New columns are additive with safe defaults. Existing `safety_events` rows are backfilled in
-  the migration to `trust_state='confirmed'`, `origin_class='machine'` so the ladder does not
-  retroactively demote events already shown as trusted; only events ingested after deploy enter
+  the migration as **legacy-confirmed**, not plain `confirmed`: `trust_state='confirmed'`,
+  `origin_class='machine'`, and a provenance marker `source_breakdown` ->
+  `{"provenance":"legacy_confirmed"}`. This keeps them visible/trusted (no retroactive demotion)
+  while making them **distinguishable** from events that earned CONFIRMED through real
+  corroboration — so analytics and the future trust engine can re-evaluate or quarantine legacy
+  auto-promoted rows instead of trusting them blindly. Only events ingested after deploy enter
   the HEURISTIC ladder.
 - `NLP_SYNTHESIS_ENABLED` lets the ladder be dark-launched.
-- Forward-compatible with the later unified trust engine: `origin_class`, `distinct_*` metrics,
-  and the reserved `authoritative` invariant are already in place.
+- Forward-compatible with the later unified trust engine on three explicit seams: (1) the shared
+  trust contract the acoustic worker converges onto, (2) the provenance-cluster abstraction that
+  replaces the `source_id` approximation without touching thresholds or consumers, and (3) the
+  `legacy_confirmed` provenance marker that lets the engine re-evaluate pre-H-5 rows. Plus
+  `origin_class`, `distinct_*` metrics, and the reserved `authoritative` invariant.
