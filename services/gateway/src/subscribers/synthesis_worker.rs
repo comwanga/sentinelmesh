@@ -8,8 +8,12 @@ const TICK_MS: u64 = 5_000;
 const TEMPORAL_HALF_WEIGHT_SECS: i64 = 60;
 const TEMPORAL_CUTOFF_SECS: i64 = 120;
 const CORROBORATE_THRESHOLD: f32 = 0.60;
-const CONFIRM_THRESHOLD: f32 = 0.60;
-const MIN_CONTRIBUTORS: usize = 2;
+// Confirm is a strictly higher bar than corroborate so the trust ladder is real
+// (previously both were 0.60, making the two stages collapse into one).
+const CONFIRM_THRESHOLD: f32 = 0.80;
+// Require independent corroboration from at least 3 distinct identities before a
+// cluster can be promoted. Raised from 2 to blunt the cheapest Sybil-confirm path.
+const MIN_CONTRIBUTORS: usize = 3;
 const DEFAULT_TRUST: f32 = 0.40;
 // Floor for per-node trust in Phase 3; unused while all nodes default to DEFAULT_TRUST
 const TRUST_FLOOR: f32 = 0.15;
@@ -46,17 +50,28 @@ struct ClusterResult {
 pub async fn run(
     pool: PgPool,
     synthesis_enabled: bool,
+    confirm_enabled: bool,
     event_tx: Arc<tokio::sync::broadcast::Sender<crate::ws::ViewportEvent>>,
 ) {
     if !synthesis_enabled {
         tracing::info!("synthesis worker disabled (SYNTHESIS_ENABLED=false)");
         return;
     }
-    tracing::info!("synthesis worker started, tick interval {}ms", TICK_MS);
+    tracing::info!(
+        confirm_enabled,
+        "synthesis worker started, tick interval {}ms",
+        TICK_MS
+    );
+    if !confirm_enabled {
+        tracing::warn!(
+            "ACOUSTIC_CONFIRM_ENABLED=false — clusters will corroborate (telemetry only) \
+             but will NOT be auto-confirmed or published to the map"
+        );
+    }
     let mut tick_count: u64 = 0;
     loop {
         let start = std::time::Instant::now();
-        match tick(&pool, &event_tx).await {
+        match tick(&pool, confirm_enabled, &event_tx).await {
             Ok(summary) => {
                 tick_count += 1;
                 tracing::info!(
@@ -85,6 +100,7 @@ pub async fn run(
 
 async fn tick(
     pool: &PgPool,
+    confirm_enabled: bool,
     event_tx: &Arc<tokio::sync::broadcast::Sender<crate::ws::ViewportEvent>>,
 ) -> Result<TickSummary> {
     let mut summary = TickSummary::default();
@@ -96,7 +112,7 @@ async fn tick(
 
     let now = chrono::Utc::now();
     for signals in groups.into_values() {
-        let cr = process_cluster(pool, &signals, now, event_tx).await?;
+        let cr = process_cluster(pool, confirm_enabled, &signals, now, event_tx).await?;
         summary.promoted_to_corroborating += cr.promoted_to_corroborating;
         summary.promoted_to_confirmed += cr.promoted_to_confirmed;
     }
@@ -147,6 +163,7 @@ async fn fetch_cluster_groups(
 
 async fn process_cluster(
     pool: &PgPool,
+    confirm_enabled: bool,
     signals: &[SignalRow],
     now: chrono::DateTime<chrono::Utc>,
     event_tx: &Arc<tokio::sync::broadcast::Sender<crate::ws::ViewportEvent>>,
@@ -197,6 +214,12 @@ async fn process_cluster(
     .execute(pool)
     .await?;
     result.promoted_to_corroborating += r.rows_affected() as usize;
+
+    // Gate: without explicit opt-in, never auto-confirm or publish acoustic events.
+    // Corroboration above is retained as telemetry; map promotion stops here.
+    if !confirm_enabled {
+        return Ok(result);
+    }
 
     if cluster_score_adj < CONFIRM_THRESHOLD {
         return Ok(result);
@@ -565,5 +588,20 @@ mod tests {
             (mass_4 / mass_1 - 4.0).abs() < 0.001,
             "trust mass ratio should be 4:1 for 4 same-pubkey signals, got {}", mass_4 / mass_1
         );
+    }
+
+    #[test]
+    fn confirm_is_a_strictly_higher_bar_than_corroborate() {
+        // Guards against regressing the two stages back into a single threshold.
+        assert!(
+            CONFIRM_THRESHOLD > CORROBORATE_THRESHOLD,
+            "confirm threshold must exceed corroborate threshold"
+        );
+    }
+
+    #[test]
+    fn min_contributors_blocks_two_key_sybil() {
+        // At least 3 independent identities required before any promotion.
+        assert!(MIN_CONTRIBUTORS >= 3, "min contributors must be >= 3");
     }
 }

@@ -263,7 +263,15 @@ async fn vote(
 
         // Once the score crosses 3 for the first time, queue a publish job and
         // nudge the blockchain service so it picks it up quickly.
-        if updated.consensus_score >= 3 && old_score < 3 {
+        //
+        // Gated behind ANCHORING_ENABLED (default false): a raw vote count of 3 is
+        // reachable by 3 Sybil keys, so auto-anchoring on it lets attackers drain the
+        // hot wallet via on-chain fees. Off by default until anchoring is decoupled
+        // from raw consensus and a spend cap exists (audit H-8 / C-1).
+        let anchoring_enabled = std::env::var("ANCHORING_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
+        if anchoring_enabled && updated.consensus_score >= 3 && old_score < 3 {
             let _ = sqlx::query(
                 "INSERT INTO publish_jobs (source_type, source_id, status, next_retry_at)
                  VALUES ('COMMUNITY_REPORT', $1, 'PENDING', NOW())
