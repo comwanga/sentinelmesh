@@ -1,6 +1,6 @@
 // apps/pwa/src/services/acousticDetectionService.ts
 import type * as TF from '@tensorflow/tfjs'
-import { getThreatFromScores, ThreatDetection } from '../constants/acousticThreats'
+import { getThreatFromScores, acousticFingerprint, ThreatDetection } from '../constants/acousticThreats'
 
 const YAMNET_MODEL_URL =
   'https://tfhub.dev/google/tfjs-model/yamnet/tfjs/1/model.json?tfjs-format=file'
@@ -32,7 +32,10 @@ export class AcousticDetectionService {
       outputTensor = Array.isArray(raw) ? raw[0]! : raw as TF.Tensor
       const scores = await outputTensor.data() as Float32Array
       const threat = getThreatFromScores(scores)
-      if (threat) this.onThreat(threat)
+      if (threat) {
+        const fingerprint = await acousticFingerprint(scores)
+        this.onThreat({ ...threat, fingerprint })
+      }
     } finally {
       inputTensor.dispose()
       outputTensor?.dispose()

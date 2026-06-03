@@ -3,6 +3,7 @@ import { signNip98AuthEvent, sha256Hex } from './nostrService'
 export interface ThreatDetection {
   label: string
   confidence: number
+  fingerprint?: string
 }
 
 export interface Location {
@@ -25,6 +26,7 @@ export async function submitAcousticSignal(
     threshold_profile: 'default-v1',
     inference_backend: 'webgl',
     dropped_frames: 0,
+    signal_fingerprint: detection.fingerprint ?? null,
   }
   // Serialise once, then bind the signature to the exact bytes we send (AC-6).
   const bodyStr = JSON.stringify(payload)
