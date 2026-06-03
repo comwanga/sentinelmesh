@@ -131,9 +131,10 @@ async fn main() -> anyhow::Result<()> {
     {
         let pool_synth = db.clone();
         let synthesis_enabled = config.synthesis_enabled;
+        let confirm_enabled = config.acoustic_confirm_enabled;
         let tx_synth = event_tx.clone();
         tokio::spawn(async move {
-            subscribers::synthesis_worker::run(pool_synth, synthesis_enabled, tx_synth).await;
+            subscribers::synthesis_worker::run(pool_synth, synthesis_enabled, confirm_enabled, tx_synth).await;
         });
     }
 

@@ -25,22 +25,35 @@ pub struct Config {
     pub synthesis_enabled: bool,
     pub soft_visibility_enabled: bool,
     pub emergency_mode_enabled: bool,
+    /// Gates acoustic cluster promotion to `confirmed` + public_event creation.
+    /// Default false: without explicit opt-in the synthesis worker corroborates
+    /// (telemetry only) but never auto-publishes acoustic events to the map.
+    pub acoustic_confirm_enabled: bool,
 }
 
 impl Config {
     pub fn from_env() -> Result<Self> {
-        let internal_service_secret = std::env::var("INTERNAL_SERVICE_SECRET")
-            .unwrap_or_else(|_| {
-                tracing::warn!("INTERNAL_SERVICE_SECRET not set — using insecure dev default");
-                "dev-only-insecure-secret".into()
-            });
+        let production = is_production();
+
+        // Fail closed in production: the internal-service secret must be set to a
+        // strong, non-default value or the process refuses to start.
+        let internal_service_secret = resolve_internal_secret(production)?;
+
+        let zap_webhook_secret = require("ZAP_WEBHOOK_SECRET")?;
+        if production {
+            reject_weak_secret("ZAP_WEBHOOK_SECRET", &zap_webhook_secret)?;
+        }
+
         Ok(Config {
             database_url: require("DATABASE_URL")?,
             redis_url: require("REDIS_URL")?,
             port: std::env::var("PORT")
                 .unwrap_or_else(|_| "3000".into())
                 .parse()?,
-            zap_webhook_secret: require("ZAP_WEBHOOK_SECRET")?,
+            zap_webhook_secret,
+            acoustic_confirm_enabled: std::env::var("ACOUSTIC_CONFIRM_ENABLED")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
             blockchain_service_url: std::env::var("BLOCKCHAIN_SERVICE_URL").ok(),
             lnd_rest_url: std::env::var("LND_REST_URL").ok(),
             lnd_macaroon_hex: std::env::var("LND_MACAROON_HEX").ok(),
@@ -91,6 +104,46 @@ impl Config {
 
 fn require(key: &str) -> Result<String> {
     std::env::var(key).map_err(|_| anyhow::anyhow!("missing required env var: {key}"))
+}
+
+const INSECURE_INTERNAL_DEFAULT: &str = "dev-only-insecure-secret";
+const WEAK_SECRETS: &[&str] = &[
+    "", "dev-only-insecure-secret", "test", "secret", "changeme", "password", "default",
+];
+
+/// True when NODE_ENV is "production" (case-insensitive).
+fn is_production() -> bool {
+    std::env::var("NODE_ENV")
+        .map(|v| v.eq_ignore_ascii_case("production"))
+        .unwrap_or(false)
+}
+
+/// Resolve INTERNAL_SERVICE_SECRET. In production an unset/default/empty value is
+/// a hard error (fail closed). In non-production we fall back to a clearly-labelled
+/// insecure dev default with a warning.
+fn resolve_internal_secret(production: bool) -> Result<String> {
+    match std::env::var("INTERNAL_SERVICE_SECRET") {
+        Ok(s) if !s.is_empty() && s != INSECURE_INTERNAL_DEFAULT => Ok(s),
+        _ if production => anyhow::bail!(
+            "INTERNAL_SERVICE_SECRET must be set to a strong, non-default value when NODE_ENV=production"
+        ),
+        _ => {
+            tracing::warn!(
+                "INTERNAL_SERVICE_SECRET not set — using insecure dev default (NON-PRODUCTION ONLY)"
+            );
+            Ok(INSECURE_INTERNAL_DEFAULT.to_string())
+        }
+    }
+}
+
+/// Reject known-placeholder or too-short secrets. Production use only.
+fn reject_weak_secret(name: &str, value: &str) -> Result<()> {
+    if WEAK_SECRETS.iter().any(|w| value.eq_ignore_ascii_case(w)) || value.len() < 16 {
+        anyhow::bail!(
+            "{name} is too weak for production: must be at least 16 chars and not a known placeholder"
+        );
+    }
+    Ok(())
 }
 
 fn load_cert_pem() -> Result<Option<Vec<u8>>> {
@@ -359,5 +412,52 @@ mod tests {
             .unwrap_or(false);
         std::env::remove_var("EMERGENCY_MODE_ENABLED");
         assert!(result);
+    }
+
+    #[test]
+    fn internal_secret_unset_in_production_is_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("INTERNAL_SERVICE_SECRET");
+        let result = resolve_internal_secret(true);
+        assert!(result.is_err(), "production must reject unset internal secret");
+    }
+
+    #[test]
+    fn internal_secret_default_in_production_is_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("INTERNAL_SERVICE_SECRET", INSECURE_INTERNAL_DEFAULT);
+        let result = resolve_internal_secret(true);
+        std::env::remove_var("INTERNAL_SERVICE_SECRET");
+        assert!(result.is_err(), "production must reject the insecure default value");
+    }
+
+    #[test]
+    fn internal_secret_strong_value_accepted_in_production() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("INTERNAL_SERVICE_SECRET", "a-strong-32-byte-secret-value-xx");
+        let result = resolve_internal_secret(true).unwrap();
+        std::env::remove_var("INTERNAL_SERVICE_SECRET");
+        assert_eq!(result, "a-strong-32-byte-secret-value-xx");
+    }
+
+    #[test]
+    fn internal_secret_falls_back_to_default_in_dev() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("INTERNAL_SERVICE_SECRET");
+        let result = resolve_internal_secret(false).unwrap();
+        assert_eq!(result, INSECURE_INTERNAL_DEFAULT);
+    }
+
+    #[test]
+    fn weak_secrets_rejected_in_production() {
+        assert!(reject_weak_secret("X", "").is_err());
+        assert!(reject_weak_secret("X", "changeme").is_err());
+        assert!(reject_weak_secret("X", "short").is_err());
+        assert!(reject_weak_secret("X", INSECURE_INTERNAL_DEFAULT).is_err());
+    }
+
+    #[test]
+    fn strong_secret_passes_weak_check() {
+        assert!(reject_weak_secret("X", "a-strong-32-byte-secret-value-xx").is_ok());
     }
 }

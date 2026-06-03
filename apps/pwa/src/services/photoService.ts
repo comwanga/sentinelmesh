@@ -1,4 +1,5 @@
 import type * as Blazeface from '@tensorflow-models/blazeface'
+import { signNip98AuthEvent } from './nostrService'
 
 const MAX_DIMENSION = 800
 const JPEG_QUALITY = 0.85
@@ -66,22 +67,24 @@ export async function blurFaces(canvas: HTMLCanvasElement): Promise<HTMLCanvasEl
   return canvas
 }
 
+// Upload via the gateway proxy (/api/photos/pin). The Pinata credential lives
+// only on the server — it is never exposed to the browser. NIP-98 authenticated.
 export async function uploadToIPFS(blob: Blob): Promise<string | null> {
-  const jwt = import.meta.env['VITE_PINATA_JWT']
-  if (!jwt) return null
-
-  const form = new FormData()
-  form.append('file', blob, 'report-photo.jpg')
-
   try {
-    const res = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+    const base = import.meta.env['VITE_API_BASE_URL'] ?? ''
+    const url = new URL('/api/photos/pin', base || window.location.origin).toString()
+    const authEvent = await signNip98AuthEvent(url, 'POST')
+    const res = await fetch(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${jwt}` },
-      body: form,
+      headers: {
+        'Content-Type': 'image/jpeg',
+        'X-Nostr-Auth': JSON.stringify(authEvent),
+      },
+      body: blob,
     })
     if (!res.ok) return null
-    const data = await res.json() as { IpfsHash: string }
-    return data.IpfsHash
+    const data = await res.json() as { cid: string }
+    return data.cid ?? null
   } catch {
     return null
   }

@@ -9,25 +9,34 @@ A global public safety app. It shows live threats on a map, lets communities rep
 | Feature | Description |
 |---|---|
 | **Live threat map** | Pulls public signals from news, Twitter/X, and radio. Classifies them with NLP. Shows verified safety events on a real-time map. |
-| **Community reports** | Anyone can submit a ground report. Reports are signed with a Nostr key, verified by the server, and scored by community votes. Photos are processed on-device — EXIF stripped, faces blurred — before upload. |
-| **Family circles** | Share your location with trusted people. Location data is encrypted on your device before it's sent. The server only stores an encrypted blob it can never read. |
-| **Push notifications** | Subscribe to browser push notifications for high-severity events near you. Powered by Web Push (VAPID) — no account or email required. |
-| **Blockchain anchoring** | Every verified event is published to Nostr relays (4 geographically distributed, parallel publish). A digest is written to Bitcoin (OP_RETURN) as a permanent, tamper-proof record. Fee is capped at 50 sat/vB and transactions opt into RBF. |
-| **Acoustic detection** | The browser listens for gunshots, explosions, and screaming using a YAMNet model. All inference runs locally — no audio ever leaves your device. |
+| **Community reports** | Anyone can submit a ground report. Reports are signed with a Nostr key and scored by community votes. The report's location is stored in plaintext (it is public map data) and is linked to the reporter's pubkey. Photos are processed on-device — EXIF stripped, faces blurred (best-effort, frontal faces) — before upload. |
+| **Family circles** | Share your location with trusted people. Coordinates are encrypted on your device with AES-256-GCM; the server stores a blob whose **contents** it cannot read. Circle **membership and timing metadata are visible to the server** (see Privacy below). |
+| **Push notifications** | Browser push (Web Push/VAPID) for HIGH/CRITICAL events. Payloads carry only a place name, never precise coordinates. Note: alerts are currently broadcast to all subscribers — per-location targeting is planned. |
+| **Blockchain anchoring** | Verified events can be published to Nostr relays and a digest written to Bitcoin (OP_RETURN). The anchor commits an identifier digest (event id + nostr id + severity), **not** the report's location or text — it proves an event record existed, not that its content is unaltered. Off by default (`ANCHORING_ENABLED`); testnet until maintainers switch to mainnet. |
+| **Acoustic detection** | The browser can classify sounds (gunshots, explosions, screaming) with a YAMNet model. Inference is on-device — no audio leaves your device; only a label, confidence, and location are sent. Detections are **client-asserted and not yet independently verified**; auto-publishing to the map is off by default (`ACOUSTIC_CONFIRM_ENABLED`). |
 | **Escape routes** | When a threat is near, the app calculates 2–3 walking routes that avoid the danger zone using Mapbox Directions. |
 | **Lightning tips** | Users can tip reporters with Bitcoin Lightning (sats). Payment receipts are published as Nostr Kind 9735 zap events. |
 
 ---
 
-## Privacy rules (never broken)
+## Privacy model (what is and isn't protected)
 
-- The server never stores readable location data. All family circle coordinates are encrypted on-device with AES-256-GCM.
-- No personal data is collected at sign-up. Your identity is a Nostr keypair generated on your device. No email, no phone number, no name.
-- All photo processing (EXIF strip, face blur) happens on-device before upload.
-- Every community report has a cryptographic signature. The server verifies it.
-- Acoustic detection never sends audio off-device. Only the detection label and confidence score are transmitted.
-- Mapbox map tiles are proxied through the gateway (`/api/tiles`). The Mapbox token is never exposed in browser network traffic.
-- Bitcoin is on testnet until the project maintainers explicitly switch to mainnet.
+Be precise about this — overclaiming privacy is a safety risk for the people who rely on it.
+
+**Protected:**
+- **Family-circle coordinates** are encrypted on-device with AES-256-GCM. The server stores a blob whose contents it cannot read.
+- **Audio** never leaves the device. Acoustic detection sends only a label, confidence, and location.
+- **No name/email/phone** is collected. Identity is a Nostr keypair generated on the device.
+- **Mapbox tiles** are proxied through the gateway (`/api/tiles`); the Mapbox token is not exposed to the browser.
+- **Photos** are EXIF-stripped and face-blurred on-device before upload (face blur is best-effort, frontal faces only).
+
+**NOT protected (known limitations — do not assume otherwise):**
+- **Community-report and acoustic locations are stored in plaintext** and linked to a persistent pubkey. Treat your report history as a public, identity-linked location trail.
+- **Family-circle social graph is visible to the server**: who is in which circle, and the timing of location shares (only the coordinate payload is encrypted).
+- **A Nostr pubkey is a stable pseudonymous identifier.** Combined with plaintext locations it can be personally identifying. Anything published to Nostr relays, IPFS, or Bitcoin is effectively permanent and cannot be erased.
+- **Bitcoin anchoring** commits an identifier digest, not report content — it is not a tamper-proof record of where/what.
+
+These gaps are tracked in `docs/audit/` with a remediation plan. Bitcoin stays on testnet until maintainers explicitly switch to mainnet.
 
 ---
 

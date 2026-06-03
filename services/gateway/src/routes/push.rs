@@ -5,11 +5,10 @@ use web_push::{
     VapidSignatureBuilder, WebPushClient, WebPushMessageBuilder,
 };
 
-use crate::AppState;
+use crate::{middleware::nostr_auth::NostrAuth, AppState};
 
 #[derive(Deserialize)]
 struct SubscribeRequest {
-    nostr_pubkey: String,
     subscription: PushSubscriptionJson,
 }
 
@@ -27,8 +26,11 @@ struct PushSubscriptionKeys {
 
 async fn subscribe(
     State(state): State<AppState>,
+    auth: NostrAuth,
     Json(req): Json<SubscribeRequest>,
 ) -> impl IntoResponse {
+    // Bind the subscription to the NIP-98-authenticated pubkey. The client can no
+    // longer register a subscription under an arbitrary identity.
     sqlx::query(
         "INSERT INTO push_subscriptions (nostr_pubkey, endpoint, p256dh, auth, updated_at)
          VALUES ($1, $2, $3, $4, NOW())
@@ -38,7 +40,7 @@ async fn subscribe(
            auth         = EXCLUDED.auth,
            updated_at   = NOW()",
     )
-    .bind(&req.nostr_pubkey)
+    .bind(&auth.pubkey)
     .bind(&req.subscription.endpoint)
     .bind(&req.subscription.keys.p256dh)
     .bind(&req.subscription.keys.auth)

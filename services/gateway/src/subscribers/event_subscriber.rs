@@ -202,20 +202,29 @@ async fn handle_message(
         serde_json::to_string(&ws_msg).unwrap().into(),
     );
 
-    // Fire-and-forget push notifications — failure must not block event processing
-    if let (Some(priv_key), Some(subject)) = (
-        std::env::var("VAPID_PRIVATE_KEY").ok(),
-        std::env::var("VAPID_SUBJECT").ok(),
-    ) {
-        let pool = pool.clone();
-        let title = format!("{} — {}", event.severity, event.event_type.replace('_', " "));
-        let body = event.place_name.clone().unwrap_or_else(|| {
-            format!("{:.4}, {:.4}", event.lat, event.lng)
-        });
-        let event_id = event.id.to_string();
-        tokio::spawn(async move {
-            crate::routes::push::broadcast_push(&pool, &priv_key, &subject, &title, &body, &event_id).await;
-        });
+    // Fire-and-forget push notifications. Two hardening rules:
+    //   1. Only HIGH/CRITICAL events push (cuts global alert-fatigue volume).
+    //   2. Never leak precise coordinates in the payload — place name / county only.
+    // NOTE: this still broadcasts to all subscribers; true per-subscriber proximity
+    // targeting requires storing a coarse subscriber region (Phase 2 schema change).
+    let severity_upper = event.severity.to_uppercase();
+    if matches!(severity_upper.as_str(), "HIGH" | "CRITICAL") {
+        if let (Some(priv_key), Some(subject)) = (
+            std::env::var("VAPID_PRIVATE_KEY").ok(),
+            std::env::var("VAPID_SUBJECT").ok(),
+        ) {
+            let pool = pool.clone();
+            let title = format!("{} — {}", event.severity, event.event_type.replace('_', " "));
+            let body = event
+                .place_name
+                .clone()
+                .or_else(|| county.clone())
+                .unwrap_or_else(|| "A safety event was reported in your area".to_string());
+            let event_id = event.id.to_string();
+            tokio::spawn(async move {
+                crate::routes::push::broadcast_push(&pool, &priv_key, &subject, &title, &body, &event_id).await;
+            });
+        }
     }
 
     Ok(())

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { loadOrCreateKeypair } from '../services/nostrService'
+import { signNip98AuthEvent } from '../services/nostrService'
 
 const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
 const VAPID_PUBLIC_KEY = import.meta.env['VITE_VAPID_PUBLIC_KEY'] ?? ''
@@ -29,16 +29,19 @@ export function usePushSubscription(): void {
           applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as unknown as BufferSource,
         })
 
-        const keypair = loadOrCreateKeypair()
+        const url = new URL('/api/push/subscribe', API_BASE || window.location.origin).toString()
+        const authEvent = await signNip98AuthEvent(url, 'POST')
         const _ac = new AbortController()
         setTimeout(() => _ac.abort(), 15_000)
-        await fetch(`${API_BASE}/api/push/subscribe`, {
+        await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Nostr-Auth': JSON.stringify(authEvent),
+          },
           signal: _ac.signal,
           body: JSON.stringify({
             subscription: subscription.toJSON(),
-            nostr_pubkey: keypair.publicKey,
           }),
         })
       } catch {

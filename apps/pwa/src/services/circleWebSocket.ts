@@ -4,8 +4,7 @@ import { memberStatusUpdated, locationReceived, circleDecryptError } from '../st
 import { decryptLocation, loadCircleKey } from './e2eeService'
 import type { CircleWsMessage } from '../../../../shared/types'
 
-const WS_HOST = import.meta.env.DEV ? 'localhost:3000' : window.location.host
-const WS_BASE = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${WS_HOST}/ws/circles`
+const WS_BASE = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/circles`
 
 export function useCircleWsConnection(circleId: string | null, nostrAuthEvent?: Record<string, unknown>): void {
   const dispatch = useAppDispatch()
@@ -52,7 +51,8 @@ export function useCircleWsConnection(circleId: string | null, nostrAuthEvent?: 
         }
       }
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        if (event.code === 1000) return
         reconnectTimer.current = setTimeout(connect, 3000)
       }
 
