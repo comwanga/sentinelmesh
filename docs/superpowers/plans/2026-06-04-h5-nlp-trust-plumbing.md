@@ -349,6 +349,14 @@ In `services/signal/nlp/event_fuser.py`, inside the dict returned by `build_even
         "place_name": loc.get("place_name"),
 ```
 
+Then update the existing `test_build_event_no_extra_fields` in `services/signal/tests/test_event_fuser.py` — its `allowed` set pins the exact output keys and will now fail. Add the two new keys:
+
+```python
+    allowed = {"schema_version", "id", "event_type", "severity", "title", "lat", "lng",
+               "started_at", "summary", "place_name", "county", "is_active", "created_at",
+               "source_id", "origin_channel"}
+```
+
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run:
