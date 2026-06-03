@@ -46,12 +46,16 @@ comparable standard.
 Keep the keyword approach, but make hits negation-aware and the confidence honest.
 
 - `NEGATION_WINDOW = 5` (module-level constant, configurable). A keyword hit is suppressed if a
-  negation cue appears within the 5 tokens preceding the matched keyword. 5 (not 3) because real
-  news text separates the cue from the keyword: "There is currently no evidence of a fire",
-  "Police report there is not currently any active shooting".
-- Negation cues (bilingual EN/SW), e.g.: `no, not, without, ended, over, contained, cleared,
-  all clear, false alarm, hakuna, hapana, si, imeisha, imezimwa`. List lives next to the keyword
-  sets and is easy to extend.
+  **negation cue** appears within the 5 tokens *preceding* the keyword, or a **resolution cue**
+  appears within the 5 tokens *following* it. 5 (not 3) because real news text separates the cue
+  from the keyword: "There is currently no evidence of a fire", "Police report there is not
+  currently any active shooting". The trailing window is what catches the resolution case
+  "Authorities confirmed the explosion has been contained".
+- Cues are split by position and bilingual EN/SW:
+  - Negation (precede the keyword): `no, not, without, hakuna, hapana, si`.
+  - Resolution (follow the keyword): `ended, contained, cleared, clear, resolved, imeisha,
+    imezimwa`. `over` is deliberately excluded — it collides with "spread over"/"all over".
+  Both lists live next to the keyword sets and are easy to extend.
 - If every hit in the winning category is negated (or an explicit all-clear phrase dominates),
   return `FALSE_ALARM`.
 - **Honest confidence:** cap keyword-only confidence at `CONFIDENCE_CAP = 0.6`. Keyword matching
