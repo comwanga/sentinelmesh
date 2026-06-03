@@ -89,6 +89,8 @@ async def process_transcription_job(job_data: dict) -> dict:
             "location": locations[0],
             "confidence": classification["confidence"],
             "source_type": "radio",
+            "source_id": job_id,
+            "origin_channel": "radio",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         event = build_event([signal])

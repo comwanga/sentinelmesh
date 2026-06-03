@@ -65,6 +65,8 @@ def build_event(signals: list[dict]) -> dict:
         "lng": loc.get("lng"),
         "started_at": min(s["timestamp"] for s in signals).isoformat(),
         "summary": best.get("summary"),
+        "source_id": best.get("source_id"),
+        "origin_channel": best.get("origin_channel"),
         "place_name": loc.get("place_name"),
         "county": loc.get("county"),
         "is_active": True,

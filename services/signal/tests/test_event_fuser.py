@@ -78,7 +78,8 @@ def test_build_event_started_at_is_earliest():
 def test_build_event_no_extra_fields():
     event = build_event([SIGNAL_A])
     allowed = {"schema_version", "id", "event_type", "severity", "title", "lat", "lng",
-               "started_at", "summary", "place_name", "county", "is_active", "created_at"}
+               "started_at", "summary", "place_name", "county", "is_active", "created_at",
+               "source_id", "origin_channel"}
     assert set(event.keys()) == allowed
 
 def test_build_event_raises_when_location_missing():
@@ -92,3 +93,43 @@ def test_build_event_output_is_valid_against_schema():
 
     event = build_event([SIGNAL_A, SIGNAL_B])
     jsonschema.validate(instance=event, schema=schema)  # raises if invalid
+
+
+def test_build_event_passes_through_provenance():
+    from nlp.event_fuser import build_event
+    from datetime import datetime, timezone
+
+    signal = {
+        "event_type": "FIRE",
+        "severity": "HIGH",
+        "title": "Market fire",
+        "summary": "Fire at the market",
+        "location": {"lat": -1.286, "lng": 36.817, "place_name": "CBD", "county": "Nairobi"},
+        "confidence": 0.6,
+        "source_type": "rss",
+        "source_id": "nation.africa",
+        "origin_channel": "rss",
+        "timestamp": datetime(2026, 6, 4, tzinfo=timezone.utc),
+    }
+    event = build_event([signal])
+    assert event["source_id"] == "nation.africa"
+    assert event["origin_channel"] == "rss"
+
+
+def test_build_event_provenance_defaults_to_none_when_absent():
+    from nlp.event_fuser import build_event
+    from datetime import datetime, timezone
+
+    signal = {
+        "event_type": "FIRE",
+        "severity": "HIGH",
+        "title": "Market fire",
+        "summary": None,
+        "location": {"lat": -1.286, "lng": 36.817, "place_name": None, "county": None},
+        "confidence": 0.6,
+        "source_type": "rss",
+        "timestamp": datetime(2026, 6, 4, tzinfo=timezone.utc),
+    }
+    event = build_event([signal])
+    assert event["source_id"] is None
+    assert event["origin_channel"] is None

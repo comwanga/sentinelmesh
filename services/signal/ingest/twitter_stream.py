@@ -98,6 +98,8 @@ async def start_twitter_stream() -> None:
                                 "location": locations[0],
                                 "confidence": classification["confidence"],
                                 "source_type": "twitter",
+                                "source_id": tweet.get("author_id") or (data.get("includes", {}).get("users", [{}])[0].get("username")),
+                                "origin_channel": "twitter",
                                 "timestamp": datetime.now(timezone.utc),
                             }
                             event = build_event([signal])

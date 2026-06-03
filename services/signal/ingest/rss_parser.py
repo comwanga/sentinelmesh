@@ -4,6 +4,7 @@ import concurrent.futures
 import sentry_sdk
 import redis.asyncio as aioredis
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 import config
 from publisher import emit_event, get_client
@@ -49,6 +50,8 @@ async def _process_entry(entry: dict, source_url: str, client: aioredis.Redis) -
         "location": location,
         "confidence": classification["confidence"],
         "source_type": "rss",
+        "source_id": urlparse(source_url).netloc or source_url,
+        "origin_channel": "rss",
         "timestamp": ts,
     }
 
