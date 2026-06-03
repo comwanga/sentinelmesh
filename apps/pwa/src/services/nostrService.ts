@@ -135,15 +135,40 @@ export async function getPublicKeyAsync(): Promise<string> {
   return getOrCreateEphemeralKeypair().publicKey
 }
 
+/**
+ * Canonical binding string for a report. The server recomputes this from the
+ * submitted fields and rejects the report if it doesn't match the signed event
+ * content — so the signature is cryptographically bound to lat/lng/type/desc.
+ * Fixed 6-decimal coordinates (~0.1 m) keep JS and Rust formatting identical.
+ */
+export function reportBindingContent(
+  reportType: string,
+  lat: number,
+  lng: number,
+  description: string | null | undefined,
+): string {
+  return `r1|${reportType}|${lat.toFixed(6)}|${lng.toFixed(6)}|${description ?? ''}`
+}
+
+/** Canonical binding string for a vote — binds the signature to this report + choice. */
+export function voteBindingContent(vote: string, reportId: string): string {
+  return `v1|${vote}|${reportId}`
+}
+
+/**
+ * Sign a report/vote binding string as a kind-30078 event. The content is the
+ * canonical binding (see reportBindingContent / voteBindingContent), so the
+ * server can verify the signature covers the exact submitted content.
+ */
 export function signReport(
-  payload: Record<string, unknown>,
+  content: string,
   secretKey: Uint8Array,
 ): SignedReportEvent {
   return finalizeEvent({
     kind: 30078,
     created_at: Math.floor(Date.now() / 1000),
     tags: [['d', 'sentinel-report']],
-    content: JSON.stringify(payload),
+    content,
   }, secretKey) as SignedReportEvent
 }
 

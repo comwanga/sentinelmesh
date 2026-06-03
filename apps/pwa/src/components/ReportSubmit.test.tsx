@@ -12,6 +12,7 @@ vi.mock('../services/nostrService', () => ({
     id: 'ev1', pubkey: 'pk1', created_at: 1000, kind: 30078,
     tags: [], content: '{}', sig: 'sig1',
   }),
+  reportBindingContent: vi.fn().mockReturnValue('r1|FLOODING|0.000000|0.000000|'),
 }))
 vi.mock('../services/photoService', () => ({
   compressAndStrip: vi.fn().mockResolvedValue(new Blob(['img'])),
