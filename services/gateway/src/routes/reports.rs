@@ -223,7 +223,7 @@ async fn post_report(
 
     verify_nostr_event(&body.nostr_event, &body.nostr_pubkey, 300)?;
 
-    if !(body.lat >= -90.0 && body.lat <= 90.0) || !(body.lng >= -180.0 && body.lng <= 180.0) {
+    if !(-90.0..=90.0).contains(&body.lat) || !(-180.0..=180.0).contains(&body.lng) {
         return Err(AppError::BadRequest(
             "lat must be in -90..90, lng in -180..180".into(),
         ));

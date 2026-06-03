@@ -10,6 +10,9 @@ pub enum AppError {
     NotFound,
     #[error("{0}")]
     BadRequest(String),
+    // Kept for future authed endpoints; its only constructor (the zap webhook) was
+    // removed with the Lightning subsystem.
+    #[allow(dead_code)]
     #[error("unauthorized")]
     Unauthorized,
     #[error("forbidden")]

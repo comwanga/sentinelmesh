@@ -84,7 +84,7 @@ pub async fn run(
                     expired = summary.expired,
                     "synthesis_cycle"
                 );
-                if tick_count % 12 == 0 {
+                if tick_count.is_multiple_of(12) {
                     if let Err(e) = log_state_snapshot(&pool).await {
                         tracing::warn!("synthesis metrics snapshot error: {e:#}");
                     }
@@ -100,6 +100,7 @@ pub async fn run(
     }
 }
 
+#[allow(clippy::field_reassign_with_default)]
 async fn tick(
     pool: &PgPool,
     confirm_enabled: bool,
@@ -267,6 +268,7 @@ async fn process_cluster(
     Ok(result)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn upsert_public_event(
     pool: &PgPool,
     first_signal_id: Uuid,

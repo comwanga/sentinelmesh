@@ -72,7 +72,7 @@ impl FromRequestParts<AppState> for InternalServiceAuth {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::Body, extract::State, http::Request, routing::post, Router};
+    use axum::{body::Body, http::Request, routing::post, Router};
     use std::sync::{atomic::AtomicBool, Arc};
     use tower::ServiceExt;
 

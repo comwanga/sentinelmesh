@@ -28,7 +28,7 @@ pub async fn run(pool: Arc<PgPool>, config: Arc<Config>) {
         ticker.tick().await;
         orphan_tick += 1;
 
-        if orphan_tick % 30 == 0 {
+        if orphan_tick.is_multiple_of(30) {
             if let Err(e) = job_db::reclaim_orphans(&pool).await {
                 tracing::error!("orphan reclaim error: {}", e);
             }
