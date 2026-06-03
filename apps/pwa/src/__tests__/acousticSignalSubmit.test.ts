@@ -6,6 +6,7 @@ vi.mock('../services/nostrService', () => ({
     id: 'abc', pubkey: 'xyz', created_at: 1, kind: 27235,
     tags: [['u', 'x'], ['method', 'POST']], content: '', sig: 'sig',
   }),
+  sha256Hex: vi.fn().mockResolvedValue('a'.repeat(64)),
 }))
 
 // 2. Mock fetch globally
@@ -30,12 +31,14 @@ beforeEach(() => {
 })
 
 describe('submitAcousticSignal', () => {
-  test('calls signNip98AuthEvent with absolute signals URL and POST', async () => {
+  test('calls signNip98AuthEvent with absolute signals URL, POST, and payload hash', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 201 })
     await submitAcousticSignal(detection, location)
+    // AC-6: third arg is the sha256 hash of the body (mocked to 64 'a's).
     expect(signNip98AuthEvent).toHaveBeenCalledWith(
       'https://app.sentinelmesh.io/api/acoustic/signals',
       'POST',
+      'a'.repeat(64),
     )
   })
 
