@@ -5,7 +5,6 @@ import { CirclesPage } from './pages/CirclesPage'
 import { AlertsPage } from './pages/AlertsPage'
 import { InsightsPage } from './pages/InsightsPage'
 import { ReportsPage } from './pages/ReportsPage'
-import { ZapsPage } from './pages/ZapsPage'
 import { SettingsPage } from './pages/SettingsPage'
 
 function RouteError() {
@@ -29,7 +28,6 @@ export const router = createBrowserRouter([
       { path: '/circles', element: <CirclesPage /> },
       { path: '/insights', element: <InsightsPage /> },
       { path: '/reports', element: <ReportsPage /> },
-      { path: '/zaps', element: <ZapsPage /> },
       { path: '/settings', element: <SettingsPage /> },
     ],
   },

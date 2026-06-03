@@ -15,7 +15,6 @@ A global public safety app. It shows live threats on a map, lets communities rep
 | **Blockchain anchoring** | Verified events can be published to Nostr relays and a digest written to Bitcoin (OP_RETURN). The anchor commits an identifier digest (event id + nostr id + severity), **not** the report's location or text — it proves an event record existed, not that its content is unaltered. Off by default (`ANCHORING_ENABLED`); testnet until maintainers switch to mainnet. |
 | **Acoustic detection** | The browser can classify sounds (gunshots, explosions, screaming) with a YAMNet model. Inference is on-device — no audio leaves your device; only a label, confidence, and location are sent. Detections are **client-asserted and not yet independently verified**; auto-publishing to the map is off by default (`ACOUSTIC_CONFIRM_ENABLED`). |
 | **Escape routes** | When a threat is near, the app calculates 2–3 walking routes that avoid the danger zone using Mapbox Directions. |
-| **Lightning tips** | Users can tip reporters with Bitcoin Lightning (sats). Payment receipts are published as Nostr Kind 9735 zap events. |
 
 ---
 
@@ -66,7 +65,7 @@ Postgres   Redis       Blockchain
 
 | Service | Language | Path | What it does |
 |---|---|---|---|
-| API Gateway | Rust + axum | `services/gateway/` | Auth (Nostr kind 27235), REST routes, WebSocket hub, tile proxy, push subscriptions, Lightning zaps |
+| API Gateway | Rust + axum | `services/gateway/` | Auth (Nostr kind 27235), REST routes, WebSocket hub, tile proxy, push subscriptions, IPFS photo proxy |
 | Signal Ingest | Python + FastAPI | `services/signal/` | RSS / Twitter / radio → async NLP → safety events via Redis Streams |
 | Blockchain Worker | Rust | `services/blockchain/` | Nostr publish (parallel, 4 relays), Bitcoin OP_RETURN anchoring, UTXO management |
 | Shared types | Rust | `services/sentinel-core/` | Domain types and crypto shared across Rust services |
@@ -161,8 +160,7 @@ All variables go in the root `.env` file. Copy `.env.example` to get started.
 | `DATABASE_URL` | Full Postgres connection string — must match `POSTGRES_PASSWORD` |
 | `REDIS_PASSWORD` | Password for Redis |
 | `REDIS_URL` | Full Redis connection string — must match `REDIS_PASSWORD` |
-| `INTERNAL_SERVICE_SECRET` | Random string for service-to-service auth |
-| `ZAP_WEBHOOK_SECRET` | Random string for verifying LND payment webhooks |
+| `INTERNAL_SERVICE_SECRET` | Random string for service-to-service auth (required in production) |
 | `MAPBOX_TOKEN` | Your Mapbox **secret** access token (server-side tile proxy) |
 | `VITE_MAPBOX_TOKEN` | Your Mapbox **public** access token (PWA, used only for style URLs) |
 
@@ -179,9 +177,7 @@ All variables go in the root `.env` file. Copy `.env.example` to get started.
 
 | Variable | Description |
 |---|---|
-| `NOSTR_PRIVATE_KEY` | Hex private key for gateway to sign zap receipts |
-| `LND_REST_URL` | LND node REST URL. Needed for Lightning zaps. |
-| `LND_MACAROON_HEX` | LND admin macaroon in hex |
+| `PINATA_JWT` | Server-side Pinata JWT for the IPFS photo proxy (`/api/photos/pin`). |
 | `TWITTER_BEARER_TOKEN` | For pulling Twitter/X signals. Skipped if empty. |
 | `SENTRY_DSN` | Sentry error tracking URL. Optional in dev, recommended in production. |
 | `MAX_DB_CONNECTIONS` | Gateway Postgres pool size. Defaults to 50. |
@@ -196,17 +192,6 @@ npx web-push generate-vapid-keys
 
 ---
 
-## Testing Lightning zaps locally
-
-Zap payments need a running LND node. For local development, use [Polar](https://lightningpolar.com/) — it spins up a local Lightning network in a few clicks.
-
-1. Install Polar and create a network with two LND nodes
-2. Copy the admin macaroon hex and REST URL from one node into `.env`
-3. Restart the gateway: `docker compose ... restart gateway`
-4. The ⚡ button on event popups will now generate real invoices
-
----
-
 ## Repository layout
 
 ```
@@ -216,14 +201,14 @@ sentinelmesh/
 │       ├── public/
 │       │   └── sw.js           # Service worker (push notifications)
 │       └── src/
-│           ├── components/     # Map, reports, circles, ZapButton
+│           ├── components/     # Map, reports, circles
 │           ├── hooks/          # useCircles, usePushSubscription, etc.
 │           ├── services/       # Audio capture, routing, WebSocket, nostr
 │           └── store/          # Redux slices
 ├── services/
 │   ├── gateway/                # Rust + axum API gateway
 │   │   └── src/
-│   │       ├── routes/         # REST endpoints (events, reports, circles, push, tiles, zaps)
+│   │       ├── routes/         # REST endpoints (events, reports, circles, push, tiles, photos)
 │   │       ├── subscribers/    # Redis Streams event consumer
 │   │       └── ws/             # WebSocket hub
 │   ├── blockchain/             # Rust blockchain anchoring worker
@@ -254,7 +239,6 @@ sentinelmesh/
 - [x] Blockchain anchoring — parallel Nostr relay publish (4 relays), Bitcoin OP_RETURN, 50 sat/vB fee cap, RBF
 - [x] Acoustic detection — YAMNet browser inference, auto-submit on detection
 - [x] Escape routes — Mapbox Directions avoiding threat zones
-- [x] Lightning zaps — LND invoice generation, HMAC webhook, Kind 9735 receipt
 - [x] Push notifications — Web Push (VAPID), service worker, gateway subscription store
 - [x] Reliability hardening — Redis Streams (no message loss on disconnect), Mapbox tile proxy, Chrome 66+ fetch timeouts, WebSocket exponential backoff, Postgres connection pooling
 

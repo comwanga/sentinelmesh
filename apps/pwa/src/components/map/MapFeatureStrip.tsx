@@ -3,7 +3,6 @@ interface Props {
   onAcoustic: () => void
   onCircles: () => void
   onRoutes: () => void
-  onZaps: () => void
   onHomeRoute: () => void
 }
 
@@ -13,7 +12,6 @@ const cards: { label: string; desc: string; icon: string; key: keyof Props }[] =
   { label: 'Family Circles',   desc: 'Share location with trusted family.',             icon: '👥', key: 'onCircles' },
   { label: 'Escape Routes',    desc: 'Get 2–3 safe routes away from danger.',           icon: '🛣', key: 'onRoutes' },
   { label: 'Navigate Home',    desc: 'Safest walking route to your home address.',      icon: '🏠', key: 'onHomeRoute' },
-  { label: 'Zap Reporter',     desc: 'Support verified reporters (sats).',              icon: '⚡', key: 'onZaps' },
 ]
 
 export function MapFeatureStrip(props: Props) {

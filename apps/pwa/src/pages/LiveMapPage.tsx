@@ -249,7 +249,6 @@ export function LiveMapPage() {
           onAcoustic={() => dispatch(setOverlayIntent({ name: 'acoustic' }))}
           onCircles={() => navigate('/circles')}
           onRoutes={() => dispatch(setOverlayIntent({ name: 'routes' }))}
-          onZaps={() => navigate('/zaps')}
           onHomeRoute={() => dispatch(setOverlayIntent({ name: 'home-route' }))}
         />
       )}

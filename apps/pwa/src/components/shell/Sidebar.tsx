@@ -10,7 +10,6 @@ const routeItems = [
   { path: '/alerts',   label: 'Alerts',         icon: '🔔' },
   { path: '/reports',  label: 'Reports',        icon: '📋' },
   { path: '/circles',  label: 'Family Circles', icon: '👥' },
-  { path: '/zaps',     label: 'Zaps',           icon: '⚡' },
   { path: '/insights', label: 'Insights',       icon: '📊', badge: 'NEW' },
   { path: '/settings', label: 'Settings',       icon: '⚙️' },
 ] as const

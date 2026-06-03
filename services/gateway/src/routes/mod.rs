@@ -7,7 +7,6 @@ pub mod photos;
 pub mod push;
 pub mod reports;
 pub mod tiles;
-pub mod zap;
 
 use axum::Router;
 use crate::AppState;
@@ -17,7 +16,6 @@ pub fn build_router() -> Router<AppState> {
         .nest("/api/events",   events::router())
         .nest("/api/reports",  reports::router())
         .nest("/api/circles",  circles::router().merge(location_blobs::router()))
-        .nest("/api/zaps",     zap::router())
         .nest("/api/tiles",    tiles::router())
         .nest("/api/push",     push::router())
         .nest("/api/photos",   photos::router())

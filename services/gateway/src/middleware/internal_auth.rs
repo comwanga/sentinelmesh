@@ -82,9 +82,6 @@ mod tests {
         let map_provider: Arc<dyn MapProvider> = Arc::new(
             MapboxAdapter::new(http_client.clone(), String::new())
         );
-        let zap_limiter = Arc::new(RateLimiter::keyed(
-            Quota::per_minute(NonZeroU32::new(10).unwrap()),
-        ));
         let acoustic_limiter = Arc::new(RateLimiter::keyed(
             Quota::per_minute(NonZeroU32::new(5).unwrap()),
         ));
@@ -99,15 +96,7 @@ mod tests {
                 database_url: "postgres://localhost/test".into(),
                 redis_url: "redis://localhost".into(),
                 port: 3000,
-                zap_webhook_secret: "test".into(),
                 blockchain_service_url: None,
-                lnd_rest_url: None,
-                lnd_macaroon_hex: None,
-                lnd_tls_skip_verify: false,
-                lnd_tls_cert_pem: None,
-                nostr_private_key: None,
-                nostr_relays: vec!["wss://nos.lol".into()],
-                zap_rate_limit_per_minute: 10,
                 internal_service_secret: secret.into(),
                 trust_proxy: false,
                 max_db_connections: 5,
@@ -127,7 +116,6 @@ mod tests {
             circle_hub: Arc::new(CircleHub::new()),
             redis_healthy: Arc::new(AtomicBool::new(false)),
             map_provider,
-            zap_limiter,
             acoustic_limiter,
             event_tx: Arc::new(event_tx_inner),
             redis,

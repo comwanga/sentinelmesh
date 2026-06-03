@@ -302,7 +302,7 @@ mod tests {
     use nostr_sdk::{EventBuilder, Keys, Kind, Tag, Timestamp};
 
     const BASE: &str = "https://api.sentinelmesh.io";
-    const ROUTE: &str = "/api/zaps/request";
+    const ROUTE: &str = "/api/acoustic/signals";
 
     fn make_parts(method: &str, uri: &str) -> Parts {
         let (parts, _) = Request::builder()
@@ -339,9 +339,6 @@ mod tests {
         let map_provider: std::sync::Arc<dyn MapProvider> = std::sync::Arc::new(
             MapboxAdapter::new(http_client.clone(), String::new())
         );
-        let zap_limiter = Arc::new(RateLimiter::keyed(
-            Quota::per_minute(NonZeroU32::new(10).unwrap()),
-        ));
         let acoustic_limiter = Arc::new(RateLimiter::keyed(
             Quota::per_minute(NonZeroU32::new(5).unwrap()),
         ));
@@ -356,15 +353,7 @@ mod tests {
                 database_url: "postgres://localhost/test".into(),
                 redis_url: "redis://localhost".into(),
                 port: 3000,
-                zap_webhook_secret: "test".into(),
                 blockchain_service_url: None,
-                lnd_rest_url: None,
-                lnd_macaroon_hex: None,
-                lnd_tls_skip_verify: false,
-                lnd_tls_cert_pem: None,
-                nostr_private_key: None,
-                nostr_relays: vec!["wss://nos.lol".into()],
-                zap_rate_limit_per_minute: 10,
                 internal_service_secret: "secret".into(),
                 trust_proxy: false,
                 max_db_connections: 5,
@@ -384,7 +373,6 @@ mod tests {
             circle_hub: Arc::new(CircleHub::new()),
             redis_healthy: Arc::new(AtomicBool::new(false)),
             map_provider,
-            zap_limiter,
             acoustic_limiter,
             event_tx: Arc::new(event_tx_inner),
             redis,
@@ -655,9 +643,6 @@ mod tests {
         let map_provider: std::sync::Arc<dyn MapProvider> = std::sync::Arc::new(
             MapboxAdapter::new(http_client.clone(), String::new())
         );
-        let zap_limiter = Arc::new(RateLimiter::keyed(
-            Quota::per_minute(NonZeroU32::new(10).unwrap()),
-        ));
         let acoustic_limiter = Arc::new(RateLimiter::keyed(
             Quota::per_minute(NonZeroU32::new(5).unwrap()),
         ));
@@ -668,15 +653,7 @@ mod tests {
                 database_url: "postgres://localhost/test".into(),
                 redis_url: bad_url,
                 port: 3000,
-                zap_webhook_secret: "test".into(),
                 blockchain_service_url: None,
-                lnd_rest_url: None,
-                lnd_macaroon_hex: None,
-                lnd_tls_skip_verify: false,
-                lnd_tls_cert_pem: None,
-                nostr_private_key: None,
-                nostr_relays: vec!["wss://nos.lol".into()],
-                zap_rate_limit_per_minute: 10,
                 internal_service_secret: "secret".into(),
                 trust_proxy: false,
                 max_db_connections: 5,
@@ -696,7 +673,6 @@ mod tests {
             circle_hub: Arc::new(CircleHub::new()),
             redis_healthy: Arc::new(AtomicBool::new(false)),
             map_provider,
-            zap_limiter,
             acoustic_limiter,
             event_tx: Arc::new(event_tx_inner),
             redis,
@@ -715,9 +691,9 @@ mod tests {
         // with query string is assembled correctly.
         let state = make_state().await; // uses public_base_url: Some("https://api.sentinelmesh.io")
         let keys = Keys::generate();
-        let canonical = "https://api.sentinelmesh.io/api/zaps/request?foo=bar";
+        let canonical = "https://api.sentinelmesh.io/api/acoustic/signals?foo=bar";
         let event = make_nip98_event(&keys, 0, canonical, "POST");
-        let parts = make_parts("POST", "/api/zaps/request?foo=bar");
+        let parts = make_parts("POST", "/api/acoustic/signals?foo=bar");
         let result = validate_nip98_request(&parts, &state, &event).await;
         assert!(result.is_ok(), "normalised URL must match: {result:?}");
     }
@@ -739,9 +715,6 @@ mod tests {
         let map_provider: std::sync::Arc<dyn MapProvider> = std::sync::Arc::new(
             MapboxAdapter::new(http_client.clone(), String::new())
         );
-        let zap_limiter = Arc::new(RateLimiter::keyed(
-            Quota::per_minute(NonZeroU32::new(10).unwrap()),
-        ));
         let acoustic_limiter = Arc::new(RateLimiter::keyed(
             Quota::per_minute(NonZeroU32::new(5).unwrap()),
         ));
@@ -753,15 +726,7 @@ mod tests {
                 database_url: "postgres://localhost/test".into(),
                 redis_url: "redis://localhost".into(),
                 port: 3000,
-                zap_webhook_secret: "test".into(),
                 blockchain_service_url: None,
-                lnd_rest_url: None,
-                lnd_macaroon_hex: None,
-                lnd_tls_skip_verify: false,
-                lnd_tls_cert_pem: None,
-                nostr_private_key: None,
-                nostr_relays: vec!["wss://nos.lol".into()],
-                zap_rate_limit_per_minute: 10,
                 internal_service_secret: "secret".into(),
                 trust_proxy: false,
                 max_db_connections: 5,
@@ -781,7 +746,6 @@ mod tests {
             circle_hub: Arc::new(CircleHub::new()),
             redis_healthy: Arc::new(AtomicBool::new(false)),
             map_provider,
-            zap_limiter,
             acoustic_limiter,
             event_tx: Arc::new(event_tx_inner),
             redis,
@@ -798,7 +762,7 @@ mod tests {
             .unwrap()
             .into_parts();
         let _ = &mut parts; // suppress unused warning
-        let canonical = "https://api.sentinelmesh.io/api/zaps/request";
+        let canonical = "https://api.sentinelmesh.io/api/acoustic/signals";
         let event = make_nip98_event(&keys, 0, canonical, "POST");
         let result = validate_nip98_request(&parts, &state, &event).await;
         assert!(result.is_ok(), "port :443 must be stripped from Host header: {result:?}");

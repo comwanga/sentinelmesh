@@ -65,7 +65,7 @@ export function SettingsPage() {
           Nostr Identity
         </h2>
         <p style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', margin: '0 0 12px' }}>
-          Your identity is a Nostr key pair generated and stored locally on this device. It is used to sign reports, authenticate with circles, and receive zaps.
+          Your identity is a Nostr key pair generated and stored locally on this device. It is used to sign reports and authenticate with circles.
         </p>
 
         {/* npub */}

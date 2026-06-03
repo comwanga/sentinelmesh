@@ -16,11 +16,11 @@ function makeWrapper(store: ReturnType<typeof makeStore>) {
 }
 
 describe('Sidebar', () => {
-  it('renders all 9 nav item labels', () => {
+  it('renders all 8 nav item labels', () => {
     const s = makeStore()
     render(<Sidebar />, { wrapper: makeWrapper(s) })
     ;['Live Map', 'Alerts', 'Reports', 'Family Circles', 'Routes',
-      'Acoustic Detect', 'Zaps', 'Insights', 'Settings'].forEach(label => {
+      'Acoustic Detect', 'Insights', 'Settings'].forEach(label => {
       expect(screen.getByText(label)).toBeInTheDocument()
     })
   })
