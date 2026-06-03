@@ -61,9 +61,11 @@ _DEFAULT = "FALSE_ALARM"
 _NEGATION_CUES = {"no", "not", "without", "hakuna", "hapana", "si"}
 
 # Cues that mark an event as resolved/over (scanned in the trailing window).
-# "over" is deliberately excluded — it collides with "spread over", "all over".
+# "over" is excluded — it collides with "spread over", "all over". Bare "clear"
+# is excluded — "all clear given" is issued on still-active scenes; only the past
+# participle "cleared" reliably means resolved.
 _RESOLUTION_CUES = {
-    "ended", "contained", "cleared", "clear", "resolved",
+    "ended", "contained", "cleared", "resolved",
     "imeisha", "imezimwa",
 }
 

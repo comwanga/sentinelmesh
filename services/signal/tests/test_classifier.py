@@ -1,5 +1,5 @@
 import pytest
-from nlp.classifier import classify_event
+from nlp.classifier import classify_event, CONFIDENCE_CAP, NEGATION_WINDOW
 
 def test_flood_english():
     result = classify_event("Heavy flooding along Mathare River, residents evacuated")
@@ -39,9 +39,6 @@ def test_result_has_required_fields():
 def test_low_confidence_for_unrelated():
     result = classify_event("Arsenal win the Premier League title")
     assert result["confidence"] < 0.5
-
-
-from nlp.classifier import classify_event, CONFIDENCE_CAP, NEGATION_WINDOW
 
 
 def test_negated_fire_is_false_alarm():
