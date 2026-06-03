@@ -42,7 +42,11 @@ pub async fn run(pool: Arc<PgPool>, config: Arc<Config>) {
     }
 }
 
-async fn poll_confirmations(pool: &PgPool, config: &Config, client: &reqwest::Client) -> Result<()> {
+async fn poll_confirmations(
+    pool: &PgPool,
+    config: &Config,
+    client: &reqwest::Client,
+) -> Result<()> {
     let jobs = sqlx::query_as::<_, AnchoredJob>(
         "SELECT id, source_type, source_id, bitcoin_txid, retry_count FROM publish_jobs WHERE status = 'BITCOIN_ANCHORED' LIMIT 50",
     )
@@ -71,7 +75,11 @@ async fn check_and_confirm(
     // 404 means the txid is unknown to the network — definitive failure, not transient.
     if http_status == reqwest::StatusCode::NOT_FOUND {
         let error_message = format!("txid not found on network (404): {}", job.bitcoin_txid);
-        tracing::error!("job {} txid {} returned 404 — marking FAILED", job.id, job.bitcoin_txid);
+        tracing::error!(
+            "job {} txid {} returned 404 — marking FAILED",
+            job.id,
+            job.bitcoin_txid
+        );
         jobs::mark_failed(pool, job.id, &error_message, job.retry_count).await?;
         return Ok(());
     }
@@ -91,7 +99,10 @@ async fn check_and_confirm(
     let block_height = match resp.status.block_height {
         Some(h) => h,
         None => {
-            tracing::warn!("txid {} confirmed but block_height missing in API response, skipping", job.bitcoin_txid);
+            tracing::warn!(
+                "txid {} confirmed but block_height missing in API response, skipping",
+                job.bitcoin_txid
+            );
             return Ok(());
         }
     };
@@ -101,7 +112,11 @@ async fn check_and_confirm(
         "SAFETY_EVENT" => "safety_events",
         "COMMUNITY_REPORT" => "community_reports",
         other => {
-            tracing::warn!("unknown source_type '{}' for job {}, skipping source table update", other, job.id);
+            tracing::warn!(
+                "unknown source_type '{}' for job {}, skipping source table update",
+                other,
+                job.id
+            );
             return Err(anyhow!("unknown source_type: {}", other));
         }
     };
@@ -122,6 +137,11 @@ async fn check_and_confirm(
     .await?;
     tx.commit().await?;
 
-    tracing::info!("job {} confirmed in block {} (txid: {})", job.id, block_height, job.bitcoin_txid);
+    tracing::info!(
+        "job {} confirmed in block {} (txid: {})",
+        job.id,
+        block_height,
+        job.bitcoin_txid
+    );
     Ok(())
 }

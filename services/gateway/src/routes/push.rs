@@ -1,8 +1,8 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
 use web_push::{
-    ContentEncoding, HyperWebPushClient, SubscriptionInfo, URL_SAFE_NO_PAD,
-    VapidSignatureBuilder, WebPushClient, WebPushMessageBuilder,
+    ContentEncoding, HyperWebPushClient, SubscriptionInfo, VapidSignatureBuilder, WebPushClient,
+    WebPushMessageBuilder, URL_SAFE_NO_PAD,
 };
 
 use crate::{middleware::nostr_auth::NostrAuth, AppState};
@@ -68,18 +68,17 @@ pub async fn broadcast_push(
     body: &str,
     event_id: &str,
 ) {
-    let rows: Vec<(String, String, String)> = match sqlx::query_as(
-        "SELECT endpoint, p256dh, auth FROM push_subscriptions",
-    )
-    .fetch_all(pool)
-    .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!("push broadcast: DB fetch error: {e}");
-            return;
-        }
-    };
+    let rows: Vec<(String, String, String)> =
+        match sqlx::query_as("SELECT endpoint, p256dh, auth FROM push_subscriptions")
+            .fetch_all(pool)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!("push broadcast: DB fetch error: {e}");
+                return;
+            }
+        };
 
     if rows.is_empty() {
         return;
@@ -99,17 +98,14 @@ pub async fn broadcast_push(
         // SubscriptionInfo::new returns SubscriptionInfo directly (infallible)
         let info = SubscriptionInfo::new(endpoint, p256dh, auth);
 
-        let sig_builder = match VapidSignatureBuilder::from_base64(
-            vapid_private_key,
-            URL_SAFE_NO_PAD,
-            &info,
-        ) {
-            Ok(b) => b,
-            Err(e) => {
-                tracing::warn!("push broadcast: VAPID builder error for {endpoint}: {e}");
-                continue;
-            }
-        };
+        let sig_builder =
+            match VapidSignatureBuilder::from_base64(vapid_private_key, URL_SAFE_NO_PAD, &info) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!("push broadcast: VAPID builder error for {endpoint}: {e}");
+                    continue;
+                }
+            };
 
         let signature = match sig_builder.build() {
             Ok(s) => s,

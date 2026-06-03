@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useAppDispatch } from '../store'
 import { circleLoaded } from '../store/circlesSlice'
-import { loadOrCreateKeypair, signAuthEvent } from '../services/nostrService'
+import { signAuthEvent } from '../services/nostrService'
 import type { Circle, CircleMember } from '../../../../shared/types'
 
 const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
@@ -29,8 +29,7 @@ export function useCircles(): void {
 
   useEffect(() => {
     async function load() {
-      const keypair = loadOrCreateKeypair()
-      const authEvent = signAuthEvent(keypair.secretKey)
+      const authEvent = await signAuthEvent()
       const headers = {
         'Content-Type': 'application/json',
         'X-Nostr-Auth': JSON.stringify(authEvent),

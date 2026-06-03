@@ -1,24 +1,24 @@
 mod config;
 mod db;
 mod error;
+mod maps;
 mod middleware;
 mod nudge;
-mod maps;
 mod reports;
 mod routes;
 mod subscribers;
 mod ws;
 
-use std::sync::{atomic::AtomicBool, Arc};
+use axum::http::{HeaderName, Method};
 use axum::{extract::State, http::StatusCode, response::Json, routing::get, Router};
-use tokio::sync::broadcast;
-use tokio::net::TcpListener;
-use tower_http::cors::{Any, CorsLayer};
-use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
-use axum::http::{Method, HeaderName};
-use ws::{circle_hub::CircleHub, hub::WsHub};
 use governor::{DefaultKeyedRateLimiter, Quota, RateLimiter};
 use std::num::NonZeroU32;
+use std::sync::{atomic::AtomicBool, Arc};
+use tokio::net::TcpListener;
+use tokio::sync::broadcast;
+use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
+use tower_http::cors::{Any, CorsLayer};
+use ws::{circle_hub::CircleHub, hub::WsHub};
 
 const ACOUSTIC_RATE_LIMIT_PER_MINUTE: u32 = 5;
 
@@ -51,25 +51,22 @@ async fn main() -> anyhow::Result<()> {
     let circle_hub = Arc::new(CircleHub::new());
     let redis_healthy = Arc::new(AtomicBool::new(false));
 
-    let map_provider: std::sync::Arc<dyn maps::MapProvider> = std::sync::Arc::new(
-        maps::MapboxAdapter::new(
+    let map_provider: std::sync::Arc<dyn maps::MapProvider> =
+        std::sync::Arc::new(maps::MapboxAdapter::new(
             http_client.clone(),
             config.mapbox_token.clone().unwrap_or_default(),
-        )
-    );
+        ));
 
-    let acoustic_limiter: Arc<DefaultKeyedRateLimiter<String>> =
-        Arc::new(RateLimiter::keyed(Quota::per_minute(
-            NonZeroU32::new(ACOUSTIC_RATE_LIMIT_PER_MINUTE).unwrap(),
-        )));
+    let acoustic_limiter: Arc<DefaultKeyedRateLimiter<String>> = Arc::new(RateLimiter::keyed(
+        Quota::per_minute(NonZeroU32::new(ACOUSTIC_RATE_LIMIT_PER_MINUTE).unwrap()),
+    ));
 
     // Capacity 512: allows slow viewport-WS clients up to 512 events of lag
     // before Lagged errors force them into snapshot mode.
     let (event_tx_inner, _) = broadcast::channel::<ws::ViewportEvent>(512);
     let event_tx = Arc::new(event_tx_inner);
 
-    let redis_client = redis::Client::open(config.redis_url.as_str())
-        .expect("invalid REDIS_URL");
+    let redis_client = redis::Client::open(config.redis_url.as_str()).expect("invalid REDIS_URL");
     let redis = redis::aio::ConnectionManager::new(redis_client)
         .await
         .expect("failed to connect to Redis — check REDIS_URL");
@@ -106,7 +103,13 @@ async fn main() -> anyhow::Result<()> {
         let confirm_enabled = config.acoustic_confirm_enabled;
         let tx_synth = event_tx.clone();
         tokio::spawn(async move {
-            subscribers::synthesis_worker::run(pool_synth, synthesis_enabled, confirm_enabled, tx_synth).await;
+            subscribers::synthesis_worker::run(
+                pool_synth,
+                synthesis_enabled,
+                confirm_enabled,
+                tx_synth,
+            )
+            .await;
         });
     }
 
@@ -135,7 +138,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/ws/circles", get(ws::ws_circles_handler))
         .route("/ws/events", get(ws::ws_events_handler))
         .merge(routes::build_router())
-        .layer(GovernorLayer { config: governor_conf })
+        .layer(GovernorLayer {
+            config: governor_conf,
+        })
         .layer(cors)
         .with_state(state);
 
@@ -143,9 +148,12 @@ async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind(&addr).await?;
     tracing::info!("gateway listening on {addr}");
 
-    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     Ok(())
 }
@@ -159,7 +167,9 @@ async fn health() -> (StatusCode, Json<serde_json::Value>) {
 }
 
 async fn health_detailed(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let redis_ok = state.redis_healthy.load(std::sync::atomic::Ordering::Relaxed);
+    let redis_ok = state
+        .redis_healthy
+        .load(std::sync::atomic::Ordering::Relaxed);
     let ts = chrono::Utc::now().to_rfc3339();
     Json(serde_json::json!({ "ok": true, "service": "gateway", "ts": ts, "redis": redis_ok }))
 }

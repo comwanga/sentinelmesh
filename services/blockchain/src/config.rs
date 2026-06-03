@@ -12,7 +12,10 @@ impl BitcoinNetwork {
         match s {
             "mainnet" => Ok(Self::Mainnet),
             "testnet" => Ok(Self::Testnet),
-            other => Err(anyhow!("Invalid BITCOIN_NETWORK {:?}. Must be \"mainnet\" or \"testnet\".", other)),
+            other => Err(anyhow!(
+                "Invalid BITCOIN_NETWORK {:?}. Must be \"mainnet\" or \"testnet\".",
+                other
+            )),
         }
     }
 
@@ -91,7 +94,15 @@ impl Config {
             .parse::<u64>()
             .map_err(|_| anyhow!("POLL_INTERVAL_MS must be a valid integer"))?;
 
-        Ok(Config { port, database_url, nostr_privkey, relay_urls, bitcoin_wif, bitcoin_network, poll_interval_ms })
+        Ok(Config {
+            port,
+            database_url,
+            nostr_privkey,
+            relay_urls,
+            bitcoin_wif,
+            bitcoin_network,
+            poll_interval_ms,
+        })
     }
 }
 

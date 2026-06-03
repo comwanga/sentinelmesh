@@ -59,10 +59,10 @@ pub struct ListReportsParams {
 
 fn tier_score(tier: &str) -> i32 {
     match tier {
-        "TRUSTED"  => 2,
-        "VETERAN"  => 3,
+        "TRUSTED" => 2,
+        "VETERAN" => 3,
         "SENTINEL" => 4,
-        _          => 1,
+        _ => 1,
     }
 }
 
@@ -72,18 +72,23 @@ fn tier_score(tier: &str) -> i32 {
 /// Sybil-resistant consensus — see `reports::consensus`.
 pub fn vote_weight(tier: &str) -> i32 {
     match tier {
-        "TRUSTED"  => 3,
-        "VETERAN"  => 6,
+        "TRUSTED" => 3,
+        "VETERAN" => 6,
         "SENTINEL" => 10,
-        _          => 1, // NEWCOMER
+        _ => 1, // NEWCOMER
     }
 }
 
 fn compute_tier(score: i64) -> &'static str {
-    if score >= 50      { "SENTINEL" }
-    else if score >= 20 { "VETERAN" }
-    else if score >= 5  { "TRUSTED" }
-    else                { "NEWCOMER" }
+    if score >= 50 {
+        "SENTINEL"
+    } else if score >= 20 {
+        "VETERAN"
+    } else if score >= 5 {
+        "TRUSTED"
+    } else {
+        "NEWCOMER"
+    }
 }
 
 pub async fn create_report(pool: &PgPool, input: CreateReportInput) -> Result<Report> {
@@ -99,12 +104,11 @@ pub async fn create_report(pool: &PgPool, input: CreateReportInput) -> Result<Re
     .execute(&mut *tx)
     .await?;
 
-    let tier: String = sqlx::query_scalar(
-        "SELECT reputation_tier FROM users WHERE nostr_pubkey = $1"
-    )
-    .bind(&input.nostr_pubkey)
-    .fetch_one(&mut *tx)
-    .await?;
+    let tier: String =
+        sqlx::query_scalar("SELECT reputation_tier FROM users WHERE nostr_pubkey = $1")
+            .bind(&input.nostr_pubkey)
+            .fetch_one(&mut *tx)
+            .await?;
 
     let initial_score = tier_score(&tier);
 
@@ -114,7 +118,7 @@ pub async fn create_report(pool: &PgPool, input: CreateReportInput) -> Result<Re
             nostr_event_id, reporter_tier, consensus_score, confirmation_count, denial_count,
             status, photo_ipfs_cid, linked_event_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,0,'PENDING',$11,$12)
-         RETURNING *"
+         RETURNING *",
     )
     .bind(&input.report_type)
     .bind(&input.description)
@@ -144,13 +148,12 @@ pub async fn cast_vote(
 ) -> Result<(Report, i32, i32)> {
     let mut tx = pool.begin().await?;
 
-    let report = sqlx::query_as::<_, Report>(
-        "SELECT * FROM community_reports WHERE id = $1 FOR UPDATE"
-    )
-    .bind(report_id)
-    .fetch_optional(&mut *tx)
-    .await?
-    .ok_or_else(|| anyhow::anyhow!("report not found"))?;
+    let report =
+        sqlx::query_as::<_, Report>("SELECT * FROM community_reports WHERE id = $1 FOR UPDATE")
+            .bind(report_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("report not found"))?;
 
     if report.nostr_pubkey == input.voter_pubkey {
         anyhow::bail!("cannot vote on your own report");
@@ -162,18 +165,17 @@ pub async fn cast_vote(
     sqlx::query(
         "INSERT INTO users (nostr_pubkey, last_active)
          VALUES ($1, NOW())
-         ON CONFLICT (nostr_pubkey) DO UPDATE SET last_active = NOW()"
+         ON CONFLICT (nostr_pubkey) DO UPDATE SET last_active = NOW()",
     )
     .bind(&input.voter_pubkey)
     .execute(&mut *tx)
     .await?;
 
-    let voter_tier: String = sqlx::query_scalar(
-        "SELECT reputation_tier FROM users WHERE nostr_pubkey = $1"
-    )
-    .bind(&input.voter_pubkey)
-    .fetch_one(&mut *tx)
-    .await?;
+    let voter_tier: String =
+        sqlx::query_scalar("SELECT reputation_tier FROM users WHERE nostr_pubkey = $1")
+            .bind(&input.voter_pubkey)
+            .fetch_one(&mut *tx)
+            .await?;
 
     // Reputation-weighted vote magnitude. NEWCOMER = 1; earned tiers weigh more.
     let weight = vote_weight(&voter_tier);
@@ -183,31 +185,40 @@ pub async fn cast_vote(
     // refuse to let proximity amplify cheap NEWCOMER keys).
     let nearby = match (input.voter_lat, input.voter_lng) {
         (Some(vlat), Some(vlng)) => {
-            let dist: f64 = sqlx::query_scalar(
-                "SELECT earth_distance(ll_to_earth($1,$2), ll_to_earth($3,$4))"
-            )
-            .bind(vlat).bind(vlng).bind(report.lat).bind(report.lng)
-            .fetch_one(&mut *tx)
-            .await?;
+            let dist: f64 =
+                sqlx::query_scalar("SELECT earth_distance(ll_to_earth($1,$2), ll_to_earth($3,$4))")
+                    .bind(vlat)
+                    .bind(vlng)
+                    .bind(report.lat)
+                    .bind(report.lng)
+                    .fetch_one(&mut *tx)
+                    .await?;
             dist <= 1000.0
         }
         _ => false,
     };
-    let proximity_bonus = if nearby && voter_tier != "NEWCOMER" { 1 } else { 0 };
+    let proximity_bonus = if nearby && voter_tier != "NEWCOMER" {
+        1
+    } else {
+        0
+    };
     let magnitude = weight + proximity_bonus;
 
     let (score_delta, conf_delta, deny_delta) = match input.vote.as_str() {
         "CONFIRM" => (magnitude, 1i32, 0i32),
-        "DENY"    => (-magnitude, 0i32, 1i32),
+        "DENY" => (-magnitude, 0i32, 1i32),
         _ => anyhow::bail!("vote must be CONFIRM or DENY"),
     };
 
     sqlx::query(
         "INSERT INTO report_votes (report_id, voter_pubkey, vote, voter_lat, voter_lng)
-         VALUES ($1, $2, $3, $4, $5)"
+         VALUES ($1, $2, $3, $4, $5)",
     )
-    .bind(report_id).bind(&input.voter_pubkey).bind(&input.vote)
-    .bind(input.voter_lat).bind(input.voter_lng)
+    .bind(report_id)
+    .bind(&input.voter_pubkey)
+    .bind(&input.vote)
+    .bind(input.voter_lat)
+    .bind(input.voter_lng)
     .execute(&mut *tx)
     .await?;
 
@@ -218,9 +229,12 @@ pub async fn cast_vote(
              denial_count       = denial_count + $4,
              updated_at         = NOW()
          WHERE id = $1
-         RETURNING *"
+         RETURNING *",
     )
-    .bind(report_id).bind(score_delta).bind(conf_delta).bind(deny_delta)
+    .bind(report_id)
+    .bind(score_delta)
+    .bind(conf_delta)
+    .bind(deny_delta)
     .fetch_one(&mut *tx)
     .await?;
 
@@ -229,7 +243,7 @@ pub async fn cast_vote(
         "SELECT COUNT(DISTINCT rv.voter_pubkey)
          FROM report_votes rv
          JOIN users u ON u.nostr_pubkey = rv.voter_pubkey
-         WHERE rv.report_id = $1 AND rv.vote = 'CONFIRM' AND u.reputation_tier <> 'NEWCOMER'"
+         WHERE rv.report_id = $1 AND rv.vote = 'CONFIRM' AND u.reputation_tier <> 'NEWCOMER'",
     )
     .bind(report_id)
     .fetch_one(&mut *tx)
@@ -247,11 +261,11 @@ pub async fn apply_status_transition(
 ) -> Result<()> {
     let mut tx = pool.begin().await?;
 
-    sqlx::query(
-        "UPDATE community_reports SET status = $2, updated_at = NOW() WHERE id = $1"
-    )
-    .bind(report_id).bind(new_status)
-    .execute(&mut *tx).await?;
+    sqlx::query("UPDATE community_reports SET status = $2, updated_at = NOW() WHERE id = $1")
+        .bind(report_id)
+        .bind(new_status)
+        .execute(&mut *tx)
+        .await?;
 
     if new_status == "VERIFIED" {
         let new_score: i64 = sqlx::query_scalar(
@@ -259,18 +273,18 @@ pub async fn apply_status_transition(
              SET accurate_reports = accurate_reports + 1,
                  reputation_score = reputation_score + 10
              WHERE nostr_pubkey = $1
-             RETURNING reputation_score"
+             RETURNING reputation_score",
         )
         .bind(reporter_pubkey)
         .fetch_one(&mut *tx)
         .await?;
 
         let new_tier = compute_tier(new_score);
-        sqlx::query(
-            "UPDATE users SET reputation_tier = $2 WHERE nostr_pubkey = $1"
-        )
-        .bind(reporter_pubkey).bind(new_tier)
-        .execute(&mut *tx).await?;
+        sqlx::query("UPDATE users SET reputation_tier = $2 WHERE nostr_pubkey = $1")
+            .bind(reporter_pubkey)
+            .bind(new_tier)
+            .execute(&mut *tx)
+            .await?;
     }
 
     tx.commit().await?;
@@ -289,7 +303,7 @@ pub async fn list_reports(pool: &PgPool, params: ListReportsParams) -> Result<Ve
            AND ($5::text IS NULL OR reporter_tier = $5)
            AND ($6::uuid IS NULL OR linked_event_id = $6)
          ORDER BY created_at DESC
-         LIMIT $7"
+         LIMIT $7",
     )
     .bind(params.lat)
     .bind(params.lng)

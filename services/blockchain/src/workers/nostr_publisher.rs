@@ -55,11 +55,11 @@ pub async fn publish_nostr_events(
         .tags([
             Tag::identifier(format!("sentinelmesh:{}", source_id_str)),
             Tag::custom(TagKind::custom("source_type"), [source_type]),
-            Tag::custom(TagKind::custom("source_id"),   [source_id_str.as_str()]),
-            Tag::custom(TagKind::custom("severity"),    [source.severity.as_str()]),
-            Tag::custom(TagKind::custom("event_type"),  [source.event_type.as_str()]),
-            Tag::custom(TagKind::custom("lat"),         [lat_str.as_str()]),
-            Tag::custom(TagKind::custom("lng"),         [lng_str.as_str()]),
+            Tag::custom(TagKind::custom("source_id"), [source_id_str.as_str()]),
+            Tag::custom(TagKind::custom("severity"), [source.severity.as_str()]),
+            Tag::custom(TagKind::custom("event_type"), [source.event_type.as_str()]),
+            Tag::custom(TagKind::custom("lat"), [lat_str.as_str()]),
+            Tag::custom(TagKind::custom("lng"), [lng_str.as_str()]),
         ])
         .custom_created_at(now)
         .sign_with_keys(&keys)?;
@@ -76,11 +76,22 @@ pub async fn publish_nostr_events(
     client.connect().await; // returns () in nostr-sdk 0.37
 
     // Publish, then disconnect unconditionally regardless of outcome.
-    let result = send_events(&client, relay_urls, kind1, kind30078, &kind1_id, &kind30078_id).await;
+    let result = send_events(
+        &client,
+        relay_urls,
+        kind1,
+        kind30078,
+        &kind1_id,
+        &kind30078_id,
+    )
+    .await;
     client.disconnect().await.ok();
     result?;
 
-    Ok(PublishResult { kind1_id, kind30078_id })
+    Ok(PublishResult {
+        kind1_id,
+        kind30078_id,
+    })
 }
 
 async fn send_events(
@@ -93,12 +104,18 @@ async fn send_events(
 ) -> Result<()> {
     let kind1_ok = send_event_per_relay(client, relay_urls, kind1, kind1_id).await?;
     if !kind1_ok {
-        return Err(anyhow!("all relays timed out or failed for kind 1 event ({})", kind1_id));
+        return Err(anyhow!(
+            "all relays timed out or failed for kind 1 event ({})",
+            kind1_id
+        ));
     }
 
     let kind30078_ok = send_event_per_relay(client, relay_urls, kind30078, kind30078_id).await?;
     if !kind30078_ok {
-        return Err(anyhow!("all relays timed out or failed for kind 30078 event ({})", kind30078_id));
+        return Err(anyhow!(
+            "all relays timed out or failed for kind 30078 event ({})",
+            kind30078_id
+        ));
     }
 
     Ok(())
@@ -112,43 +129,50 @@ async fn send_event_per_relay(
     event: nostr_sdk::Event,
     event_id: &str,
 ) -> Result<bool> {
-    let futs: Vec<_> = relay_urls.iter().map(|url| {
-        let client = client.clone();
-        let url = url.clone();
-        let event = event.clone();
-        let event_id = event_id.to_string();
-        async move {
-            let fut = client.send_event_to([url.as_str()], event);
-            match timeout(RELAY_TIMEOUT, fut).await {
-                Ok(Ok(output)) if !output.success.is_empty() => {
-                    tracing::info!("event {} published to relay {}", event_id, url);
-                    true
-                }
-                Ok(Ok(output)) => {
-                    let reasons = relay_failure_summary(&output.failed);
-                    tracing::warn!("relay {} rejected event {}: {}", url, event_id, reasons);
-                    false
-                }
-                Ok(Err(e)) => {
-                    tracing::warn!("relay {} error for event {}: {}", url, event_id, e);
-                    false
-                }
-                Err(_elapsed) => {
-                    tracing::warn!(
-                        "relay {} timed out after {}s for event {}",
-                        url, RELAY_TIMEOUT.as_secs(), event_id
-                    );
-                    false
+    let futs: Vec<_> = relay_urls
+        .iter()
+        .map(|url| {
+            let client = client.clone();
+            let url = url.clone();
+            let event = event.clone();
+            let event_id = event_id.to_string();
+            async move {
+                let fut = client.send_event_to([url.as_str()], event);
+                match timeout(RELAY_TIMEOUT, fut).await {
+                    Ok(Ok(output)) if !output.success.is_empty() => {
+                        tracing::info!("event {} published to relay {}", event_id, url);
+                        true
+                    }
+                    Ok(Ok(output)) => {
+                        let reasons = relay_failure_summary(&output.failed);
+                        tracing::warn!("relay {} rejected event {}: {}", url, event_id, reasons);
+                        false
+                    }
+                    Ok(Err(e)) => {
+                        tracing::warn!("relay {} error for event {}: {}", url, event_id, e);
+                        false
+                    }
+                    Err(_elapsed) => {
+                        tracing::warn!(
+                            "relay {} timed out after {}s for event {}",
+                            url,
+                            RELAY_TIMEOUT.as_secs(),
+                            event_id
+                        );
+                        false
+                    }
                 }
             }
-        }
-    }).collect();
+        })
+        .collect();
 
     let results = join_all(futs).await;
     Ok(results.into_iter().any(|ok| ok))
 }
 
-fn relay_failure_summary(failed: &std::collections::HashMap<nostr_sdk::RelayUrl, Option<String>>) -> String {
+fn relay_failure_summary(
+    failed: &std::collections::HashMap<nostr_sdk::RelayUrl, Option<String>>,
+) -> String {
     if failed.is_empty() {
         return "no relay error details available".into();
     }

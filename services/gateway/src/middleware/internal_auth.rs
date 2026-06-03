@@ -21,7 +21,7 @@ impl IntoResponse for InternalAuthRejection {
     fn into_response(self) -> Response {
         let msg = match &self {
             Self::MissingHeader => "missing Authorization header",
-            Self::InvalidToken  => "invalid bearer token",
+            Self::InvalidToken => "invalid bearer token",
         };
         (
             StatusCode::UNAUTHORIZED,
@@ -44,13 +44,15 @@ impl FromRequestParts<AppState> for InternalServiceAuth {
             .get("authorization")
             .ok_or(InternalAuthRejection::MissingHeader)?;
 
-        let raw = header.to_str().map_err(|_| InternalAuthRejection::InvalidToken)?;
+        let raw = header
+            .to_str()
+            .map_err(|_| InternalAuthRejection::InvalidToken)?;
         let token = raw
             .strip_prefix("Bearer ")
             .ok_or(InternalAuthRejection::InvalidToken)?;
 
         let expected = state.config.internal_service_secret.as_bytes();
-        let provided  = token.as_bytes();
+        let provided = token.as_bytes();
 
         // Constant-time comparison to prevent timing attacks
         let ok: bool = if expected.len() == provided.len() {
@@ -70,21 +72,24 @@ impl FromRequestParts<AppState> for InternalServiceAuth {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::Body, http::Request, routing::post, Router};
     use std::sync::{atomic::AtomicBool, Arc};
-    use axum::{body::Body, extract::State, http::Request, routing::post, Router};
     use tower::ServiceExt;
 
     async fn make_state(secret: &str) -> AppState {
-        use crate::{config::Config, maps::{MapboxAdapter, MapProvider}, ws::{hub::WsHub, circle_hub::CircleHub}};
+        use crate::{
+            config::Config,
+            maps::{MapProvider, MapboxAdapter},
+            ws::{circle_hub::CircleHub, hub::WsHub},
+        };
         use governor::{Quota, RateLimiter};
         use std::num::NonZeroU32;
         let http_client = reqwest::Client::new();
-        let map_provider: Arc<dyn MapProvider> = Arc::new(
-            MapboxAdapter::new(http_client.clone(), String::new())
-        );
-        let acoustic_limiter = Arc::new(RateLimiter::keyed(
-            Quota::per_minute(NonZeroU32::new(5).unwrap()),
-        ));
+        let map_provider: Arc<dyn MapProvider> =
+            Arc::new(MapboxAdapter::new(http_client.clone(), String::new()));
+        let acoustic_limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
+            NonZeroU32::new(5).unwrap(),
+        )));
         let (event_tx_inner, _) = tokio::sync::broadcast::channel::<crate::ws::ViewportEvent>(1);
         let redis_client = redis::Client::open("redis://localhost").unwrap();
         let redis = redis::aio::ConnectionManager::new(redis_client)

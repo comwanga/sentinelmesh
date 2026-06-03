@@ -1,4 +1,8 @@
-use axum::{http::StatusCode, response::{IntoResponse, Response}, Json};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 
 #[derive(thiserror::Error, Debug)]
 pub enum AppError {
@@ -6,6 +10,9 @@ pub enum AppError {
     NotFound,
     #[error("{0}")]
     BadRequest(String),
+    // Kept for future authed endpoints; its only constructor (the zap webhook) was
+    // removed with the Lightning subsystem.
+    #[allow(dead_code)]
     #[error("unauthorized")]
     Unauthorized,
     #[error("forbidden")]
@@ -19,12 +26,12 @@ pub enum AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, code, retryable) = match &self {
-            AppError::NotFound      => (StatusCode::NOT_FOUND, "NOT_FOUND", false),
+            AppError::NotFound => (StatusCode::NOT_FOUND, "NOT_FOUND", false),
             AppError::BadRequest(_) => (StatusCode::BAD_REQUEST, "BAD_REQUEST", false),
-            AppError::Unauthorized  => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", false),
-            AppError::Forbidden     => (StatusCode::FORBIDDEN, "FORBIDDEN", false),
-            AppError::RateLimited   => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED", true),
-            AppError::Internal(e)   => {
+            AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", false),
+            AppError::Forbidden => (StatusCode::FORBIDDEN, "FORBIDDEN", false),
+            AppError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED", true),
+            AppError::Internal(e) => {
                 tracing::error!("internal error: {e:#}");
                 (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", true)
             }

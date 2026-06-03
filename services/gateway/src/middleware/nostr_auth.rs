@@ -1,10 +1,10 @@
+use crate::AppState;
 use axum::{
     extract::{FromRef, FromRequestParts},
     http::{request::Parts, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
-use crate::AppState;
 
 // ── Public extractor ────────────────────────────────────────────────────────
 
@@ -17,8 +17,8 @@ pub struct NostrAuth {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ValidatedNostrAuth {
-    pub pubkey:     String,
-    pub event_id:   String,
+    pub pubkey: String,
+    pub event_id: String,
     pub created_at: i64,
 }
 
@@ -47,21 +47,21 @@ pub enum AuthError {
 impl AuthError {
     fn code(&self) -> &'static str {
         match self {
-            Self::MissingHeader      => "AUTH_MISSING_HEADER",
-            Self::InvalidBase64      => "AUTH_INVALID_BASE64",
-            Self::InvalidEventJson   => "AUTH_INVALID_EVENT_JSON",
-            Self::InvalidKind        => "AUTH_INVALID_KIND",
-            Self::InvalidCreatedAt   => "AUTH_INVALID_CREATED_AT",
-            Self::TimestampExpired   => "AUTH_TIMESTAMP_EXPIRED",
-            Self::InvalidSignature   => "AUTH_INVALID_SIGNATURE",
-            Self::MissingUrlTag      => "AUTH_MISSING_URL_TAG",
-            Self::DuplicateUrlTag    => "AUTH_DUPLICATE_URL_TAG",
-            Self::MissingMethodTag   => "AUTH_MISSING_METHOD_TAG",
+            Self::MissingHeader => "AUTH_MISSING_HEADER",
+            Self::InvalidBase64 => "AUTH_INVALID_BASE64",
+            Self::InvalidEventJson => "AUTH_INVALID_EVENT_JSON",
+            Self::InvalidKind => "AUTH_INVALID_KIND",
+            Self::InvalidCreatedAt => "AUTH_INVALID_CREATED_AT",
+            Self::TimestampExpired => "AUTH_TIMESTAMP_EXPIRED",
+            Self::InvalidSignature => "AUTH_INVALID_SIGNATURE",
+            Self::MissingUrlTag => "AUTH_MISSING_URL_TAG",
+            Self::DuplicateUrlTag => "AUTH_DUPLICATE_URL_TAG",
+            Self::MissingMethodTag => "AUTH_MISSING_METHOD_TAG",
             Self::DuplicateMethodTag => "AUTH_DUPLICATE_METHOD_TAG",
             Self::UrlMismatch { .. } => "AUTH_URL_MISMATCH",
             Self::MethodMismatch { .. } => "AUTH_METHOD_MISMATCH",
-            Self::ReplayDetected     => "AUTH_REPLAY_DETECTED",
-            Self::RedisUnavailable   => "SERVICE_UNAVAILABLE",
+            Self::ReplayDetected => "AUTH_REPLAY_DETECTED",
+            Self::RedisUnavailable => "SERVICE_UNAVAILABLE",
         }
     }
 }
@@ -93,14 +93,13 @@ where
 {
     type Rejection = AuthError;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        state: &S,
-    ) -> Result<Self, AuthError> {
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, AuthError> {
         let state = AppState::from_ref(state);
         let event = extract_auth_event(parts)?;
-        let auth  = validate_nip98_request(parts, &state, &event).await?;
-        Ok(NostrAuth { pubkey: auth.pubkey })
+        let auth = validate_nip98_request(parts, &state, &event).await?;
+        Ok(NostrAuth {
+            pubkey: auth.pubkey,
+        })
     }
 }
 
@@ -125,7 +124,9 @@ fn extract_auth_event(parts: &Parts) -> Result<nostr_sdk::Event, AuthError> {
 }
 
 fn tag_values(event: &nostr_sdk::Event, name: &str) -> Vec<String> {
-    event.tags.iter()
+    event
+        .tags
+        .iter()
         .filter_map(|t| {
             let v = t.as_slice();
             if v.first().map(String::as_str) == Some(name) {
@@ -138,7 +139,9 @@ fn tag_values(event: &nostr_sdk::Event, name: &str) -> Vec<String> {
 }
 
 fn canonical_url(parts: &Parts, config: &crate::config::Config) -> String {
-    let path_and_query = parts.uri.path_and_query()
+    let path_and_query = parts
+        .uri
+        .path_and_query()
         .map(|pq| pq.as_str())
         .unwrap_or("/");
 
@@ -147,28 +150,35 @@ fn canonical_url(parts: &Parts, config: &crate::config::Config) -> String {
     }
 
     let (scheme, host) = if config.trust_proxy {
-        let scheme = parts.headers
+        let scheme = parts
+            .headers
             .get("x-forwarded-proto")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("https")
             .to_lowercase();
-        let host_raw = parts.headers
+        let host_raw = parts
+            .headers
             .get("x-forwarded-host")
             .or_else(|| parts.headers.get("host"))
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
         if host_raw.is_empty() {
-            tracing::warn!("NIP-98 canonical URL: no X-Forwarded-Host or Host header — auth will fail");
+            tracing::warn!(
+                "NIP-98 canonical URL: no X-Forwarded-Host or Host header — auth will fail"
+            );
         }
         let host = host_raw.to_lowercase();
         (scheme, host)
     } else {
-        let host_raw = parts.headers
+        let host_raw = parts
+            .headers
             .get("host")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
         if host_raw.is_empty() {
-            tracing::warn!("NIP-98 canonical URL: no Host header and PUBLIC_BASE_URL not set — auth will fail");
+            tracing::warn!(
+                "NIP-98 canonical URL: no Host header and PUBLIC_BASE_URL not set — auth will fail"
+            );
         }
         let host = host_raw.to_lowercase();
         ("https".to_string(), host)
@@ -193,8 +203,8 @@ pub async fn validate_nip98_request(
     }
 
     // Step 2: Timestamp parse — guard against u64 overflow into i64
-    let created_at = i64::try_from(event.created_at.as_u64())
-        .map_err(|_| AuthError::InvalidCreatedAt)?;
+    let created_at =
+        i64::try_from(event.created_at.as_u64()).map_err(|_| AuthError::InvalidCreatedAt)?;
 
     // Step 3: Timestamp window
     if (chrono::Utc::now().timestamp() - created_at).abs() > 60 {
@@ -330,18 +340,20 @@ mod tests {
     async fn make_state() -> AppState {
         use crate::{
             config::Config,
-            maps::{MapboxAdapter, MapProvider},
-            ws::{hub::WsHub, circle_hub::CircleHub},
+            maps::{MapProvider, MapboxAdapter},
+            ws::{circle_hub::CircleHub, hub::WsHub},
         };
         use governor::{Quota, RateLimiter};
-        use std::{num::NonZeroU32, sync::{atomic::AtomicBool, Arc}};
+        use std::{
+            num::NonZeroU32,
+            sync::{atomic::AtomicBool, Arc},
+        };
         let http_client = reqwest::Client::new();
-        let map_provider: std::sync::Arc<dyn MapProvider> = std::sync::Arc::new(
-            MapboxAdapter::new(http_client.clone(), String::new())
-        );
-        let acoustic_limiter = Arc::new(RateLimiter::keyed(
-            Quota::per_minute(NonZeroU32::new(5).unwrap()),
-        ));
+        let map_provider: std::sync::Arc<dyn MapProvider> =
+            std::sync::Arc::new(MapboxAdapter::new(http_client.clone(), String::new()));
+        let acoustic_limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
+            NonZeroU32::new(5).unwrap(),
+        )));
         let (event_tx_inner, _) = tokio::sync::broadcast::channel::<crate::ws::ViewportEvent>(1);
         let redis_client = redis::Client::open("redis://localhost").unwrap();
         let redis = redis::aio::ConnectionManager::new(redis_client)
@@ -396,39 +408,67 @@ mod tests {
             AuthError::DuplicateUrlTag,
             AuthError::MissingMethodTag,
             AuthError::DuplicateMethodTag,
-            AuthError::UrlMismatch { expected: "a".into(), got: "b".into() },
-            AuthError::MethodMismatch { expected: "POST".into(), got: "GET".into() },
+            AuthError::UrlMismatch {
+                expected: "a".into(),
+                got: "b".into(),
+            },
+            AuthError::MethodMismatch {
+                expected: "POST".into(),
+                got: "GET".into(),
+            },
             AuthError::ReplayDetected,
         ] {
             let resp = err.into_response();
-            assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "expected 401 for {resp:?}");
+            assert_eq!(
+                resp.status(),
+                StatusCode::UNAUTHORIZED,
+                "expected 401 for {resp:?}"
+            );
         }
     }
 
     #[tokio::test]
     async fn auth_error_body_has_code_and_retryable_false() {
         let cases = [
-            (AuthError::MissingHeader,      "AUTH_MISSING_HEADER"),
-            (AuthError::InvalidBase64,      "AUTH_INVALID_BASE64"),
-            (AuthError::InvalidEventJson,   "AUTH_INVALID_EVENT_JSON"),
-            (AuthError::InvalidKind,        "AUTH_INVALID_KIND"),
-            (AuthError::InvalidCreatedAt,   "AUTH_INVALID_CREATED_AT"),
-            (AuthError::TimestampExpired,   "AUTH_TIMESTAMP_EXPIRED"),
-            (AuthError::InvalidSignature,   "AUTH_INVALID_SIGNATURE"),
-            (AuthError::MissingUrlTag,      "AUTH_MISSING_URL_TAG"),
-            (AuthError::DuplicateUrlTag,    "AUTH_DUPLICATE_URL_TAG"),
-            (AuthError::MissingMethodTag,   "AUTH_MISSING_METHOD_TAG"),
+            (AuthError::MissingHeader, "AUTH_MISSING_HEADER"),
+            (AuthError::InvalidBase64, "AUTH_INVALID_BASE64"),
+            (AuthError::InvalidEventJson, "AUTH_INVALID_EVENT_JSON"),
+            (AuthError::InvalidKind, "AUTH_INVALID_KIND"),
+            (AuthError::InvalidCreatedAt, "AUTH_INVALID_CREATED_AT"),
+            (AuthError::TimestampExpired, "AUTH_TIMESTAMP_EXPIRED"),
+            (AuthError::InvalidSignature, "AUTH_INVALID_SIGNATURE"),
+            (AuthError::MissingUrlTag, "AUTH_MISSING_URL_TAG"),
+            (AuthError::DuplicateUrlTag, "AUTH_DUPLICATE_URL_TAG"),
+            (AuthError::MissingMethodTag, "AUTH_MISSING_METHOD_TAG"),
             (AuthError::DuplicateMethodTag, "AUTH_DUPLICATE_METHOD_TAG"),
-            (AuthError::UrlMismatch { expected: "a".into(), got: "b".into() }, "AUTH_URL_MISMATCH"),
-            (AuthError::MethodMismatch { expected: "POST".into(), got: "GET".into() }, "AUTH_METHOD_MISMATCH"),
-            (AuthError::ReplayDetected,     "AUTH_REPLAY_DETECTED"),
+            (
+                AuthError::UrlMismatch {
+                    expected: "a".into(),
+                    got: "b".into(),
+                },
+                "AUTH_URL_MISMATCH",
+            ),
+            (
+                AuthError::MethodMismatch {
+                    expected: "POST".into(),
+                    got: "GET".into(),
+                },
+                "AUTH_METHOD_MISMATCH",
+            ),
+            (AuthError::ReplayDetected, "AUTH_REPLAY_DETECTED"),
         ];
         for (err, expected_code) in cases {
             let resp = err.into_response();
             let body = to_bytes(resp.into_body(), 1024).await.unwrap();
             let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-            assert_eq!(json["code"], expected_code, "wrong code for {expected_code}");
-            assert_eq!(json["retryable"], false, "wrong retryable for {expected_code}");
+            assert_eq!(
+                json["code"], expected_code,
+                "wrong code for {expected_code}"
+            );
+            assert_eq!(
+                json["retryable"], false,
+                "wrong retryable for {expected_code}"
+            );
         }
     }
 
@@ -463,7 +503,9 @@ mod tests {
         let keys = Keys::generate();
         let event = make_nip98_event(&keys, -120, &format!("{BASE}{ROUTE}"), "POST");
         let parts = make_parts("POST", ROUTE);
-        let err = validate_nip98_request(&parts, &state, &event).await.unwrap_err();
+        let err = validate_nip98_request(&parts, &state, &event)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AuthError::TimestampExpired), "got {err:?}");
     }
 
@@ -482,7 +524,9 @@ mod tests {
             .sign_with_keys(&keys)
             .unwrap();
         let parts = make_parts("POST", ROUTE);
-        let err = validate_nip98_request(&parts, &state, &event).await.unwrap_err();
+        let err = validate_nip98_request(&parts, &state, &event)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AuthError::InvalidCreatedAt), "got {err:?}");
     }
 
@@ -500,7 +544,9 @@ mod tests {
             .sign_with_keys(&keys)
             .unwrap();
         let parts = make_parts("POST", ROUTE);
-        let err = validate_nip98_request(&parts, &state, &event).await.unwrap_err();
+        let err = validate_nip98_request(&parts, &state, &event)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AuthError::InvalidKind), "got {err:?}");
     }
 
@@ -515,7 +561,9 @@ mod tests {
             .sign_with_keys(&keys)
             .unwrap();
         let parts = make_parts("POST", ROUTE);
-        let err = validate_nip98_request(&parts, &state, &event).await.unwrap_err();
+        let err = validate_nip98_request(&parts, &state, &event)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AuthError::MissingUrlTag), "got {err:?}");
     }
 
@@ -530,7 +578,9 @@ mod tests {
             .sign_with_keys(&keys)
             .unwrap();
         let parts = make_parts("POST", ROUTE);
-        let err = validate_nip98_request(&parts, &state, &event).await.unwrap_err();
+        let err = validate_nip98_request(&parts, &state, &event)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AuthError::MissingMethodTag), "got {err:?}");
     }
 
@@ -549,7 +599,9 @@ mod tests {
             .sign_with_keys(&keys)
             .unwrap();
         let parts = make_parts("POST", ROUTE);
-        let err = validate_nip98_request(&parts, &state, &event).await.unwrap_err();
+        let err = validate_nip98_request(&parts, &state, &event)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AuthError::DuplicateUrlTag), "got {err:?}");
     }
 
@@ -568,7 +620,9 @@ mod tests {
             .sign_with_keys(&keys)
             .unwrap();
         let parts = make_parts("POST", ROUTE);
-        let err = validate_nip98_request(&parts, &state, &event).await.unwrap_err();
+        let err = validate_nip98_request(&parts, &state, &event)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AuthError::DuplicateMethodTag), "got {err:?}");
     }
 
@@ -578,7 +632,9 @@ mod tests {
         let keys = Keys::generate();
         let event = make_nip98_event(&keys, 0, &format!("{BASE}/api/other"), "POST");
         let parts = make_parts("POST", ROUTE);
-        let err = validate_nip98_request(&parts, &state, &event).await.unwrap_err();
+        let err = validate_nip98_request(&parts, &state, &event)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AuthError::UrlMismatch { .. }), "got {err:?}");
     }
 
@@ -588,8 +644,13 @@ mod tests {
         let keys = Keys::generate();
         let event = make_nip98_event(&keys, 0, &format!("{BASE}{ROUTE}"), "GET");
         let parts = make_parts("POST", ROUTE);
-        let err = validate_nip98_request(&parts, &state, &event).await.unwrap_err();
-        assert!(matches!(err, AuthError::MethodMismatch { .. }), "got {err:?}");
+        let err = validate_nip98_request(&parts, &state, &event)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, AuthError::MethodMismatch { .. }),
+            "got {err:?}"
+        );
     }
 
     #[tokio::test]
@@ -598,8 +659,12 @@ mod tests {
         let keys = Keys::generate();
         let event = make_nip98_event(&keys, 0, &format!("{BASE}{ROUTE}"), "POST");
         let parts = make_parts("POST", ROUTE);
-        validate_nip98_request(&parts, &state, &event).await.expect("first request must pass");
-        let err = validate_nip98_request(&parts, &state, &event).await.unwrap_err();
+        validate_nip98_request(&parts, &state, &event)
+            .await
+            .expect("first request must pass");
+        let err = validate_nip98_request(&parts, &state, &event)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AuthError::ReplayDetected), "got {err:?}");
     }
 
@@ -610,7 +675,9 @@ mod tests {
         // Signed for /api/other, submitted to ROUTE — caught by URL check before replay guard
         let event = make_nip98_event(&keys, 0, &format!("{BASE}/api/other"), "POST");
         let parts = make_parts("POST", ROUTE);
-        let err = validate_nip98_request(&parts, &state, &event).await.unwrap_err();
+        let err = validate_nip98_request(&parts, &state, &event)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AuthError::UrlMismatch { .. }), "got {err:?}");
     }
 
@@ -618,11 +685,14 @@ mod tests {
     async fn redis_unavailable_returns_503() {
         use crate::{
             config::Config,
-            maps::{MapboxAdapter, MapProvider},
-            ws::{hub::WsHub, circle_hub::CircleHub},
+            maps::{MapProvider, MapboxAdapter},
+            ws::{circle_hub::CircleHub, hub::WsHub},
         };
         use governor::{Quota, RateLimiter};
-        use std::{num::NonZeroU32, sync::{atomic::AtomicBool, Arc}};
+        use std::{
+            num::NonZeroU32,
+            sync::{atomic::AtomicBool, Arc},
+        };
 
         // TCP listener that accepts then immediately drops connections
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -641,12 +711,11 @@ mod tests {
         };
 
         let http_client = reqwest::Client::new();
-        let map_provider: std::sync::Arc<dyn MapProvider> = std::sync::Arc::new(
-            MapboxAdapter::new(http_client.clone(), String::new())
-        );
-        let acoustic_limiter = Arc::new(RateLimiter::keyed(
-            Quota::per_minute(NonZeroU32::new(5).unwrap()),
-        ));
+        let map_provider: std::sync::Arc<dyn MapProvider> =
+            std::sync::Arc::new(MapboxAdapter::new(http_client.clone(), String::new()));
+        let acoustic_limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
+            NonZeroU32::new(5).unwrap(),
+        )));
         let (event_tx_inner, _) = tokio::sync::broadcast::channel::<crate::ws::ViewportEvent>(1);
         let state = AppState {
             db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
@@ -683,7 +752,9 @@ mod tests {
         let keys = Keys::generate();
         let event = make_nip98_event(&keys, 0, &format!("{BASE}{ROUTE}"), "POST");
         let parts = make_parts("POST", ROUTE);
-        let err = validate_nip98_request(&parts, &state, &event).await.unwrap_err();
+        let err = validate_nip98_request(&parts, &state, &event)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AuthError::RedisUnavailable), "got {err:?}");
     }
 
@@ -704,22 +775,25 @@ mod tests {
     async fn canonical_url_host_header_port_stripping() {
         use crate::{
             config::Config,
-            maps::{MapboxAdapter, MapProvider},
-            ws::{hub::WsHub, circle_hub::CircleHub},
+            maps::{MapProvider, MapboxAdapter},
+            ws::{circle_hub::CircleHub, hub::WsHub},
         };
         use governor::{Quota, RateLimiter};
-        use std::{num::NonZeroU32, sync::{atomic::AtomicBool, Arc}};
+        use std::{
+            num::NonZeroU32,
+            sync::{atomic::AtomicBool, Arc},
+        };
 
         let redis_client = redis::Client::open("redis://localhost").unwrap();
-        let redis = redis::aio::ConnectionManager::new(redis_client).await
+        let redis = redis::aio::ConnectionManager::new(redis_client)
+            .await
             .expect("Redis required");
         let http_client = reqwest::Client::new();
-        let map_provider: std::sync::Arc<dyn MapProvider> = std::sync::Arc::new(
-            MapboxAdapter::new(http_client.clone(), String::new())
-        );
-        let acoustic_limiter = Arc::new(RateLimiter::keyed(
-            Quota::per_minute(NonZeroU32::new(5).unwrap()),
-        ));
+        let map_provider: std::sync::Arc<dyn MapProvider> =
+            std::sync::Arc::new(MapboxAdapter::new(http_client.clone(), String::new()));
+        let acoustic_limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
+            NonZeroU32::new(5).unwrap(),
+        )));
         let (event_tx_inner, _) = tokio::sync::broadcast::channel::<crate::ws::ViewportEvent>(1);
         // No public_base_url — exercises the Host-header fallback
         let state = AppState {
@@ -768,7 +842,10 @@ mod tests {
         let canonical = "https://api.sentinelmesh.io/api/acoustic/signals";
         let event = make_nip98_event(&keys, 0, canonical, "POST");
         let result = validate_nip98_request(&parts, &state, &event).await;
-        assert!(result.is_ok(), "port :443 must be stripped from Host header: {result:?}");
+        assert!(
+            result.is_ok(),
+            "port :443 must be stripped from Host header: {result:?}"
+        );
     }
 
     #[tokio::test]
@@ -779,12 +856,15 @@ mod tests {
         let keys = Keys::generate();
         let event = make_nip98_event(&keys, 0, &format!("{BASE}{ROUTE}"), "POST");
         let parts = make_parts("POST", ROUTE);
-        validate_nip98_request(&parts, &state, &event).await.expect("first ok");
+        validate_nip98_request(&parts, &state, &event)
+            .await
+            .expect("first ok");
 
         // Different keys → different event id → accepted (simulates post-TTL acceptance)
         let keys2 = Keys::generate();
         let event2 = make_nip98_event(&keys2, 0, &format!("{BASE}{ROUTE}"), "POST");
-        validate_nip98_request(&parts, &state, &event2).await
+        validate_nip98_request(&parts, &state, &event2)
+            .await
             .expect("different event id must be accepted");
     }
 }

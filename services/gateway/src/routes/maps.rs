@@ -1,3 +1,4 @@
+use crate::AppState;
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -6,7 +7,6 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use crate::AppState;
 
 #[derive(Deserialize)]
 pub struct SearchParams {
@@ -35,8 +35,8 @@ struct SearchResponse {
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/search",  get(search_handler))
-        .route("/route",   get(route_handler))
+        .route("/search", get(search_handler))
+        .route("/route", get(route_handler))
         .route("/reverse", get(reverse_handler))
 }
 
@@ -61,7 +61,7 @@ async fn route_handler(
     Query(params): Query<RouteParams>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let from = parse_lng_lat(&params.from).ok_or(StatusCode::BAD_REQUEST)?;
-    let to   = parse_lng_lat(&params.to).ok_or(StatusCode::BAD_REQUEST)?;
+    let to = parse_lng_lat(&params.to).ok_or(StatusCode::BAD_REQUEST)?;
     state
         .map_provider
         .route(from.0, from.1, to.0, to.1)

@@ -10,7 +10,7 @@ pub fn nudge_blockchain(client: Client, base_url: String) {
             .await
         {
             Ok(r) if r.status().is_success() => {}
-            Ok(r)  => tracing::warn!("blockchain nudge returned {}", r.status()),
+            Ok(r) => tracing::warn!("blockchain nudge returned {}", r.status()),
             Err(e) => tracing::warn!("blockchain nudge failed: {e}"),
         }
     });

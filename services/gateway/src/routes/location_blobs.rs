@@ -30,7 +30,11 @@ struct PushBlobBody {
     recipient_pubkey_hash: String,
 }
 
-async fn is_circle_member(db: &sqlx::PgPool, circle_id: Uuid, pubkey: &str) -> anyhow::Result<bool> {
+async fn is_circle_member(
+    db: &sqlx::PgPool,
+    circle_id: Uuid,
+    pubkey: &str,
+) -> anyhow::Result<bool> {
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM (
            SELECT 1 FROM circle_members WHERE circle_id = $1 AND member_pubkey = $2

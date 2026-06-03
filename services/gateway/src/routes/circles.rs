@@ -97,12 +97,11 @@ async fn get_circle(
         }
     }
 
-    let members = sqlx::query_as::<_, CircleMember>(
-        "SELECT * FROM circle_members WHERE circle_id = $1",
-    )
-    .bind(id)
-    .fetch_all(&state.db)
-    .await?;
+    let members =
+        sqlx::query_as::<_, CircleMember>("SELECT * FROM circle_members WHERE circle_id = $1")
+            .bind(id)
+            .fetch_all(&state.db)
+            .await?;
 
     Ok(Json(serde_json::json!({
         "id": circle.id,
@@ -167,8 +166,7 @@ async fn remove_member(
         .await?;
 
     // Notify WebSocket clients in this circle that the member was removed
-    let msg =
-        serde_json::json!({ "type": "MEMBER_REMOVED", "pubkey": member_pubkey }).to_string();
+    let msg = serde_json::json!({ "type": "MEMBER_REMOVED", "pubkey": member_pubkey }).to_string();
     state.circle_hub.broadcast(circle_id, msg.into());
 
     Ok(StatusCode::NO_CONTENT)
@@ -179,12 +177,11 @@ async fn delete_circle(
     auth: NostrAuth,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let result =
-        sqlx::query("DELETE FROM circles WHERE id = $1 AND owner_pubkey = $2")
-            .bind(id)
-            .bind(&auth.pubkey)
-            .execute(&state.db)
-            .await?;
+    let result = sqlx::query("DELETE FROM circles WHERE id = $1 AND owner_pubkey = $2")
+        .bind(id)
+        .bind(&auth.pubkey)
+        .execute(&state.db)
+        .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::Forbidden);
@@ -233,7 +230,12 @@ mod tests {
     fn circle_converts_to_domain() {
         let id = Uuid::new_v4();
         let now = Utc::now();
-        let row = Circle { id, owner_pubkey: "pk".into(), name: "Home".into(), created_at: now };
+        let row = Circle {
+            id,
+            owner_pubkey: "pk".into(),
+            name: "Home".into(),
+            created_at: now,
+        };
         let d = sentinel_core::Circle::from(row);
         assert_eq!(d.id, id);
         assert_eq!(d.name, "Home");

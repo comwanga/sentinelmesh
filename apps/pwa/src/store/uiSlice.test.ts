@@ -5,6 +5,7 @@ const initial = {
   safeRoutes: [],
   homeLocation: null,
   homeRoute: null,
+  homeRoutes: [],
 }
 
 describe('uiSlice', () => {

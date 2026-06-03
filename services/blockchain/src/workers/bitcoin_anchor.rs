@@ -85,7 +85,11 @@ pub async fn broadcast_anchor(input: AnchorInput) -> Result<AnchorResult, Anchor
         });
     }
 
-    Ok(AnchorResult { txid, change_vout, change_value_sats: change_value })
+    Ok(AnchorResult {
+        txid,
+        change_vout,
+        change_value_sats: change_value,
+    })
 }
 
 fn build_tx(input: &AnchorInput) -> Result<Transaction> {
@@ -100,8 +104,8 @@ fn build_tx(input: &AnchorInput) -> Result<Transaction> {
     let address = Address::p2wpkh(&compressed_pub_key, hrp);
 
     // Decode 32-byte anchor hash and wrap in PushBytesBuf for push_slice
-    let anchor_bytes = hex::decode(&input.anchor_hash)
-        .map_err(|_| anyhow!("invalid anchor_hash hex"))?;
+    let anchor_bytes =
+        hex::decode(&input.anchor_hash).map_err(|_| anyhow!("invalid anchor_hash hex"))?;
     let push_bytes = PushBytesBuf::try_from(anchor_bytes)
         .map_err(|_| anyhow!("anchor_hash too long for OP_RETURN push"))?;
 
@@ -126,7 +130,10 @@ fn build_tx(input: &AnchorInput) -> Result<Transaction> {
         lock_time: LockTime::ZERO,
         input: vec![txin],
         output: vec![
-            TxOut { value: Amount::ZERO, script_pubkey: op_return_script },
+            TxOut {
+                value: Amount::ZERO,
+                script_pubkey: op_return_script,
+            },
             TxOut {
                 value: Amount::from_sat(change_sats),
                 script_pubkey: address.script_pubkey(),
@@ -136,7 +143,9 @@ fn build_tx(input: &AnchorInput) -> Result<Transaction> {
 
     let utxo_script = address.script_pubkey();
     let utxo_amount = Amount::from_sat(
-        input.utxo_value_sats.try_into()
+        input
+            .utxo_value_sats
+            .try_into()
             .map_err(|_| anyhow!("utxo value overflow"))?,
     );
 

@@ -21,6 +21,7 @@ async def test_enqueue_sets_attempts_zero_and_max_retries():
     """Newly enqueued jobs start with attempts=0 and max_retries=3."""
     qm = QueueManager("redis://localhost")
     qm.client = AsyncMock()
+    qm.client.llen = AsyncMock(return_value=0)  # below the queue-depth cap
     qm.client.rpush = AsyncMock()
     qm.client.setex = AsyncMock()
 

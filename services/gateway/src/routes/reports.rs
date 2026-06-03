@@ -8,7 +8,10 @@ use axum::{
 use chrono::Utc;
 use dashmap::DashMap;
 use serde::Deserialize;
-use std::{sync::Arc, time::{Duration, Instant}};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use uuid::Uuid;
 
 use crate::{
@@ -16,8 +19,8 @@ use crate::{
     reports::{
         consensus::compute_new_status,
         service::{
-            apply_status_transition, cast_vote, create_report, list_reports,
-            CastVoteInput, CreateReportInput, ListReportsParams,
+            apply_status_transition, cast_vote, create_report, list_reports, CastVoteInput,
+            CreateReportInput, ListReportsParams,
         },
     },
     AppState,
@@ -106,7 +109,7 @@ struct CastVoteBody {
 
 fn extract_ip(headers: &HeaderMap, trust_proxy: bool) -> String {
     if !trust_proxy {
-        return "direct".to_string();  // disables IP-based RL when not behind a trusted proxy
+        return "direct".to_string(); // disables IP-based RL when not behind a trusted proxy
     }
     headers
         .get("x-real-ip")
@@ -144,8 +147,19 @@ fn verify_nostr_event(
 
 /// Canonical binding string for a report. Must byte-match the client's
 /// `reportBindingContent` (fixed 6-decimal coords keep JS/Rust formatting equal).
-fn report_binding_content(report_type: &str, lat: f64, lng: f64, description: Option<&str>) -> String {
-    format!("r1|{}|{:.6}|{:.6}|{}", report_type, lat, lng, description.unwrap_or(""))
+fn report_binding_content(
+    report_type: &str,
+    lat: f64,
+    lng: f64,
+    description: Option<&str>,
+) -> String {
+    format!(
+        "r1|{}|{:.6}|{:.6}|{}",
+        report_type,
+        lat,
+        lng,
+        description.unwrap_or("")
+    )
 }
 
 /// Canonical binding string for a vote — binds the signature to this report + choice.
@@ -155,7 +169,10 @@ fn vote_binding_content(vote: &str, report_id: &Uuid) -> String {
 
 /// Per-event replay guard: SET NX with a TTL covering the freshness window.
 /// Returns BadRequest on replay, Internal if Redis is unavailable (fail closed).
-async fn replay_guard(redis: &redis::aio::ConnectionManager, event_id: &str) -> Result<(), AppError> {
+async fn replay_guard(
+    redis: &redis::aio::ConnectionManager,
+    event_id: &str,
+) -> Result<(), AppError> {
     if event_id.is_empty() {
         return Err(AppError::BadRequest("nostr_event missing id".into()));
     }
@@ -171,7 +188,9 @@ async fn replay_guard(redis: &redis::aio::ConnectionManager, event_id: &str) -> 
         .await
         .map_err(|e| AppError::Internal(e.into()))?;
     if set.is_none() {
-        return Err(AppError::BadRequest("duplicate submission (replay detected)".into()));
+        return Err(AppError::BadRequest(
+            "duplicate submission (replay detected)".into(),
+        ));
     }
     Ok(())
 }
@@ -204,8 +223,10 @@ async fn post_report(
 
     verify_nostr_event(&body.nostr_event, &body.nostr_pubkey, 300)?;
 
-    if !(body.lat >= -90.0 && body.lat <= 90.0) || !(body.lng >= -180.0 && body.lng <= 180.0) {
-        return Err(AppError::BadRequest("lat must be in -90..90, lng in -180..180".into()));
+    if !(-90.0..=90.0).contains(&body.lat) || !(-180.0..=180.0).contains(&body.lng) {
+        return Err(AppError::BadRequest(
+            "lat must be in -90..90, lng in -180..180".into(),
+        ));
     }
 
     // Bind the signature to the report content: the signed event's content must
@@ -223,16 +244,10 @@ async fn post_report(
         ));
     }
 
-    let event_id = body.nostr_event["id"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let event_id = body.nostr_event["id"].as_str().unwrap_or("").to_string();
     replay_guard(&state.redis, &event_id).await?;
 
-    let sig = body.nostr_event["sig"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let sig = body.nostr_event["sig"].as_str().unwrap_or("").to_string();
 
     let report = create_report(
         &state.db,
@@ -325,8 +340,7 @@ async fn vote(
         established_confirmations,
         state.config.consensus_require_established,
     ) {
-        apply_status_transition(&state.db, report_id, &new_status, &updated.nostr_pubkey)
-            .await?;
+        apply_status_transition(&state.db, report_id, &new_status, &updated.nostr_pubkey).await?;
 
         // Once the score crosses 3 for the first time, queue a publish job and
         // nudge the blockchain service so it picks it up quickly.
@@ -369,7 +383,9 @@ async fn list(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let reports = list_reports(&state.db, params).await?;
     let total = reports.len() as i64;
-    Ok(Json(serde_json::json!({ "reports": reports, "total": total })))
+    Ok(Json(
+        serde_json::json!({ "reports": reports, "total": total }),
+    ))
 }
 
 /// GET /api/reports/by-event/:event_id
@@ -384,7 +400,9 @@ async fn by_event(
     };
     let reports = list_reports(&state.db, params).await?;
     let total = reports.len() as i64;
-    Ok(Json(serde_json::json!({ "reports": reports, "total": total })))
+    Ok(Json(
+        serde_json::json!({ "reports": reports, "total": total }),
+    ))
 }
 
 // ---------------------------------------------------------------------------

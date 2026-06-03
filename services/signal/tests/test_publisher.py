@@ -31,10 +31,11 @@ async def test_valid_event_is_published():
     with patch("publisher.get_client", return_value=mock_client):
         import publisher
         await publisher.emit_event(VALID_EVENT.copy())
-    mock_client.publish.assert_awaited_once_with(
-        "sentinel:events:new",
-        json.dumps(VALID_EVENT),
-    )
+    # Events are published to the Redis stream via XADD.
+    mock_client.xadd.assert_awaited_once()
+    args = mock_client.xadd.call_args[0]
+    assert args[0] == "sentinel:events:stream"
+    assert json.loads(args[1]["payload"]) == VALID_EVENT
 
 
 @pytest.mark.asyncio
@@ -79,4 +80,4 @@ async def test_optional_fields_absent_still_publishes():
     with patch("publisher.get_client", return_value=mock_client):
         import publisher
         await publisher.emit_event(event)
-    mock_client.publish.assert_awaited_once()
+    mock_client.xadd.assert_awaited_once()
