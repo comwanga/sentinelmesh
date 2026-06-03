@@ -7,20 +7,20 @@ use crate::{error::AppError, middleware::nostr_auth::NostrAuth, AppState};
 
 #[derive(Deserialize)]
 pub struct SubmitSignalBody {
-    pub client_id:           uuid::Uuid,
-    pub threat_class:        String,
-    pub confidence:          f32,
+    pub client_id: uuid::Uuid,
+    pub threat_class: String,
+    pub confidence: f32,
     pub confidence_variance: Option<f32>,
-    pub lat:                 f64,
-    pub lng:                 f64,
-    pub model_version:       String,
-    pub threshold_profile:   String,
-    pub inference_backend:   String,
-    pub processing_latency:  Option<i32>,
-    pub dropped_frames:      i32,
-    pub device_category:     Option<String>,
-    pub signal_fingerprint:  Option<String>,
-    pub schema_version:      Option<i32>,
+    pub lat: f64,
+    pub lng: f64,
+    pub model_version: String,
+    pub threshold_profile: String,
+    pub inference_backend: String,
+    pub processing_latency: Option<i32>,
+    pub dropped_frames: i32,
+    pub device_category: Option<String>,
+    pub signal_fingerprint: Option<String>,
+    pub schema_version: Option<i32>,
 }
 
 fn validate_signal_body(body: &SubmitSignalBody) -> Result<(), AppError> {
@@ -29,7 +29,9 @@ fn validate_signal_body(body: &SubmitSignalBody) -> Result<(), AppError> {
     }
     if let Some(v) = body.confidence_variance {
         if !(0.0..=1.0).contains(&v) {
-            return Err(AppError::BadRequest("confidence_variance must be 0.0–1.0".into()));
+            return Err(AppError::BadRequest(
+                "confidence_variance must be 0.0–1.0".into(),
+            ));
         }
     }
     if !(-90.0..=90.0).contains(&body.lat) {
@@ -39,13 +41,19 @@ fn validate_signal_body(body: &SubmitSignalBody) -> Result<(), AppError> {
         return Err(AppError::BadRequest("lng out of range".into()));
     }
     if body.threat_class.is_empty() {
-        return Err(AppError::BadRequest("threat_class must not be empty".into()));
+        return Err(AppError::BadRequest(
+            "threat_class must not be empty".into(),
+        ));
     }
     if body.model_version.is_empty() {
-        return Err(AppError::BadRequest("model_version must not be empty".into()));
+        return Err(AppError::BadRequest(
+            "model_version must not be empty".into(),
+        ));
     }
     if body.dropped_frames < 0 {
-        return Err(AppError::BadRequest("dropped_frames must be non-negative".into()));
+        return Err(AppError::BadRequest(
+            "dropped_frames must be non-negative".into(),
+        ));
     }
     Ok(())
 }
@@ -152,50 +160,82 @@ mod tests {
 
     #[test]
     fn confidence_above_1_rejected() {
-        let mut b = valid_body(); b.confidence = 1.1;
-        assert!(matches!(validate_signal_body(&b), Err(AppError::BadRequest(_))));
+        let mut b = valid_body();
+        b.confidence = 1.1;
+        assert!(matches!(
+            validate_signal_body(&b),
+            Err(AppError::BadRequest(_))
+        ));
     }
 
     #[test]
     fn confidence_below_0_rejected() {
-        let mut b = valid_body(); b.confidence = -0.1;
-        assert!(matches!(validate_signal_body(&b), Err(AppError::BadRequest(_))));
+        let mut b = valid_body();
+        b.confidence = -0.1;
+        assert!(matches!(
+            validate_signal_body(&b),
+            Err(AppError::BadRequest(_))
+        ));
     }
 
     #[test]
     fn confidence_variance_above_1_rejected() {
-        let mut b = valid_body(); b.confidence_variance = Some(1.1);
-        assert!(matches!(validate_signal_body(&b), Err(AppError::BadRequest(_))));
+        let mut b = valid_body();
+        b.confidence_variance = Some(1.1);
+        assert!(matches!(
+            validate_signal_body(&b),
+            Err(AppError::BadRequest(_))
+        ));
     }
 
     #[test]
     fn lat_out_of_range_rejected() {
-        let mut b = valid_body(); b.lat = 91.0;
-        assert!(matches!(validate_signal_body(&b), Err(AppError::BadRequest(_))));
+        let mut b = valid_body();
+        b.lat = 91.0;
+        assert!(matches!(
+            validate_signal_body(&b),
+            Err(AppError::BadRequest(_))
+        ));
     }
 
     #[test]
     fn lng_out_of_range_rejected() {
-        let mut b = valid_body(); b.lng = 181.0;
-        assert!(matches!(validate_signal_body(&b), Err(AppError::BadRequest(_))));
+        let mut b = valid_body();
+        b.lng = 181.0;
+        assert!(matches!(
+            validate_signal_body(&b),
+            Err(AppError::BadRequest(_))
+        ));
     }
 
     #[test]
     fn empty_threat_class_rejected() {
-        let mut b = valid_body(); b.threat_class = "".into();
-        assert!(matches!(validate_signal_body(&b), Err(AppError::BadRequest(_))));
+        let mut b = valid_body();
+        b.threat_class = "".into();
+        assert!(matches!(
+            validate_signal_body(&b),
+            Err(AppError::BadRequest(_))
+        ));
     }
 
     #[test]
     fn empty_model_version_rejected() {
-        let mut b = valid_body(); b.model_version = "".into();
-        assert!(matches!(validate_signal_body(&b), Err(AppError::BadRequest(_))));
+        let mut b = valid_body();
+        b.model_version = "".into();
+        assert!(matches!(
+            validate_signal_body(&b),
+            Err(AppError::BadRequest(_))
+        ));
     }
 
     #[test]
     fn negative_dropped_frames_rejected() {
-        let mut b = valid_body(); b.dropped_frames = -1;
-        assert!(matches!(validate_signal_body(&b), Err(AppError::BadRequest(_))));
+        let mut b = valid_body();
+        b.dropped_frames = -1;
+        assert!(matches!(
+            validate_signal_body(&b),
+            Err(AppError::BadRequest(_))
+        ));
     }
 
     #[test]
@@ -222,8 +262,9 @@ mod tests {
     fn rate_limiter_blocks_after_limit() {
         use governor::{Quota, RateLimiter};
         use std::{num::NonZeroU32, sync::Arc};
-        let limiter: Arc<governor::DefaultKeyedRateLimiter<String>> =
-            Arc::new(RateLimiter::keyed(Quota::per_minute(NonZeroU32::new(2).unwrap())));
+        let limiter: Arc<governor::DefaultKeyedRateLimiter<String>> = Arc::new(RateLimiter::keyed(
+            Quota::per_minute(NonZeroU32::new(2).unwrap()),
+        ));
         let key = "pubkey_test".to_string();
         assert!(limiter.check_key(&key).is_ok());
         assert!(limiter.check_key(&key).is_ok());

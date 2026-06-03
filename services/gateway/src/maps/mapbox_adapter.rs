@@ -1,6 +1,9 @@
+use super::{
+    provider::MapProvider,
+    types::{RouteResult, SearchResult},
+};
 use async_trait::async_trait;
 use serde::Deserialize;
-use super::{provider::MapProvider, types::{RouteResult, SearchResult}};
 
 pub struct MapboxAdapter {
     pub(super) client: reqwest::Client,
@@ -65,11 +68,15 @@ impl MapProvider for MapboxAdapter {
             anyhow::bail!("geocoding upstream returned {}", res.status());
         }
         let data: GeocodeResponse = res.json().await?;
-        Ok(data.features.into_iter().map(|f| SearchResult {
-            label: f.place_name,
-            lat: f.center[1],
-            lng: f.center[0],
-        }).collect())
+        Ok(data
+            .features
+            .into_iter()
+            .map(|f| SearchResult {
+                label: f.place_name,
+                lat: f.center[1],
+                lng: f.center[0],
+            })
+            .collect())
     }
 
     async fn route(

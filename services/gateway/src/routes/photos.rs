@@ -51,14 +51,13 @@ async fn pin_photo(
         return Err(AppError::Internal(anyhow::anyhow!("ipfs pin failed")));
     }
 
-    let data: serde_json::Value = res
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(e.into()))?;
+    let data: serde_json::Value = res.json().await.map_err(|e| AppError::Internal(e.into()))?;
     let cid = data
         .get("IpfsHash")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| AppError::Internal(anyhow::anyhow!("missing IpfsHash in pinata response")))?;
+        .ok_or_else(|| {
+            AppError::Internal(anyhow::anyhow!("missing IpfsHash in pinata response"))
+        })?;
 
     Ok(Json(serde_json::json!({ "cid": cid })))
 }

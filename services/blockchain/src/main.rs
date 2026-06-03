@@ -4,17 +4,16 @@ mod db;
 mod utils;
 mod workers;
 
-use std::sync::Arc;
 use axum::{routing::get, Json, Router};
 use serde_json::json;
+use std::sync::Arc;
 use tokio::signal;
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -34,8 +33,14 @@ async fn main() {
 
     tracing::info!("blockchain starting on port {}", config.port);
 
-    let publish_task = tokio::spawn(workers::publish_worker::run(Arc::clone(&pool), Arc::clone(&config)));
-    let poller_task = tokio::spawn(workers::confirmation_poller::run(Arc::clone(&pool), Arc::clone(&config)));
+    let publish_task = tokio::spawn(workers::publish_worker::run(
+        Arc::clone(&pool),
+        Arc::clone(&config),
+    ));
+    let poller_task = tokio::spawn(workers::confirmation_poller::run(
+        Arc::clone(&pool),
+        Arc::clone(&config),
+    ));
 
     let app = Router::new().route("/health", get(health));
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port))

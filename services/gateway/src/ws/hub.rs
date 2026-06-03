@@ -12,7 +12,9 @@ pub struct WsHub {
 
 impl WsHub {
     pub fn new() -> Self {
-        Self { senders: Arc::new(DashMap::new()) }
+        Self {
+            senders: Arc::new(DashMap::new()),
+        }
     }
 
     /// Broadcast bytes to a specific county channel AND the "global" channel.
@@ -40,7 +42,9 @@ impl WsHub {
 }
 
 impl Default for WsHub {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]

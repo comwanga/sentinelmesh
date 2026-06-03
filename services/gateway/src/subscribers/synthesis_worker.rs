@@ -77,11 +77,11 @@ pub async fn run(
             Ok(summary) => {
                 tick_count += 1;
                 tracing::info!(
-                    cycle_ms           = start.elapsed().as_millis() as u64,
+                    cycle_ms = start.elapsed().as_millis() as u64,
                     clusters_evaluated = summary.clusters_evaluated,
-                    promoted_corr      = summary.promoted_to_corroborating,
-                    promoted_conf      = summary.promoted_to_confirmed,
-                    expired            = summary.expired,
+                    promoted_corr = summary.promoted_to_corroborating,
+                    promoted_conf = summary.promoted_to_confirmed,
+                    expired = summary.expired,
                     "synthesis_cycle"
                 );
                 if tick_count % 12 == 0 {
@@ -151,7 +151,8 @@ async fn fetch_cluster_groups(
     .fetch_all(pool)
     .await?;
 
-    let mut groups: std::collections::HashMap<(String, String), Vec<SignalRow>> = Default::default();
+    let mut groups: std::collections::HashMap<(String, String), Vec<SignalRow>> =
+        Default::default();
     for sig in signals {
         if let Some(ref h3r9) = sig.h3_r9 {
             groups
@@ -189,8 +190,10 @@ async fn process_cluster(
         return Ok(result);
     }
 
-    let distinct_pubkeys: std::collections::HashSet<_> =
-        weighted.iter().map(|(i, _)| signals[*i].pubkey.as_str()).collect();
+    let distinct_pubkeys: std::collections::HashSet<_> = weighted
+        .iter()
+        .map(|(i, _)| signals[*i].pubkey.as_str())
+        .collect();
     let n_contributors = distinct_pubkeys.len();
 
     let cluster_score_raw = if total_trust_mass > 0.0 {
@@ -376,19 +379,27 @@ async fn log_state_snapshot(pool: &PgPool) -> Result<()> {
     .fetch_one(pool)
     .await?;
 
-    let pending: i64       = row.try_get("pending")?;
+    let pending: i64 = row.try_get("pending")?;
     let corroborating: i64 = row.try_get("corroborating")?;
-    let confirmed: i64     = row.try_get("confirmed")?;
-    let expired: i64       = row.try_get("expired")?;
+    let confirmed: i64 = row.try_get("confirmed")?;
+    let expired: i64 = row.try_get("expired")?;
     let total = pending + corroborating + confirmed + expired;
 
     tracing::info!(
-        pending_count       = pending,
+        pending_count = pending,
         corroborating_count = corroborating,
-        confirmed_count     = confirmed,
-        expired_count       = expired,
-        confirmation_ratio  = if total > 0 { confirmed as f64 / total as f64 } else { 0.0 },
-        expired_ratio       = if total > 0 { expired as f64 / total as f64 } else { 0.0 },
+        confirmed_count = confirmed,
+        expired_count = expired,
+        confirmation_ratio = if total > 0 {
+            confirmed as f64 / total as f64
+        } else {
+            0.0
+        },
+        expired_ratio = if total > 0 {
+            expired as f64 / total as f64
+        } else {
+            0.0
+        },
         "synthesis_state_snapshot"
     );
     Ok(())
@@ -407,7 +418,11 @@ fn compute_weights(
             if age > TEMPORAL_CUTOFF_SECS {
                 return None;
             }
-            let decay = if age > TEMPORAL_HALF_WEIGHT_SECS { 0.5 } else { 1.0 };
+            let decay = if age > TEMPORAL_HALF_WEIGHT_SECS {
+                0.5
+            } else {
+                1.0
+            };
             let trust = DEFAULT_TRUST * decay;
             Some((i, s, trust))
         })
@@ -469,7 +484,13 @@ fn score_to_severity(score: f32) -> &'static str {
 mod tests {
     use super::*;
 
-    fn make_signal(pubkey: &str, confidence: f32, variance: Option<f32>, age_secs: i64, state: &str) -> SignalRow {
+    fn make_signal(
+        pubkey: &str,
+        confidence: f32,
+        variance: Option<f32>,
+        age_secs: i64,
+        state: &str,
+    ) -> SignalRow {
         SignalRow {
             id: Uuid::new_v4(),
             pubkey: pubkey.to_string(),
@@ -588,7 +609,8 @@ mod tests {
         // So mass_4 / mass_1 = 4 (trust mass scales linearly — but score stays constant)
         assert!(
             (mass_4 / mass_1 - 4.0).abs() < 0.001,
-            "trust mass ratio should be 4:1 for 4 same-pubkey signals, got {}", mass_4 / mass_1
+            "trust mass ratio should be 4:1 for 4 same-pubkey signals, got {}",
+            mass_4 / mass_1
         );
     }
 

@@ -1,14 +1,17 @@
-use std::sync::Arc;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use axum::{
-    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, State},
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        State,
+    },
     response::IntoResponse,
 };
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
+use uuid::Uuid;
 
 /// Lightweight event broadcast to all viewport WS handlers when a new event
 /// arrives from the Redis stream. Each handler decides independently whether
@@ -103,10 +106,20 @@ pub enum ClientMsg {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ServerMsg<'a> {
-    InitialBatch { events: &'a [WsEvent] },
-    DiffPatch { added: Vec<WsEvent>, removed: Vec<Uuid>, updated: Vec<WsEvent> },
-    Snapshot { events: Vec<WsEvent> },
-    Error { message: &'a str },
+    InitialBatch {
+        events: &'a [WsEvent],
+    },
+    DiffPatch {
+        added: Vec<WsEvent>,
+        removed: Vec<Uuid>,
+        updated: Vec<WsEvent>,
+    },
+    Snapshot {
+        events: Vec<WsEvent>,
+    },
+    Error {
+        message: &'a str,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -144,9 +157,12 @@ pub async fn query_viewport_events(
               ORDER BY
                 CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1
                               WHEN 'MEDIUM' THEN 2 ELSE 3 END ASC
-              LIMIT $5"
+              LIMIT $5",
         )
-        .bind(bounds.west).bind(bounds.south).bind(bounds.east).bind(bounds.north)
+        .bind(bounds.west)
+        .bind(bounds.south)
+        .bind(bounds.east)
+        .bind(bounds.north)
         .bind(limit)
         .fetch_all(pool)
         .await
@@ -164,9 +180,12 @@ pub async fn query_viewport_events(
               ORDER BY
                 CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1
                               WHEN 'MEDIUM' THEN 2 ELSE 3 END ASC
-              LIMIT $6"
+              LIMIT $6",
         )
-        .bind(bounds.west).bind(bounds.south).bind(bounds.east).bind(bounds.north)
+        .bind(bounds.west)
+        .bind(bounds.south)
+        .bind(bounds.east)
+        .bind(bounds.north)
         .bind(filters)
         .bind(limit)
         .fetch_all(pool)
@@ -191,25 +210,30 @@ async fn handle_events_ws(mut socket: WebSocket, state: crate::AppState) {
     // --- Phase 1: await SUBSCRIBE message ---
     let (bounds, zoom, filters, low_bandwidth) = loop {
         match socket.recv().await {
-            Some(Ok(Message::Text(text))) => {
-                match serde_json::from_str::<ClientMsg>(&text) {
-                    Ok(ClientMsg::Subscribe { bounds, zoom, filters, low_bandwidth }) => {
-                        break (bounds, zoom, filters, low_bandwidth);
-                    }
-                    Ok(_) => {
-                        let err = serde_json::to_string(&ServerMsg::Error {
-                            message: "first message must be SUBSCRIBE",
-                        }).unwrap();
-                        let _ = socket.send(Message::Text(err)).await;
-                    }
-                    Err(e) => {
-                        let err = serde_json::to_string(&ServerMsg::Error {
-                            message: &format!("invalid message: {e}"),
-                        }).unwrap();
-                        let _ = socket.send(Message::Text(err)).await;
-                    }
+            Some(Ok(Message::Text(text))) => match serde_json::from_str::<ClientMsg>(&text) {
+                Ok(ClientMsg::Subscribe {
+                    bounds,
+                    zoom,
+                    filters,
+                    low_bandwidth,
+                }) => {
+                    break (bounds, zoom, filters, low_bandwidth);
                 }
-            }
+                Ok(_) => {
+                    let err = serde_json::to_string(&ServerMsg::Error {
+                        message: "first message must be SUBSCRIBE",
+                    })
+                    .unwrap();
+                    let _ = socket.send(Message::Text(err)).await;
+                }
+                Err(e) => {
+                    let err = serde_json::to_string(&ServerMsg::Error {
+                        message: &format!("invalid message: {e}"),
+                    })
+                    .unwrap();
+                    let _ = socket.send(Message::Text(err)).await;
+                }
+            },
             _ => return, // client disconnected or sent non-text
         }
     };
@@ -219,15 +243,17 @@ async fn handle_events_ws(mut socket: WebSocket, state: crate::AppState) {
         Ok(events) => events,
         Err(e) => {
             tracing::warn!("viewport WS query failed: {e:#}");
-            let err = serde_json::to_string(&ServerMsg::Error { message: "db error" }).unwrap();
+            let err = serde_json::to_string(&ServerMsg::Error {
+                message: "db error",
+            })
+            .unwrap();
             let _ = socket.send(Message::Text(err)).await;
             return;
         }
     };
 
-    let initial_json = serde_json::to_string(&ServerMsg::InitialBatch {
-        events: &initial,
-    }).unwrap();
+    let initial_json =
+        serde_json::to_string(&ServerMsg::InitialBatch { events: &initial }).unwrap();
     if socket.send(Message::Text(initial_json)).await.is_err() {
         return;
     }
@@ -235,7 +261,16 @@ async fn handle_events_ws(mut socket: WebSocket, state: crate::AppState) {
     // --- Phase 3: build known-events map and enter main loop ---
     let mut known: HashMap<Uuid, EventDigest> = initial
         .iter()
-        .map(|e| (e.id, EventDigest { severity: e.severity.clone(), state: e.state.clone(), trust_state: e.trust_state.clone() }))
+        .map(|e| {
+            (
+                e.id,
+                EventDigest {
+                    severity: e.severity.clone(),
+                    state: e.state.clone(),
+                    trust_state: e.trust_state.clone(),
+                },
+            )
+        })
         .collect();
 
     let mut current_bounds = bounds;
@@ -410,12 +445,19 @@ impl DiffResult {
     }
 }
 
-fn compute_diff(known: &std::collections::HashMap<Uuid, EventDigest>, new_events: &[WsEvent]) -> DiffResult {
+fn compute_diff(
+    known: &std::collections::HashMap<Uuid, EventDigest>,
+    new_events: &[WsEvent],
+) -> DiffResult {
     let mut added = vec![];
     let mut updated = vec![];
 
     for e in new_events {
-        let new_digest = EventDigest { severity: e.severity.clone(), state: e.state.clone(), trust_state: e.trust_state.clone() };
+        let new_digest = EventDigest {
+            severity: e.severity.clone(),
+            state: e.state.clone(),
+            trust_state: e.trust_state.clone(),
+        };
         match known.get(&e.id) {
             None => added.push(e.clone()),
             Some(old) if old != &new_digest => updated.push(e.clone()),
@@ -424,9 +466,17 @@ fn compute_diff(known: &std::collections::HashMap<Uuid, EventDigest>, new_events
     }
 
     let new_ids: std::collections::HashSet<Uuid> = new_events.iter().map(|e| e.id).collect();
-    let removed = known.keys().filter(|id| !new_ids.contains(id)).copied().collect();
+    let removed = known
+        .keys()
+        .filter(|id| !new_ids.contains(id))
+        .copied()
+        .collect();
 
-    DiffResult { added, removed, updated }
+    DiffResult {
+        added,
+        removed,
+        updated,
+    }
 }
 
 #[cfg(test)]
@@ -435,7 +485,8 @@ fn parse_digest_from_json(json: &str) -> Option<EventDigest> {
     Some(EventDigest {
         severity: v["severity"].as_str()?.to_string(),
         state: v["state"].as_str()?.to_string(),
-        trust_state: v.get("trust_state")
+        trust_state: v
+            .get("trust_state")
             .and_then(|t| t.as_str())
             .unwrap_or("confirmed")
             .to_string(),
@@ -453,20 +504,35 @@ mod tests {
 
     #[test]
     fn bounds_contains_point_inside() {
-        let b = Bounds { north: 0.0, south: -2.0, east: 37.0, west: 36.0 };
+        let b = Bounds {
+            north: 0.0,
+            south: -2.0,
+            east: 37.0,
+            west: 36.0,
+        };
         assert!(b.contains(-1.0, 36.5));
     }
 
     #[test]
     fn bounds_does_not_contain_point_outside() {
-        let b = Bounds { north: 0.0, south: -2.0, east: 37.0, west: 36.0 };
+        let b = Bounds {
+            north: 0.0,
+            south: -2.0,
+            east: 37.0,
+            west: 36.0,
+        };
         assert!(!b.contains(1.0, 36.5));
         assert!(!b.contains(-1.0, 38.0));
     }
 
     #[test]
     fn bounds_edge_is_inclusive() {
-        let b = Bounds { north: 0.0, south: -2.0, east: 37.0, west: 36.0 };
+        let b = Bounds {
+            north: 0.0,
+            south: -2.0,
+            east: 37.0,
+            west: 36.0,
+        };
         assert!(b.contains(0.0, 36.0));
         assert!(b.contains(-2.0, 37.0));
     }
@@ -492,7 +558,12 @@ mod tests {
             "zoom": 12.0
         }"#;
         let msg: ClientMsg = serde_json::from_str(json).unwrap();
-        if let ClientMsg::Subscribe { filters, low_bandwidth, .. } = msg {
+        if let ClientMsg::Subscribe {
+            filters,
+            low_bandwidth,
+            ..
+        } = msg
+        {
             assert!(filters.is_empty());
             assert!(!low_bandwidth);
         } else {
@@ -520,22 +591,46 @@ mod tests {
 
     #[test]
     fn event_digest_detects_severity_change() {
-        let d1 = EventDigest { severity: "HIGH".into(), state: "ACTIVE".into(), trust_state: "confirmed".into() };
-        let d2 = EventDigest { severity: "CRITICAL".into(), state: "ACTIVE".into(), trust_state: "confirmed".into() };
+        let d1 = EventDigest {
+            severity: "HIGH".into(),
+            state: "ACTIVE".into(),
+            trust_state: "confirmed".into(),
+        };
+        let d2 = EventDigest {
+            severity: "CRITICAL".into(),
+            state: "ACTIVE".into(),
+            trust_state: "confirmed".into(),
+        };
         assert_ne!(d1, d2);
     }
 
     #[test]
     fn event_digest_detects_state_change() {
-        let d1 = EventDigest { severity: "HIGH".into(), state: "ACTIVE".into(), trust_state: "confirmed".into() };
-        let d2 = EventDigest { severity: "HIGH".into(), state: "RESOLVED".into(), trust_state: "confirmed".into() };
+        let d1 = EventDigest {
+            severity: "HIGH".into(),
+            state: "ACTIVE".into(),
+            trust_state: "confirmed".into(),
+        };
+        let d2 = EventDigest {
+            severity: "HIGH".into(),
+            state: "RESOLVED".into(),
+            trust_state: "confirmed".into(),
+        };
         assert_ne!(d1, d2);
     }
 
     #[test]
     fn event_digest_detects_trust_state_change() {
-        let d1 = EventDigest { severity: "HIGH".into(), state: "ACTIVE".into(), trust_state: "corroborating".into() };
-        let d2 = EventDigest { severity: "HIGH".into(), state: "ACTIVE".into(), trust_state: "confirmed".into() };
+        let d1 = EventDigest {
+            severity: "HIGH".into(),
+            state: "ACTIVE".into(),
+            trust_state: "corroborating".into(),
+        };
+        let d2 = EventDigest {
+            severity: "HIGH".into(),
+            state: "ACTIVE".into(),
+            trust_state: "confirmed".into(),
+        };
         assert_ne!(d1, d2);
     }
 
@@ -543,9 +638,14 @@ mod tests {
     fn compute_diff_detects_trust_state_upgrade() {
         let mut known = std::collections::HashMap::new();
         let id = Uuid::from_u128(1);
-        known.insert(id, EventDigest {
-            severity: "HIGH".into(), state: "ACTIVE".into(), trust_state: "corroborating".into()
-        });
+        known.insert(
+            id,
+            EventDigest {
+                severity: "HIGH".into(),
+                state: "ACTIVE".into(),
+                trust_state: "corroborating".into(),
+            },
+        );
         let new_events = vec![WsEvent {
             id,
             event_type: "ACOUSTIC".into(),
@@ -553,7 +653,8 @@ mod tests {
             state: "ACTIVE".into(),
             trust_state: "confirmed".into(),
             title: "gunshot".into(),
-            lat: -1.0, lng: 36.0,
+            lat: -1.0,
+            lng: 36.0,
             started_at: chrono::Utc::now(),
         }];
         let diff = compute_diff(&known, &new_events);
@@ -588,17 +689,37 @@ mod tests {
     fn diff_compute_added_removed_updated() {
         let old: HashMap<Uuid, EventDigest> = {
             let mut m = HashMap::new();
-            m.insert(Uuid::nil(), EventDigest { severity: "HIGH".into(), state: "ACTIVE".into(), trust_state: "confirmed".into() });
+            m.insert(
+                Uuid::nil(),
+                EventDigest {
+                    severity: "HIGH".into(),
+                    state: "ACTIVE".into(),
+                    trust_state: "confirmed".into(),
+                },
+            );
             m
         };
         let id_new = Uuid::from_u128(1);
-        let new_events = [
-            WsEvent { id: id_new, event_type: "FIRE".into(), severity: "CRITICAL".into(),
-                      state: "ACTIVE".into(), trust_state: "confirmed".into(), title: "Fire".into(), lat: 0.0, lng: 0.0,
-                      started_at: chrono::Utc::now() },
-        ];
-        let added: Vec<&WsEvent> = new_events.iter().filter(|e| !old.contains_key(&e.id)).collect();
-        let removed: Vec<Uuid> = old.keys().filter(|id| !new_events.iter().any(|e| &e.id == *id)).cloned().collect();
+        let new_events = [WsEvent {
+            id: id_new,
+            event_type: "FIRE".into(),
+            severity: "CRITICAL".into(),
+            state: "ACTIVE".into(),
+            trust_state: "confirmed".into(),
+            title: "Fire".into(),
+            lat: 0.0,
+            lng: 0.0,
+            started_at: chrono::Utc::now(),
+        }];
+        let added: Vec<&WsEvent> = new_events
+            .iter()
+            .filter(|e| !old.contains_key(&e.id))
+            .collect();
+        let removed: Vec<Uuid> = old
+            .keys()
+            .filter(|id| !new_events.iter().any(|e| &e.id == *id))
+            .cloned()
+            .collect();
 
         assert_eq!(added.len(), 1);
         assert_eq!(added[0].id, id_new);
@@ -623,7 +744,12 @@ mod tests {
     #[test]
     fn bounds_west_south_east_north_order_for_st_make_envelope() {
         // ST_MakeEnvelope(xmin, ymin, xmax, ymax) = (west, south, east, north)
-        let b = Bounds { north: 1.0, south: -1.0, east: 38.0, west: 36.0 };
+        let b = Bounds {
+            north: 1.0,
+            south: -1.0,
+            east: 38.0,
+            west: 36.0,
+        };
         let (w, s, e, n) = (b.west, b.south, b.east, b.north);
         assert_eq!(w, 36.0);
         assert_eq!(s, -1.0);
@@ -658,7 +784,14 @@ mod tests {
     #[test]
     fn compute_diff_all_removed_when_new_empty() {
         let mut known = HashMap::new();
-        known.insert(Uuid::from_u128(1), EventDigest { severity: "HIGH".into(), state: "ACTIVE".into(), trust_state: "confirmed".into() });
+        known.insert(
+            Uuid::from_u128(1),
+            EventDigest {
+                severity: "HIGH".into(),
+                state: "ACTIVE".into(),
+                trust_state: "confirmed".into(),
+            },
+        );
         let diff = compute_diff(&known, &[]);
         assert!(diff.added.is_empty());
         assert_eq!(diff.removed, vec![Uuid::from_u128(1)]);
@@ -669,7 +802,14 @@ mod tests {
     fn compute_diff_detects_severity_upgrade() {
         let id = Uuid::from_u128(1);
         let mut known = HashMap::new();
-        known.insert(id, EventDigest { severity: "HIGH".into(), state: "ACTIVE".into(), trust_state: "confirmed".into() });
+        known.insert(
+            id,
+            EventDigest {
+                severity: "HIGH".into(),
+                state: "ACTIVE".into(),
+                trust_state: "confirmed".into(),
+            },
+        );
         let new_events = vec![make_event(1, "CRITICAL", "ACTIVE")];
         let diff = compute_diff(&known, &new_events);
         assert!(diff.added.is_empty());
@@ -682,7 +822,14 @@ mod tests {
     fn compute_diff_no_change_produces_empty_diff() {
         let id = Uuid::from_u128(1);
         let mut known = HashMap::new();
-        known.insert(id, EventDigest { severity: "HIGH".into(), state: "ACTIVE".into(), trust_state: "confirmed".into() });
+        known.insert(
+            id,
+            EventDigest {
+                severity: "HIGH".into(),
+                state: "ACTIVE".into(),
+                trust_state: "confirmed".into(),
+            },
+        );
         let new_events = vec![make_event(1, "HIGH", "ACTIVE")];
         let diff = compute_diff(&known, &new_events);
         assert!(!diff.has_changes());

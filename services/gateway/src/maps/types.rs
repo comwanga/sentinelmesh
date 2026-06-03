@@ -20,7 +20,11 @@ mod tests {
 
     #[test]
     fn search_result_serializes() {
-        let r = SearchResult { label: "Nairobi".into(), lat: -1.29, lng: 36.82 };
+        let r = SearchResult {
+            label: "Nairobi".into(),
+            lat: -1.29,
+            lng: 36.82,
+        };
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("Nairobi"));
         assert!(json.contains("lat"));

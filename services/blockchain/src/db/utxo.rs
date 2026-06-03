@@ -95,4 +95,3 @@ pub async fn reclaim_stale_locks(pool: &PgPool) -> Result<()> {
     .await?;
     Ok(())
 }
-

@@ -13,7 +13,9 @@ pub struct CircleHub {
 
 impl CircleHub {
     pub fn new() -> Self {
-        Self { senders: Arc::new(DashMap::new()) }
+        Self {
+            senders: Arc::new(DashMap::new()),
+        }
     }
 
     pub fn broadcast(&self, circle_id: Uuid, msg: Bytes) {
@@ -31,7 +33,9 @@ impl CircleHub {
 }
 
 impl Default for CircleHub {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]

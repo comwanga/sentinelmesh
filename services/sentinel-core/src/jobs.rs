@@ -15,13 +15,13 @@ pub enum JobStatus {
 impl std::fmt::Display for JobStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            Self::Pending         => "PENDING",
-            Self::Processing      => "PROCESSING",
-            Self::NostrPublished  => "NOSTR_PUBLISHED",
+            Self::Pending => "PENDING",
+            Self::Processing => "PROCESSING",
+            Self::NostrPublished => "NOSTR_PUBLISHED",
             Self::BitcoinAnchored => "BITCOIN_ANCHORED",
-            Self::Complete        => "COMPLETE",
-            Self::Failed          => "FAILED",
-            Self::Dead            => "DEAD",
+            Self::Complete => "COMPLETE",
+            Self::Failed => "FAILED",
+            Self::Dead => "DEAD",
         };
         write!(f, "{}", s)
     }
@@ -36,7 +36,7 @@ pub enum SourceType {
 impl std::fmt::Display for SourceType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::SafetyEvent     => write!(f, "SAFETY_EVENT"),
+            Self::SafetyEvent => write!(f, "SAFETY_EVENT"),
             Self::CommunityReport => write!(f, "COMMUNITY_REPORT"),
         }
     }

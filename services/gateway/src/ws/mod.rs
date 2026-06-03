@@ -2,9 +2,10 @@ pub mod events_ws;
 
 pub use events_ws::{ws_events_handler, ViewportEvent};
 
-pub mod hub;
 pub mod circle_hub;
+pub mod hub;
 
+use crate::AppState;
 use axum::{
     extract::{
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
@@ -14,7 +15,6 @@ use axum::{
 };
 use serde::Deserialize;
 use uuid::Uuid;
-use crate::AppState;
 
 #[derive(Deserialize)]
 pub struct WsParams {
@@ -91,30 +91,39 @@ async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
                 let msg = match serde_json::from_str::<CircleClientMsg>(&text) {
                     Ok(m) => m,
                     Err(_) => {
-                        let _ = socket.send(Message::Text(
-                            r#"{"error":"expected join_circle message"}"#.into()
-                        )).await;
+                        let _ = socket
+                            .send(Message::Text(
+                                r#"{"error":"expected join_circle message"}"#.into(),
+                            ))
+                            .await;
                         continue;
                     }
                 };
-                let CircleClientMsg::JoinCircle { circle_id, nostr_auth_event } = msg;
+                let CircleClientMsg::JoinCircle {
+                    circle_id,
+                    nostr_auth_event,
+                } = msg;
 
                 let resolved_pubkey = match nostr_auth_event {
                     Some(raw) => match verify_ws_auth(&raw) {
                         Ok(pk) => pk,
                         Err(e) => {
-                            let _ = socket.send(Message::Close(Some(CloseFrame {
-                                code: 4001,
-                                reason: std::borrow::Cow::Owned(e),
-                            }))).await;
+                            let _ = socket
+                                .send(Message::Close(Some(CloseFrame {
+                                    code: 4001,
+                                    reason: std::borrow::Cow::Owned(e),
+                                })))
+                                .await;
                             return;
                         }
                     },
                     None => {
-                        let _ = socket.send(Message::Close(Some(CloseFrame {
-                            code: 4001,
-                            reason: std::borrow::Cow::Borrowed("nostr_auth_event required"),
-                        }))).await;
+                        let _ = socket
+                            .send(Message::Close(Some(CloseFrame {
+                                code: 4001,
+                                reason: std::borrow::Cow::Borrowed("nostr_auth_event required"),
+                            })))
+                            .await;
                         return;
                     }
                 };
@@ -124,7 +133,7 @@ async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
                        SELECT 1 FROM circle_members WHERE circle_id = $1 AND member_pubkey = $2
                        UNION
                        SELECT 1 FROM circles WHERE id = $1 AND owner_pubkey = $2
-                     ) sub"
+                     ) sub",
                 )
                 .bind(circle_id)
                 .bind(&resolved_pubkey)
@@ -134,10 +143,12 @@ async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
                 .unwrap_or(false);
 
                 if !is_member {
-                    let _ = socket.send(Message::Close(Some(CloseFrame {
-                        code: 4003,
-                        reason: std::borrow::Cow::Borrowed("not a circle member"),
-                    }))).await;
+                    let _ = socket
+                        .send(Message::Close(Some(CloseFrame {
+                            code: 4003,
+                            reason: std::borrow::Cow::Borrowed("not a circle member"),
+                        })))
+                        .await;
                     return;
                 }
 
@@ -189,8 +200,8 @@ async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
 }
 
 fn verify_ws_auth(raw: &serde_json::Value) -> Result<String, String> {
-    let event: nostr_sdk::Event = serde_json::from_value(raw.clone())
-        .map_err(|_| "invalid auth event JSON".to_string())?;
+    let event: nostr_sdk::Event =
+        serde_json::from_value(raw.clone()).map_err(|_| "invalid auth event JSON".to_string())?;
     if event.kind != nostr_sdk::Kind::Custom(27235) {
         return Err("auth event must be kind 27235".to_string());
     }
@@ -199,7 +210,9 @@ fn verify_ws_auth(raw: &serde_json::Value) -> Result<String, String> {
     if (now - ts).abs() > 60 {
         return Err("auth event expired".to_string());
     }
-    event.verify().map_err(|_| "invalid signature".to_string())?;
+    event
+        .verify()
+        .map_err(|_| "invalid signature".to_string())?;
     Ok(event.pubkey.to_hex())
 }
 
@@ -209,13 +222,18 @@ async fn fetch_blob_snapshot(
 ) -> anyhow::Result<Vec<serde_json::Value>> {
     let rows = sqlx::query_as::<_, (Uuid, String, String, chrono::DateTime<chrono::Utc>)>(
         "SELECT id, sender_pubkey, encrypted_payload, expires_at
-         FROM location_blobs WHERE circle_id = $1 AND expires_at > NOW()"
+         FROM location_blobs WHERE circle_id = $1 AND expires_at > NOW()",
     )
     .bind(circle_id)
     .fetch_all(pool)
     .await?;
 
-    Ok(rows.into_iter().map(|(id, sender, payload, exp)| serde_json::json!({
-        "id": id, "sender_pubkey": sender, "encrypted_payload": payload, "expires_at": exp
-    })).collect())
+    Ok(rows
+        .into_iter()
+        .map(|(id, sender, payload, exp)| {
+            serde_json::json!({
+                "id": id, "sender_pubkey": sender, "encrypted_payload": payload, "expires_at": exp
+            })
+        })
+        .collect())
 }

@@ -44,8 +44,7 @@ async fn proxy_tile(
         }
     };
 
-    let status = StatusCode::from_u16(resp.status().as_u16())
-        .unwrap_or(StatusCode::BAD_GATEWAY);
+    let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
 
     let mut headers = HeaderMap::new();
     for (name, value) in resp.headers() {

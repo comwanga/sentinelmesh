@@ -39,7 +39,10 @@ mod tests {
     #[test]
     fn fallback_fee_is_reasonable() {
         let fallback = FALLBACK_SAT_PER_VBYTE * ANCHOR_TX_VBYTES;
-        assert_eq!(fallback, 3080, "constants drifted — check FALLBACK_SAT_PER_VBYTE and ANCHOR_TX_VBYTES");
+        assert_eq!(
+            fallback, 3080,
+            "constants drifted — check FALLBACK_SAT_PER_VBYTE and ANCHOR_TX_VBYTES"
+        );
         assert!(fallback >= MIN_FEE_SATS);
     }
 

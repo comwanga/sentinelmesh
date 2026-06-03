@@ -86,7 +86,13 @@ fn require(key: &str) -> Result<String> {
 
 const INSECURE_INTERNAL_DEFAULT: &str = "dev-only-insecure-secret";
 const WEAK_SECRETS: &[&str] = &[
-    "", "dev-only-insecure-secret", "test", "secret", "changeme", "password", "default",
+    "",
+    "dev-only-insecure-secret",
+    "test",
+    "secret",
+    "changeme",
+    "password",
+    "default",
 ];
 
 /// True when NODE_ENV is "production" (case-insensitive).
@@ -135,26 +141,22 @@ fn load_public_base_url() -> anyhow::Result<Option<String>> {
     };
     let lowered = raw.to_lowercase();
     let trimmed = lowered.trim_end_matches('/');
-    let uri: axum::http::Uri = trimmed.parse().map_err(|e| {
-        anyhow::anyhow!("PUBLIC_BASE_URL is not a valid URL ({e}): {raw}")
-    })?;
+    let uri: axum::http::Uri = trimmed
+        .parse()
+        .map_err(|e| anyhow::anyhow!("PUBLIC_BASE_URL is not a valid URL ({e}): {raw}"))?;
     let scheme = uri.scheme_str().ok_or_else(|| {
         anyhow::anyhow!("PUBLIC_BASE_URL must include scheme (e.g. https://): {raw}")
     })?;
     let path = uri.path();
     if !path.is_empty() && path != "/" {
-        anyhow::bail!(
-            "PUBLIC_BASE_URL must not include a path component (got {path:?}): {raw}"
-        );
+        anyhow::bail!("PUBLIC_BASE_URL must not include a path component (got {path:?}): {raw}");
     }
     if scheme != "http" && scheme != "https" {
-        anyhow::bail!(
-            "PUBLIC_BASE_URL scheme must be http or https (got {scheme:?}): {raw}"
-        );
+        anyhow::bail!("PUBLIC_BASE_URL scheme must be http or https (got {scheme:?}): {raw}");
     }
-    let authority = uri.authority().ok_or_else(|| {
-        anyhow::anyhow!("PUBLIC_BASE_URL must include a host: {raw}")
-    })?;
+    let authority = uri
+        .authority()
+        .ok_or_else(|| anyhow::anyhow!("PUBLIC_BASE_URL must include a host: {raw}"))?;
     let host = authority.host();
     let port = authority.port_u16();
     let host_part = match (scheme, port) {
@@ -178,7 +180,10 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let result = require("GATEWAY_TEST_MISSING_VAR_XYZ");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("GATEWAY_TEST_MISSING_VAR_XYZ"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("GATEWAY_TEST_MISSING_VAR_XYZ"));
     }
 
     #[test]
@@ -214,8 +219,14 @@ mod tests {
         std::env::remove_var("PUBLIC_BASE_URL");
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("PUBLIC_BASE_URL"), "missing PUBLIC_BASE_URL in: {msg}");
-        assert!(msg.contains("scheme") || msg.contains("valid URL"), "missing error detail in: {msg}");
+        assert!(
+            msg.contains("PUBLIC_BASE_URL"),
+            "missing PUBLIC_BASE_URL in: {msg}"
+        );
+        assert!(
+            msg.contains("scheme") || msg.contains("valid URL"),
+            "missing error detail in: {msg}"
+        );
     }
 
     #[test]
@@ -350,7 +361,10 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         std::env::remove_var("INTERNAL_SERVICE_SECRET");
         let result = resolve_internal_secret(true);
-        assert!(result.is_err(), "production must reject unset internal secret");
+        assert!(
+            result.is_err(),
+            "production must reject unset internal secret"
+        );
     }
 
     #[test]
@@ -359,13 +373,19 @@ mod tests {
         std::env::set_var("INTERNAL_SERVICE_SECRET", INSECURE_INTERNAL_DEFAULT);
         let result = resolve_internal_secret(true);
         std::env::remove_var("INTERNAL_SERVICE_SECRET");
-        assert!(result.is_err(), "production must reject the insecure default value");
+        assert!(
+            result.is_err(),
+            "production must reject the insecure default value"
+        );
     }
 
     #[test]
     fn internal_secret_strong_value_accepted_in_production() {
         let _guard = ENV_LOCK.lock().unwrap();
-        std::env::set_var("INTERNAL_SERVICE_SECRET", "a-strong-32-byte-secret-value-xx");
+        std::env::set_var(
+            "INTERNAL_SERVICE_SECRET",
+            "a-strong-32-byte-secret-value-xx",
+        );
         let result = resolve_internal_secret(true).unwrap();
         std::env::remove_var("INTERNAL_SERVICE_SECRET");
         assert_eq!(result, "a-strong-32-byte-secret-value-xx");

@@ -37,11 +37,11 @@ mod tests {
     #[test]
     fn backoff_matches_typescript() {
         let p = RetryPolicy::default_publish();
-        assert_eq!(p.delay_for(0), Duration::from_secs(60));   // 2^0 = 1 min
-        assert_eq!(p.delay_for(1), Duration::from_secs(120));  // 2^1 = 2 min
-        assert_eq!(p.delay_for(2), Duration::from_secs(240));  // 2^2 = 4 min
-        assert_eq!(p.delay_for(3), Duration::from_secs(480));  // 2^3 = 8 min
-        assert_eq!(p.delay_for(4), Duration::from_secs(960));  // 2^4 = 16 min
+        assert_eq!(p.delay_for(0), Duration::from_secs(60)); // 2^0 = 1 min
+        assert_eq!(p.delay_for(1), Duration::from_secs(120)); // 2^1 = 2 min
+        assert_eq!(p.delay_for(2), Duration::from_secs(240)); // 2^2 = 4 min
+        assert_eq!(p.delay_for(3), Duration::from_secs(480)); // 2^3 = 8 min
+        assert_eq!(p.delay_for(4), Duration::from_secs(960)); // 2^4 = 16 min
     }
 
     #[test]

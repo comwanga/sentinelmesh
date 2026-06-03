@@ -11,7 +11,20 @@ const MAX_RETRIES: i32 = 5;
 /// Eligible: (PENDING|FAILED with next_retry_at <= NOW) OR NOSTR_PUBLISHED.
 pub async fn claim_next_job(pool: &PgPool, worker_id: &str) -> Result<Option<PublishJob>> {
     let mut tx = pool.begin().await?;
-    let row = sqlx::query_as::<_, (Uuid, String, Uuid, String, Option<String>, Option<String>, Option<String>, Option<String>, i32)>(
+    let row = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Uuid,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            i32,
+        ),
+    >(
         r#"
         UPDATE publish_jobs
         SET status = 'PROCESSING',
@@ -52,7 +65,12 @@ pub async fn claim_next_job(pool: &PgPool, worker_id: &str) -> Result<Option<Pub
 
 /// Marks job FAILED with exponential backoff. Inserts a publish_failures row.
 /// Both writes are in a single transaction — failure row must not appear without the status update.
-pub async fn mark_failed(pool: &PgPool, job_id: Uuid, error_message: &str, retry_count: i32) -> Result<()> {
+pub async fn mark_failed(
+    pool: &PgPool,
+    job_id: Uuid,
+    error_message: &str,
+    retry_count: i32,
+) -> Result<()> {
     let backoff_minutes = 2i64.pow(retry_count as u32);
     let mut tx = pool.begin().await?;
     sqlx::query(
@@ -125,7 +143,12 @@ pub async fn set_nostr_published(
     Ok(())
 }
 
-pub async fn set_bitcoin_anchored(pool: &PgPool, job_id: Uuid, txid: &str, anchor_hash: &str) -> Result<()> {
+pub async fn set_bitcoin_anchored(
+    pool: &PgPool,
+    job_id: Uuid,
+    txid: &str,
+    anchor_hash: &str,
+) -> Result<()> {
     sqlx::query(
         r#"UPDATE publish_jobs
            SET status = 'BITCOIN_ANCHORED', bitcoin_txid = $2, anchor_hash = $3,
@@ -156,16 +179,34 @@ pub async fn fetch_source_row(pool: &PgPool, job: &PublishJob) -> Result<Option<
         .bind(job.source_id)
         .fetch_optional(pool)
         .await?;
-    Ok(row.map(|r| SourceRow { severity: r.0, event_type: r.1, lat: r.2, lng: r.3, place_name: r.4 }))
+    Ok(row.map(|r| SourceRow {
+        severity: r.0,
+        event_type: r.1,
+        lat: r.2,
+        lng: r.3,
+        place_name: r.4,
+    }))
 }
 
-pub async fn update_source_nostr_id(pool: &PgPool, job: &PublishJob, kind30078_id: &str) -> Result<()> {
-    let table = if job.source_type == "SAFETY_EVENT" { "safety_events" } else { "community_reports" };
+pub async fn update_source_nostr_id(
+    pool: &PgPool,
+    job: &PublishJob,
+    kind30078_id: &str,
+) -> Result<()> {
+    let table = if job.source_type == "SAFETY_EVENT" {
+        "safety_events"
+    } else {
+        "community_reports"
+    };
     let sql = format!(
         "UPDATE {} SET nostr_event_id = $2 WHERE id = $1 AND nostr_event_id IS NULL",
         table
     );
-    sqlx::query(&sql).bind(job.source_id).bind(kind30078_id).execute(pool).await?;
+    sqlx::query(&sql)
+        .bind(job.source_id)
+        .bind(kind30078_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 

@@ -83,11 +83,15 @@ async fn create_event(
     Json(body): Json<CreateEventBody>,
 ) -> Result<(StatusCode, Json<SafetyEvent>), AppError> {
     if body.event_type.is_empty() || body.title.is_empty() || body.severity.is_empty() {
-        return Err(AppError::BadRequest("event_type, title, severity are required".into()));
+        return Err(AppError::BadRequest(
+            "event_type, title, severity are required".into(),
+        ));
     }
 
     if !(body.lat >= -90.0 && body.lat <= 90.0) || !(body.lng >= -180.0 && body.lng <= 180.0) {
-        return Err(AppError::BadRequest("lat must be in -90..90, lng in -180..180".into()));
+        return Err(AppError::BadRequest(
+            "lat must be in -90..90, lng in -180..180".into(),
+        ));
     }
 
     let mut tx = state.db.begin().await?;
@@ -100,13 +104,22 @@ async fn create_event(
          RETURNING id, event_type, severity, title, lat, lng, started_at,
                    summary, place_name, county, radius_meters, confidence,
                    source_count, source_breakdown, is_active, state,
-                   nostr_event_id, bitcoin_txid, created_at, updated_at"
+                   nostr_event_id, bitcoin_txid, created_at, updated_at",
     )
-    .bind(&body.event_type).bind(&body.severity).bind(&body.title)
-    .bind(body.lat).bind(body.lng).bind(body.started_at)
-    .bind(&body.summary).bind(&body.place_name).bind(&body.county)
-    .bind(body.radius_meters).bind(body.confidence).bind(body.source_count)
-    .bind(&body.source_breakdown).bind(body.is_active.unwrap_or(true))
+    .bind(&body.event_type)
+    .bind(&body.severity)
+    .bind(&body.title)
+    .bind(body.lat)
+    .bind(body.lng)
+    .bind(body.started_at)
+    .bind(&body.summary)
+    .bind(&body.place_name)
+    .bind(&body.county)
+    .bind(body.radius_meters)
+    .bind(body.confidence)
+    .bind(body.source_count)
+    .bind(&body.source_breakdown)
+    .bind(body.is_active.unwrap_or(true))
     .fetch_one(&mut *tx)
     .await?;
 
@@ -114,7 +127,7 @@ async fn create_event(
     if should_publish {
         sqlx::query(
             "INSERT INTO publish_jobs (source_type, source_id, status, next_retry_at)
-             VALUES ('SAFETY_EVENT', $1, 'PENDING', NOW())"
+             VALUES ('SAFETY_EVENT', $1, 'PENDING', NOW())",
         )
         .bind(event.id)
         .execute(&mut *tx)
@@ -146,12 +159,14 @@ async fn list_events(
     let limit = q.limit.unwrap_or(50).min(200);
     let active_only = q.active_only.as_deref() != Some("false");
 
-    let severity_filter: Option<Vec<String>> = q.severity.as_deref().map(|s| {
-        s.split(',').map(|x| x.trim().to_uppercase()).collect()
-    });
-    let type_filter: Option<Vec<String>> = q.r#type.as_deref().map(|s| {
-        s.split(',').map(|x| x.trim().to_uppercase()).collect()
-    });
+    let severity_filter: Option<Vec<String>> = q
+        .severity
+        .as_deref()
+        .map(|s| s.split(',').map(|x| x.trim().to_uppercase()).collect());
+    let type_filter: Option<Vec<String>> = q
+        .r#type
+        .as_deref()
+        .map(|s| s.split(',').map(|x| x.trim().to_uppercase()).collect());
 
     let events = sqlx::query_as::<_, SafetyEvent>(
         "SELECT id, event_type, severity, title, lat, lng, started_at,
@@ -165,15 +180,22 @@ async fn list_events(
            AND ($5::text[] IS NULL OR event_type = ANY($5))
            AND (NOT $6 OR is_active = true)
          ORDER BY created_at DESC
-         LIMIT $7"
+         LIMIT $7",
     )
-    .bind(q.lat).bind(q.lng).bind(radius_m)
-    .bind(severity_filter).bind(type_filter).bind(active_only).bind(limit)
+    .bind(q.lat)
+    .bind(q.lng)
+    .bind(radius_m)
+    .bind(severity_filter)
+    .bind(type_filter)
+    .bind(active_only)
+    .bind(limit)
     .fetch_all(&state.db)
     .await?;
 
     let total = events.len() as i64;
-    Ok(Json(serde_json::json!({ "events": events, "total": total })))
+    Ok(Json(
+        serde_json::json!({ "events": events, "total": total }),
+    ))
 }
 
 async fn get_event(
@@ -185,7 +207,7 @@ async fn get_event(
                 summary, place_name, county, radius_meters, confidence,
                 source_count, source_breakdown, is_active, state,
                 nostr_event_id, bitcoin_txid, created_at, updated_at
-         FROM safety_events WHERE id = $1"
+         FROM safety_events WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&state.db)
@@ -209,14 +231,19 @@ async fn list_events_by_bounds(
           WHERE geog && ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
             AND state NOT IN ('RESOLVED', 'EXPIRED')
           ORDER BY created_at DESC
-          LIMIT $5"
+          LIMIT $5",
     )
-    .bind(q.min_lng).bind(q.min_lat).bind(q.max_lng).bind(q.max_lat)
+    .bind(q.min_lng)
+    .bind(q.min_lat)
+    .bind(q.max_lng)
+    .bind(q.max_lat)
     .bind(limit)
     .fetch_all(&state.db)
     .await?;
     let total = events.len() as i64;
-    Ok(Json(serde_json::json!({ "events": events, "total": total })))
+    Ok(Json(
+        serde_json::json!({ "events": events, "total": total }),
+    ))
 }
 
 pub fn router() -> Router<AppState> {

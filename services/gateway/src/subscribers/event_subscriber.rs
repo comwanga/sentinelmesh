@@ -4,8 +4,8 @@ use std::sync::{
 };
 
 use anyhow::Result;
-use redis::AsyncCommands;
 use redis::streams::{StreamReadOptions, StreamReadReply};
+use redis::AsyncCommands;
 use sqlx::PgPool;
 use tokio::time::{sleep, Duration};
 
@@ -20,10 +20,8 @@ const BLOCK_MS: usize = 5_000;
 const BASE_BACKOFF_MS: u64 = 100;
 const MAX_BACKOFF_MS: u64 = 30_000;
 
-const SCHEMA_JSON: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../event_schema.json"
-));
+const SCHEMA_JSON: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../event_schema.json"));
 
 pub async fn run(
     redis_url: String,
@@ -34,12 +32,22 @@ pub async fn run(
 ) {
     let schema: serde_json::Value = serde_json::from_str(SCHEMA_JSON)
         .expect("event_schema.json is invalid JSON — regenerate with export_schema binary");
-    let validator = jsonschema::validator_for(&schema)
-        .expect("event_schema.json is not a valid JSON Schema — regenerate with export_schema binary");
+    let validator = jsonschema::validator_for(&schema).expect(
+        "event_schema.json is not a valid JSON Schema — regenerate with export_schema binary",
+    );
 
     let mut backoff_ms = BASE_BACKOFF_MS;
     loop {
-        match read_loop(&redis_url, &pool, &hub, &redis_healthy, &validator, &event_tx).await {
+        match read_loop(
+            &redis_url,
+            &pool,
+            &hub,
+            &redis_healthy,
+            &validator,
+            &event_tx,
+        )
+        .await
+        {
             Ok(()) => break,
             Err(e) => {
                 let was_healthy = redis_healthy.swap(false, Ordering::Relaxed);
@@ -85,15 +93,16 @@ async fn read_loop(
         .block(BLOCK_MS);
 
     loop {
-        let reply: StreamReadReply =
-            conn.xread_options(&[STREAM], &[">"], &opts).await?;
+        let reply: StreamReadReply = conn.xread_options(&[STREAM], &[">"], &opts).await?;
 
         for stream_key in reply.keys {
             for entry in stream_key.ids {
                 let msg_id = entry.id.clone();
 
                 let Some(payload_val) = entry.map.get("payload") else {
-                    tracing::warn!("stream entry {msg_id} missing 'payload' field — acking and skipping");
+                    tracing::warn!(
+                        "stream entry {msg_id} missing 'payload' field — acking and skipping"
+                    );
                     let _: i64 = conn.xack(STREAM, GROUP, &[&msg_id]).await?;
                     continue;
                 };
@@ -111,7 +120,10 @@ async fn read_loop(
 
                 if let Err(errors) = validator.validate(&value) {
                     let msgs: Vec<String> = errors.map(|e| e.to_string()).collect();
-                    tracing::warn!("dropping schema-invalid entry {msg_id}: {}", msgs.join("; "));
+                    tracing::warn!(
+                        "dropping schema-invalid entry {msg_id}: {}",
+                        msgs.join("; ")
+                    );
                     let _: i64 = conn.xack(STREAM, GROUP, &[&msg_id]).await?;
                     continue;
                 }
@@ -214,7 +226,11 @@ async fn handle_message(
             std::env::var("VAPID_SUBJECT").ok(),
         ) {
             let pool = pool.clone();
-            let title = format!("{} — {}", event.severity, event.event_type.replace('_', " "));
+            let title = format!(
+                "{} — {}",
+                event.severity,
+                event.event_type.replace('_', " ")
+            );
             let body = event
                 .place_name
                 .clone()
@@ -222,7 +238,10 @@ async fn handle_message(
                 .unwrap_or_else(|| "A safety event was reported in your area".to_string());
             let event_id = event.id.to_string();
             tokio::spawn(async move {
-                crate::routes::push::broadcast_push(&pool, &priv_key, &subject, &title, &body, &event_id).await;
+                crate::routes::push::broadcast_push(
+                    &pool, &priv_key, &subject, &title, &body, &event_id,
+                )
+                .await;
             });
         }
     }

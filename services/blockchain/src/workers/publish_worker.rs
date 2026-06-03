@@ -43,7 +43,12 @@ pub async fn run(pool: Arc<PgPool>, config: Arc<Config>) {
     }
 }
 
-async fn tick(pool: &PgPool, config: &Config, worker_id: &str, http: &reqwest::Client) -> Result<()> {
+async fn tick(
+    pool: &PgPool,
+    config: &Config,
+    worker_id: &str,
+    http: &reqwest::Client,
+) -> Result<()> {
     let job = match job_db::claim_next_job(pool, worker_id).await? {
         Some(j) => j,
         None => return Ok(()),
@@ -61,7 +66,12 @@ async fn tick(pool: &PgPool, config: &Config, worker_id: &str, http: &reqwest::C
     Ok(())
 }
 
-async fn process_job(pool: &PgPool, config: &Config, job: &PublishJob, http: &reqwest::Client) -> Result<()> {
+async fn process_job(
+    pool: &PgPool,
+    config: &Config,
+    job: &PublishJob,
+    http: &reqwest::Client,
+) -> Result<()> {
     let source = match job_db::fetch_source_row(pool, job).await? {
         Some(s) => s,
         None => {
@@ -71,7 +81,9 @@ async fn process_job(pool: &PgPool, config: &Config, job: &PublishJob, http: &re
     };
 
     // Stage 1: publish to Nostr if not done yet
-    let (_kind1_id, kind30078_id) = if job.nostr_kind1_id.is_none() || job.nostr_kind30078_id.is_none() {
+    let (_kind1_id, kind30078_id) = if job.nostr_kind1_id.is_none()
+        || job.nostr_kind30078_id.is_none()
+    {
         let result = nostr_publisher::publish_nostr_events(
             &config.nostr_privkey,
             &config.relay_urls,
@@ -93,8 +105,10 @@ async fn process_job(pool: &PgPool, config: &Config, job: &PublishJob, http: &re
 
     // Stage 2: anchor to Bitcoin if not done yet
     if job.bitcoin_txid.is_none() {
-        let anchor_hash = build_anchor_hash(&job.source_id.to_string(), &kind30078_id, &source.severity);
-        let fee_sats = fee_estimator::estimate_fee(http, config.bitcoin_network.mempool_fee_url()).await as i64;
+        let anchor_hash =
+            build_anchor_hash(&job.source_id.to_string(), &kind30078_id, &source.severity);
+        let fee_sats = fee_estimator::estimate_fee(http, config.bitcoin_network.mempool_fee_url())
+            .await as i64;
 
         let utxo = match utxo_db::claim_utxo(pool, job.id).await? {
             Some(u) => u,
@@ -117,28 +131,62 @@ async fn process_job(pool: &PgPool, config: &Config, job: &PublishJob, http: &re
             blockstream_broadcast_url: config.bitcoin_network.blockstream_broadcast_url().into(),
         };
 
-        let (txid_to_record, anchor_hash_to_record) = match bitcoin_anchor::broadcast_anchor(anchor_input).await {
-            Ok(result) => {
-                // Broadcast succeeded. spend_utxo failure must NOT re-trigger the Bitcoin stage —
-                // the tx is already on the network and the UTXO is effectively spent.
-                if let Err(e) = utxo_db::spend_utxo(pool, utxo.id, &result.txid, result.change_vout, result.change_value_sats, job.id).await {
-                    tracing::error!("spend_utxo failed after broadcast for job {}, txid={}: {}", job.id, result.txid, e);
+        let (txid_to_record, anchor_hash_to_record) =
+            match bitcoin_anchor::broadcast_anchor(anchor_input).await {
+                Ok(result) => {
+                    // Broadcast succeeded. spend_utxo failure must NOT re-trigger the Bitcoin stage —
+                    // the tx is already on the network and the UTXO is effectively spent.
+                    if let Err(e) = utxo_db::spend_utxo(
+                        pool,
+                        utxo.id,
+                        &result.txid,
+                        result.change_vout,
+                        result.change_value_sats,
+                        job.id,
+                    )
+                    .await
+                    {
+                        tracing::error!(
+                            "spend_utxo failed after broadcast for job {}, txid={}: {}",
+                            job.id,
+                            result.txid,
+                            e
+                        );
+                    }
+                    (result.txid, anchor_hash.clone())
                 }
-                (result.txid, anchor_hash.clone())
-            }
-            Err(AnchorError::PreBroadcast(msg)) => {
-                utxo_db::release_utxo(pool, utxo.id).await?;
-                return Err(anyhow::anyhow!(msg));
-            }
-            Err(AnchorError::PostBroadcast { message, txid, change_vout, change_value_sats }) => {
-                // Tx was built; may or may not have been broadcast. Record what we know.
-                if let Err(e) = utxo_db::spend_utxo(pool, utxo.id, &txid, change_vout, change_value_sats, job.id).await {
-                    tracing::error!("spend_utxo failed in PostBroadcast for job {}, txid={}: {}", job.id, txid, e);
+                Err(AnchorError::PreBroadcast(msg)) => {
+                    utxo_db::release_utxo(pool, utxo.id).await?;
+                    return Err(anyhow::anyhow!(msg));
                 }
-                tracing::warn!("post-broadcast error for job {}: {}", job.id, message);
-                (txid, anchor_hash.clone())
-            }
-        };
+                Err(AnchorError::PostBroadcast {
+                    message,
+                    txid,
+                    change_vout,
+                    change_value_sats,
+                }) => {
+                    // Tx was built; may or may not have been broadcast. Record what we know.
+                    if let Err(e) = utxo_db::spend_utxo(
+                        pool,
+                        utxo.id,
+                        &txid,
+                        change_vout,
+                        change_value_sats,
+                        job.id,
+                    )
+                    .await
+                    {
+                        tracing::error!(
+                            "spend_utxo failed in PostBroadcast for job {}, txid={}: {}",
+                            job.id,
+                            txid,
+                            e
+                        );
+                    }
+                    tracing::warn!("post-broadcast error for job {}: {}", job.id, message);
+                    (txid, anchor_hash.clone())
+                }
+            };
         job_db::set_bitcoin_anchored(pool, job.id, &txid_to_record, &anchor_hash_to_record).await?;
         job_db::update_source_bitcoin_txid(pool, job, &txid_to_record).await?;
     }
