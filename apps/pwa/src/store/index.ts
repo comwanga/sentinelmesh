@@ -4,7 +4,6 @@ import acousticReducer from './acousticSlice'
 import reportsReducer from './reportSlice'
 import circlesReducer from './circlesSlice'
 import uiReducer from './uiSlice'
-import zapsReducer from './zapsSlice'
 import insightsEventsReducer from './insightsEventsSlice'
 import communityStatsReducer from './communityStatsSlice'
 import safetyLogReducer from './safetyLogSlice'
@@ -18,7 +17,6 @@ export const store = configureStore({
     reports:        reportsReducer,
     circles:        circlesReducer,
     ui:             uiReducer,
-    zaps:           zapsReducer,
     insightsEvents: insightsEventsReducer,
     communityStats: communityStatsReducer,
     safetyLog:      safetyLogReducer,

@@ -4,15 +4,7 @@ pub struct Config {
     pub database_url: String,
     pub redis_url: String,
     pub port: u16,
-    pub zap_webhook_secret: String,
     pub blockchain_service_url: Option<String>,
-    pub lnd_rest_url: Option<String>,
-    pub lnd_macaroon_hex: Option<String>,
-    pub lnd_tls_skip_verify: bool,
-    pub lnd_tls_cert_pem: Option<Vec<u8>>,
-    pub nostr_private_key: Option<String>,
-    pub nostr_relays: Vec<String>,
-    pub zap_rate_limit_per_minute: u32,
     pub internal_service_secret: String,
     pub trust_proxy: bool,
     pub max_db_connections: u32,
@@ -39,39 +31,16 @@ impl Config {
         // strong, non-default value or the process refuses to start.
         let internal_service_secret = resolve_internal_secret(production)?;
 
-        let zap_webhook_secret = require("ZAP_WEBHOOK_SECRET")?;
-        if production {
-            reject_weak_secret("ZAP_WEBHOOK_SECRET", &zap_webhook_secret)?;
-        }
-
         Ok(Config {
             database_url: require("DATABASE_URL")?,
             redis_url: require("REDIS_URL")?,
             port: std::env::var("PORT")
                 .unwrap_or_else(|_| "3000".into())
                 .parse()?,
-            zap_webhook_secret,
             acoustic_confirm_enabled: std::env::var("ACOUSTIC_CONFIRM_ENABLED")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
             blockchain_service_url: std::env::var("BLOCKCHAIN_SERVICE_URL").ok(),
-            lnd_rest_url: std::env::var("LND_REST_URL").ok(),
-            lnd_macaroon_hex: std::env::var("LND_MACAROON_HEX").ok(),
-            lnd_tls_skip_verify: std::env::var("LND_TLS_SKIP_VERIFY")
-                .map(|v| v == "true" || v == "1")
-                .unwrap_or(false),
-            lnd_tls_cert_pem: load_cert_pem()?,
-            nostr_private_key: load_nostr_private_key()?,
-            nostr_relays: std::env::var("NOSTR_RELAYS")
-                .unwrap_or_else(|_| "wss://nos.lol".into())
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect(),
-            zap_rate_limit_per_minute: std::env::var("ZAP_RATE_LIMIT_PER_MINUTE")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(10),
             internal_service_secret,
             trust_proxy: std::env::var("TRUST_PROXY")
                 .map(|v| v == "true" || v == "1")
@@ -123,7 +92,12 @@ fn is_production() -> bool {
 /// insecure dev default with a warning.
 fn resolve_internal_secret(production: bool) -> Result<String> {
     match std::env::var("INTERNAL_SERVICE_SECRET") {
-        Ok(s) if !s.is_empty() && s != INSECURE_INTERNAL_DEFAULT => Ok(s),
+        Ok(s) if !s.is_empty() && s != INSECURE_INTERNAL_DEFAULT => {
+            if production {
+                reject_weak_secret("INTERNAL_SERVICE_SECRET", &s)?;
+            }
+            Ok(s)
+        }
         _ if production => anyhow::bail!(
             "INTERNAL_SERVICE_SECRET must be set to a strong, non-default value when NODE_ENV=production"
         ),
@@ -144,15 +118,6 @@ fn reject_weak_secret(name: &str, value: &str) -> Result<()> {
         );
     }
     Ok(())
-}
-
-fn load_cert_pem() -> Result<Option<Vec<u8>>> {
-    let Some(path) = std::env::var("LND_TLS_CERT_PATH").ok() else {
-        return Ok(None);
-    };
-    let bytes = std::fs::read(&path)
-        .map_err(|e| anyhow::anyhow!("failed to read LND_TLS_CERT_PATH={path}: {e}"))?;
-    Ok(Some(bytes))
 }
 
 fn load_public_base_url() -> anyhow::Result<Option<String>> {
@@ -191,22 +156,6 @@ fn load_public_base_url() -> anyhow::Result<Option<String>> {
     Ok(Some(format!("{scheme}://{host_part}")))
 }
 
-fn load_nostr_private_key() -> Result<Option<String>> {
-    if let Ok(path) = std::env::var("NOSTR_PRIVATE_KEY_FILE") {
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| anyhow::anyhow!("failed to read NOSTR_PRIVATE_KEY_FILE={path}: {e}"))?;
-        return Ok(Some(content.trim().to_string()));
-    }
-    if let Ok(key) = std::env::var("NOSTR_PRIVATE_KEY") {
-        tracing::warn!(
-            "NOSTR_PRIVATE_KEY loaded from environment variable — \
-             use NOSTR_PRIVATE_KEY_FILE for production"
-        );
-        return Ok(Some(key));
-    }
-    Ok(None)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,33 +170,6 @@ mod tests {
         let result = require("GATEWAY_TEST_MISSING_VAR_XYZ");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("GATEWAY_TEST_MISSING_VAR_XYZ"));
-    }
-
-    #[test]
-    fn nostr_relays_parse_from_env() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        std::env::set_var("NOSTR_RELAYS", "wss://a.example,wss://b.example");
-        let relays: Vec<String> = std::env::var("NOSTR_RELAYS")
-            .unwrap_or_default()
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        std::env::remove_var("NOSTR_RELAYS");
-        assert_eq!(relays, vec!["wss://a.example", "wss://b.example"]);
-    }
-
-    #[test]
-    fn nostr_relays_default_when_unset() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("NOSTR_RELAYS");
-        let relays: Vec<String> = std::env::var("NOSTR_RELAYS")
-            .unwrap_or_else(|_| "wss://nos.lol".into())
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        assert_eq!(relays, vec!["wss://nos.lol"]);
     }
 
     #[test]
