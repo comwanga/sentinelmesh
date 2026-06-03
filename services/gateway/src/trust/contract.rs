@@ -1,18 +1,20 @@
-//! Trust tier ladder and the promotion decision for machine-origin (NLP) events.
+//! Trust tier ladder and the promotion decision for machine-origin events
+//! (NLP now; the acoustic worker is meant to converge onto this contract later).
 //!
 //! Independence is measured in *provenance clusters* (distinct `source_id`) and
 //! *channels* (distinct `origin_channel`), never raw row counts — duplicate
 //! ingestion must not inflate trust. Machine-origin events top out at `Confirmed`;
 //! a higher human/community `Authoritative` tier is intentionally NOT represented
-//! here (reserved for a later unified trust engine). The acoustic worker is meant
-//! to converge onto this contract; it is not refactored as part of H-5.
+//! here (reserved for a later unified trust engine). Acoustic is not refactored
+//! as part of H-5.
 
 /// Machine-origin trust tier, ordered Heuristic < Corroborating < Confirmed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// `Ord` is derived from variant declaration order — keep them in ascending order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TrustTier {
-    Heuristic,
-    Corroborating,
-    Confirmed,
+    Heuristic,     // 0
+    Corroborating, // 1
+    Confirmed,     // 2
 }
 
 impl TrustTier {
@@ -69,7 +71,7 @@ mod tests {
     #[test]
     fn two_distinct_sources_corroborate() {
         assert_eq!(decide(ev(2, 1)), TrustTier::Corroborating);
-        assert_eq!(decide(ev(2, 2)), TrustTier::Corroborating);
+        assert_eq!(decide(ev(2, 2)), TrustTier::Corroborating); // sources < CONFIRM_MIN_SOURCES (3)
     }
 
     #[test]
@@ -88,6 +90,18 @@ mod tests {
         assert_eq!(TrustTier::Heuristic.as_str(), "heuristic");
         assert_eq!(TrustTier::Corroborating.as_str(), "corroborating");
         assert_eq!(TrustTier::Confirmed.as_str(), "confirmed");
+    }
+
+    #[test]
+    fn zero_evidence_is_heuristic_floor() {
+        assert_eq!(decide(ev(0, 0)), TrustTier::Heuristic);
+        assert_eq!(decide(ev(0, 5)), TrustTier::Heuristic);
+    }
+
+    #[test]
+    fn tiers_order_ascending() {
+        assert!(TrustTier::Heuristic < TrustTier::Corroborating);
+        assert!(TrustTier::Corroborating < TrustTier::Confirmed);
     }
 
     #[test]
