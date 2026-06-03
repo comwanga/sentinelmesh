@@ -39,6 +39,11 @@ vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 100, heigh
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
+// uploadToIPFS now signs a NIP-98 auth event for the gateway proxy.
+vi.mock('../services/nostrService', () => ({
+  signNip98AuthEvent: vi.fn().mockResolvedValue({ id: 'auth1', sig: 'sig1' }),
+}))
+
 import { compressAndStrip, blurFaces, uploadToIPFS } from '../services/photoService'
 
 describe('compressAndStrip', () => {
@@ -63,41 +68,32 @@ describe('blurFaces', () => {
 })
 
 describe('uploadToIPFS', () => {
-  test('returns CID from Pinata on success', async () => {
-    vi.stubEnv('VITE_PINATA_JWT', 'test-jwt')
+  test('returns CID from the authenticated gateway proxy on success', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ IpfsHash: 'QmTestCID' }),
+      json: async () => ({ cid: 'QmTestCID' }),
     })
     const blob = new Blob(['data'], { type: 'image/jpeg' })
     const cid = await uploadToIPFS(blob)
     expect(cid).toBe('QmTestCID')
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://api.pinata.cloud/pinning/pinFileToIPFS',
-      expect.objectContaining({ headers: { Authorization: 'Bearer test-jwt' } }),
+      expect.stringContaining('/api/photos/pin'),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'X-Nostr-Auth': expect.any(String) }),
+      }),
     )
   })
 
-  test('returns null when VITE_PINATA_JWT not set', async () => {
-    vi.stubEnv('VITE_PINATA_JWT', '')
-    const blob = new Blob(['data'], { type: 'image/jpeg' })
-    const cid = await uploadToIPFS(blob)
-    expect(cid).toBeNull()
-  })
-
-  test('returns null when fetch returns non-ok response', async () => {
-    vi.stubEnv('VITE_PINATA_JWT', 'test-jwt')
+  test('returns null when the proxy returns a non-ok response', async () => {
     mockFetch.mockResolvedValueOnce({ ok: false })
     const blob = new Blob(['data'], { type: 'image/jpeg' })
-    const cid = await uploadToIPFS(blob)
-    expect(cid).toBeNull()
+    expect(await uploadToIPFS(blob)).toBeNull()
   })
 
   test('returns null when fetch throws', async () => {
-    vi.stubEnv('VITE_PINATA_JWT', 'test-jwt')
     mockFetch.mockRejectedValueOnce(new Error('network error'))
     const blob = new Blob(['data'], { type: 'image/jpeg' })
-    const cid = await uploadToIPFS(blob)
-    expect(cid).toBeNull()
+    expect(await uploadToIPFS(blob)).toBeNull()
   })
 })

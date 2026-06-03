@@ -35,9 +35,8 @@ function toMember(raw: RawMember): CircleMember {
   }
 }
 
-function makeAuthHeaders() {
-  const keypair = loadOrCreateKeypair()
-  const authEvent = signAuthEvent(keypair.secretKey)
+async function makeAuthHeaders() {
+  const authEvent = await signAuthEvent()
   return {
     'Content-Type': 'application/json',
     'X-Nostr-Auth': JSON.stringify(authEvent),
@@ -98,7 +97,7 @@ function EmptyState() {
     setCreating(true)
     setCreateError(null)
     try {
-      const headers = makeAuthHeaders()
+      const headers = await makeAuthHeaders()
       const res = await fetch(`${API_BASE}/api/circles`, {
         method: 'POST', headers,
         body: JSON.stringify({ name: effectiveCircleName }),
@@ -354,7 +353,7 @@ export function FamilyCircleDashboard() {
     const hex = hexFromNpubOrHex(npubOrHex)
     if (!hex || !activeCircleId) return 'Invalid key format'
     try {
-      const headers = makeAuthHeaders()
+      const headers = await makeAuthHeaders()
       const res = await fetch(`${API_BASE}/api/circles/${activeCircleId}/members`, {
         method: 'POST', headers,
         body: JSON.stringify({ member_pubkey: hex }),

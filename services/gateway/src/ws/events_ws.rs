@@ -592,7 +592,7 @@ mod tests {
             m
         };
         let id_new = Uuid::from_u128(1);
-        let new_events = vec![
+        let new_events = [
             WsEvent { id: id_new, event_type: "FIRE".into(), severity: "CRITICAL".into(),
                       state: "ACTIVE".into(), trust_state: "confirmed".into(), title: "Fire".into(), lat: 0.0, lng: 0.0,
                       started_at: chrono::Utc::now() },

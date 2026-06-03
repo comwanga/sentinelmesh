@@ -16,6 +16,7 @@ const CONFIRM_THRESHOLD: f32 = 0.80;
 const MIN_CONTRIBUTORS: usize = 3;
 const DEFAULT_TRUST: f32 = 0.40;
 // Floor for per-node trust in Phase 3; unused while all nodes default to DEFAULT_TRUST
+#[allow(dead_code)]
 const TRUST_FLOOR: f32 = 0.15;
 const EXPIRY_WINDOW_SECS: i64 = 300; // 5 min: how long pending/corroborating signals live before expiry
 const FETCH_WINDOW_SECS: i64 = TEMPORAL_CUTOFF_SECS + 10; // slight buffer above scoring cutoff for tick jitter
@@ -30,6 +31,7 @@ struct SignalRow {
     confidence: f32,
     confidence_variance: Option<f32>,
     received_at: chrono::DateTime<chrono::Utc>,
+    #[allow(dead_code)]
     trust_state: String,
 }
 
@@ -591,6 +593,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn confirm_is_a_strictly_higher_bar_than_corroborate() {
         // Guards against regressing the two stages back into a single threshold.
         assert!(
@@ -600,6 +603,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn min_contributors_blocks_two_key_sybil() {
         // At least 3 independent identities required before any promotion.
         assert!(MIN_CONTRIBUTORS >= 3, "min contributors must be >= 3");
