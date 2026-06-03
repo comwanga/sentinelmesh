@@ -14,6 +14,11 @@ const CONFIRM_THRESHOLD: f32 = 0.80;
 // Require independent corroboration from at least 3 distinct identities before a
 // cluster can be promoted. Raised from 2 to blunt the cheapest Sybil-confirm path.
 const MIN_CONTRIBUTORS: usize = 3;
+// AC-4: require at least this many DISTINCT acoustic fingerprints before confirming.
+// Live audio varies per device, so genuine independent observations have distinct
+// fingerprints; an identical digital signal replayed under multiple keys does not,
+// so it can no longer fake corroboration.
+const MIN_DISTINCT_FINGERPRINTS: usize = 2;
 const DEFAULT_TRUST: f32 = 0.40;
 // Floor for per-node trust in Phase 3; unused while all nodes default to DEFAULT_TRUST
 #[allow(dead_code)]
@@ -31,6 +36,7 @@ struct SignalRow {
     confidence: f32,
     confidence_variance: Option<f32>,
     received_at: chrono::DateTime<chrono::Utc>,
+    signal_fingerprint: Option<String>,
     #[allow(dead_code)]
     trust_state: String,
 }
@@ -141,7 +147,7 @@ async fn fetch_cluster_groups(
 ) -> Result<std::collections::HashMap<(String, String), Vec<SignalRow>>> {
     let signals: Vec<SignalRow> = sqlx::query_as::<_, SignalRow>(
         "SELECT id, pubkey, h3_r9, h3_r7, threat_class, confidence,
-                confidence_variance, received_at, trust_state
+                confidence_variance, received_at, signal_fingerprint, trust_state
            FROM acoustic_signals
           WHERE trust_state IN ('pending', 'corroborating')
             AND received_at > now() - ($1 * interval '1 second')
@@ -228,6 +234,22 @@ async fn process_cluster(
     }
 
     if cluster_score_adj < CONFIRM_THRESHOLD {
+        return Ok(result);
+    }
+
+    // AC-4: require distinct acoustic fingerprints among contributors. An identical
+    // signal replayed under multiple keys collapses to one fingerprint and cannot
+    // reach confirmed.
+    let fingerprints: Vec<Option<&str>> = weighted
+        .iter()
+        .map(|(i, _)| signals[*i].signal_fingerprint.as_deref())
+        .collect();
+    if count_distinct_fingerprints(&fingerprints) < MIN_DISTINCT_FINGERPRINTS {
+        tracing::debug!(
+            h3_r9,
+            threat_class,
+            "synthesis: insufficient distinct fingerprints — not confirming"
+        );
         return Ok(result);
     }
 
@@ -470,6 +492,15 @@ fn compute_weights(
     (result, total_trust_mass, numerator, total_conf_var)
 }
 
+/// Number of distinct non-null acoustic fingerprints (AC-4 independence check).
+fn count_distinct_fingerprints(fingerprints: &[Option<&str>]) -> usize {
+    fingerprints
+        .iter()
+        .filter_map(|f| *f)
+        .collect::<std::collections::HashSet<_>>()
+        .len()
+}
+
 fn score_to_severity(score: f32) -> &'static str {
     if score >= 0.90 {
         "CRITICAL"
@@ -502,8 +533,23 @@ mod tests {
             confidence,
             confidence_variance: variance,
             received_at: chrono::Utc::now() - chrono::Duration::seconds(age_secs),
+            signal_fingerprint: None,
             trust_state: state.to_string(),
         }
+    }
+
+    #[test]
+    fn distinct_fingerprints_counts_unique_nonnull() {
+        assert_eq!(
+            count_distinct_fingerprints(&[Some("a"), Some("a"), Some("b")]),
+            2
+        );
+        assert_eq!(
+            count_distinct_fingerprints(&[Some("a"), None, Some("a")]),
+            1
+        );
+        assert_eq!(count_distinct_fingerprints(&[None, None]), 0);
+        assert!(count_distinct_fingerprints(&[Some("x"), Some("y")]) >= MIN_DISTINCT_FINGERPRINTS);
     }
 
     #[test]
