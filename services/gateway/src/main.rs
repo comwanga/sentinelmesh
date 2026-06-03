@@ -7,6 +7,7 @@ mod nudge;
 mod reports;
 mod routes;
 mod subscribers;
+mod trust;
 mod ws;
 
 use axum::http::{HeaderName, Method};
