@@ -22,12 +22,12 @@
 
 - [ ] **Step 1: Write the failing tests**
 
-Append these tests to `services/signal/tests/test_classifier.py`:
+Extend the existing top-of-file import in `services/signal/tests/test_classifier.py` from
+`from nlp.classifier import classify_event` to
+`from nlp.classifier import classify_event, CONFIDENCE_CAP, NEGATION_WINDOW` (do not add a second
+duplicate import line), then append these tests:
 
 ```python
-from nlp.classifier import classify_event, CONFIDENCE_CAP, NEGATION_WINDOW
-
-
 def test_negated_fire_is_false_alarm():
     # "no" immediately precedes the keyword
     result = classify_event("No fire, all clear at Gikomba market")
@@ -144,9 +144,11 @@ _DEFAULT = "FALSE_ALARM"
 _NEGATION_CUES = {"no", "not", "without", "hakuna", "hapana", "si"}
 
 # Cues that mark an event as resolved/over (scanned in the trailing window).
-# "over" is deliberately excluded — it collides with "spread over", "all over".
+# "over" is excluded — it collides with "spread over", "all over". Bare "clear"
+# is excluded — "all clear given" is issued on still-active scenes; only the past
+# participle "cleared" reliably means resolved.
 _RESOLUTION_CUES = {
-    "ended", "contained", "cleared", "clear", "resolved",
+    "ended", "contained", "cleared", "resolved",
     "imeisha", "imezimwa",
 }
 

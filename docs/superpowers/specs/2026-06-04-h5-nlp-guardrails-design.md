@@ -53,8 +53,10 @@ Keep the keyword approach, but make hits negation-aware and the confidence hones
   "Authorities confirmed the explosion has been contained".
 - Cues are split by position and bilingual EN/SW:
   - Negation (precede the keyword): `no, not, without, hakuna, hapana, si`.
-  - Resolution (follow the keyword): `ended, contained, cleared, clear, resolved, imeisha,
-    imezimwa`. `over` is deliberately excluded — it collides with "spread over"/"all over".
+  - Resolution (follow the keyword): `ended, contained, cleared, resolved, imeisha,
+    imezimwa`. `over` is excluded (collides with "spread over"/"all over"); bare `clear` is
+    excluded (collides with "all clear given" on a still-active scene) — only the past
+    participle `cleared` counts as resolution.
   Both lists live next to the keyword sets and are easy to extend.
 - If every hit in the winning category is negated (or an explicit all-clear phrase dominates),
   return `FALSE_ALARM`.
