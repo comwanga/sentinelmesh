@@ -60,6 +60,8 @@ pub fn router() -> Router<AppState> {
 
 /// Send a push notification to all subscriptions. Silently skips invalid/expired
 /// subscriptions so one bad entry does not block the others.
+/// Called by the synthesis worker (Phase 2B-ii) on trust_state confirm transition.
+#[allow(dead_code)]
 pub async fn broadcast_push(
     pool: &sqlx::PgPool,
     vapid_private_key: &str,
