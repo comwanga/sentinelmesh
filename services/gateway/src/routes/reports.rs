@@ -314,7 +314,9 @@ async fn vote(
         .map_err(AppError::Internal)?
         .ok_or(AppError::NotFound)?;
     if author == body.voter_pubkey {
-        return Err(AppError::BadRequest("cannot vote on your own report".into()));
+        return Err(AppError::BadRequest(
+            "cannot vote on your own report".into(),
+        ));
     }
 
     let (updated, old_score, established_confirmations) = cast_vote(

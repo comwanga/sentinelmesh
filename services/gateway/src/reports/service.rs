@@ -221,7 +221,11 @@ pub async fn cast_vote(
         }
         _ => false,
     };
-    let proximity_bonus = if nearby && voter_tier != "NEWCOMER" { 1 } else { 0 };
+    let proximity_bonus = if nearby && voter_tier != "NEWCOMER" {
+        1
+    } else {
+        0
+    };
     let magnitude = weight + proximity_bonus;
 
     let (score_delta, conf_delta, deny_delta) = match input.vote.as_str() {

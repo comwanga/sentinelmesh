@@ -211,10 +211,11 @@ async fn health_detailed(State(state): State<AppState>) -> Json<serde_json::Valu
 /// centroid, coarsening their stored lat/lng in place. Idempotent and a no-op on
 /// a fresh database.
 async fn backfill_report_cells(pool: &sqlx::PgPool) -> anyhow::Result<()> {
-    let rows: Vec<(uuid::Uuid, f64, f64)> =
-        sqlx::query_as("SELECT id, lat::float8, lng::float8 FROM community_reports WHERE h3_r9 IS NULL")
-            .fetch_all(pool)
-            .await?;
+    let rows: Vec<(uuid::Uuid, f64, f64)> = sqlx::query_as(
+        "SELECT id, lat::float8, lng::float8 FROM community_reports WHERE h3_r9 IS NULL",
+    )
+    .fetch_all(pool)
+    .await?;
     for (id, lat, lng) in rows {
         let (cell, clat, clng) = reports::geo::snap_to_r9(lat, lng);
         sqlx::query("UPDATE community_reports SET h3_r9 = $2, lat = $3, lng = $4 WHERE id = $1")
