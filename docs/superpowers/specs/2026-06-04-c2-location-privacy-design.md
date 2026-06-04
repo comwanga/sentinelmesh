@@ -83,32 +83,38 @@ the public report would re-leak authorship.
 
 ## Part B — Access control (database role split)
 
-The migration provisions a restricted role and grants:
+The migration provisions a restricted **`NOLOGIN`** role (a privilege bucket, not a login identity —
+no password, no secret in tracked SQL) and grants:
 
-- `CREATE ROLE sentinel_reputation LOGIN` with **no password set in the migration** (no secrets in
-  tracked SQL). The deploy sets the password out-of-band (`ALTER ROLE ... PASSWORD` / managed
-  secret), exactly as the app role's credential is provisioned today.
-- On `report_authors`: `GRANT INSERT` to the app role; **no** `SELECT`/`UPDATE`/`DELETE` to the app
-  role. `GRANT SELECT` to `sentinel_reputation`.
-- `ALTER TABLE report_authors ENABLE ROW LEVEL SECURITY` with a policy that admits
-  `sentinel_reputation` for `SELECT` (defense-in-depth on top of the table grant). The app role's
-  `INSERT` is covered by an `INSERT` policy / `WITH CHECK (true)`.
+- `CREATE ROLE sentinel_reputation NOLOGIN;`
+- On `report_authors`: `GRANT INSERT` to the app role; `REVOKE SELECT` from the app role and
+  `PUBLIC`; `GRANT SELECT` to `sentinel_reputation`.
+- `GRANT sentinel_reputation TO <app_role>` so the app role may `SET ROLE` to it, but the
+  membership is non-inherited (the app role does **not** get the privilege without an explicit
+  `SET ROLE`).
+- `ALTER TABLE report_authors ENABLE ROW LEVEL SECURITY` with a `SELECT` policy `TO
+  sentinel_reputation` (defense-in-depth) and an `INSERT` policy `WITH CHECK (true)` for the app
+  role.
 
-Rationale: an SQL-injection, an accidental join, or a leaked app-role connection in any public read
-path structurally cannot read author identities — only the dedicated reputation pool can. A
-full-DB-superuser breach is still out of reach of any application control and is acknowledged, not
+### Gateway connection wiring (no second DSN)
+- The gateway opens a **second small pool over the same `DATABASE_URL`** whose `after_connect` hook
+  runs `SET ROLE sentinel_reputation` on every connection. So that pool always operates with the
+  restricted role's privileges; the main pool never does and therefore cannot `SELECT
+  report_authors`. No new env var, password, or DSN is introduced.
+- `AppState` gains this second `sqlx::PgPool` (`reputation_db`), small connection cap (low-frequency
+  path).
+- The `reputation_db` pool serves the report-author reads (Part E/F): the self-vote check and the
+  `VERIFIED`-transition accuracy credit. The submit-time `report_authors` INSERT uses the **main**
+  pool (its INSERT grant).
+
+Rationale: an SQL-injection, accidental join, or leaked app connection in any public read path
+cannot read author identities without an explicit `SET ROLE`, which only the dedicated reputation
+pool issues. **Caveat:** a Postgres *superuser* bypasses both `GRANT`s and RLS, so the control holds
+only when the app connects as a **non-superuser** role (the production posture). The dev/compose
+`sentinel` role is currently a superuser, so the access-control invariant is proven by an
+integration test that creates a throwaway non-superuser role rather than by the dev app connection.
+A full-DB-superuser breach is out of reach of any application control and is acknowledged, not
 solved, here.
-
-### Gateway connection wiring
-- New env var `REPUTATION_DATABASE_URL` (the `sentinel_reputation` DSN). Required in production;
-  in non-production it may fall back to the main `DATABASE_URL` with a `warn!` (so local/dev still
-  works without provisioning a second role) — mirroring the existing fail-closed/​dev-fallback
-  pattern in `config.rs`.
-- `AppState` gains a second `sqlx::PgPool` (`reputation_db`) built from that DSN, with a small
-  connection cap (it serves one low-frequency path).
-- Exactly one code path uses `reputation_db`: resolving a report's author pubkey on the `VERIFIED`
-  transition (Part E). The submit-time `report_authors` INSERT uses the **main** pool (INSERT-only
-  grant).
 
 ## Part C — Write path (submit report)
 
@@ -192,8 +198,9 @@ so a fresh deploy and a populated deploy both converge.
 
 ## Rollout / compatibility
 
-- The role split adds `REPUTATION_DATABASE_URL`; production must provision the `sentinel_reputation`
-  role, dev falls back to `DATABASE_URL` with a warning.
+- The role split adds **no new env var**: a second pool over the existing `DATABASE_URL` issues
+  `SET ROLE sentinel_reputation`. Production must run the gateway as a non-superuser role for the
+  control to bite (see Part B caveat).
 - The public API response shape for community reports **changes** (identity fields removed) — a
   deliberate, breaking privacy fix. The PWA is updated in the same change.
 - Coordinate coarsening of existing rows is irreversible by design.
