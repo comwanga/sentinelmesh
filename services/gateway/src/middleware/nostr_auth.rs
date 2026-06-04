@@ -373,6 +373,7 @@ mod tests {
             .expect("Redis required — ensure Redis is running on localhost:6379");
         AppState {
             db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
+            reputation_db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
             config: Arc::new(Config {
                 database_url: "postgres://localhost/test".into(),
                 redis_url: "redis://localhost".into(),
@@ -732,6 +733,7 @@ mod tests {
         let (event_tx_inner, _) = tokio::sync::broadcast::channel::<crate::ws::ViewportEvent>(1);
         let state = AppState {
             db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
+            reputation_db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
             config: Arc::new(Config {
                 database_url: "postgres://localhost/test".into(),
                 redis_url: bad_url,
@@ -812,6 +814,7 @@ mod tests {
         // No public_base_url — exercises the Host-header fallback
         let state = AppState {
             db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
+            reputation_db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
             config: Arc::new(Config {
                 database_url: "postgres://localhost/test".into(),
                 redis_url: "redis://localhost".into(),

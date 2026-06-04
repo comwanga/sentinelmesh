@@ -26,6 +26,7 @@ const ACOUSTIC_RATE_LIMIT_PER_MINUTE: u32 = 5;
 #[derive(Clone)]
 pub struct AppState {
     pub db: sqlx::PgPool,
+    pub reputation_db: sqlx::PgPool,
     pub config: Arc<config::Config>,
     pub http_client: reqwest::Client,
     pub hub: Arc<WsHub>,
@@ -45,6 +46,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Arc::new(config::Config::from_env()?);
     let db = db::create_pool(&config.database_url, config.max_db_connections).await?;
+    let reputation_db = db::create_reputation_pool(&config.database_url).await?;
     let http_client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()?;
@@ -72,8 +74,13 @@ async fn main() -> anyhow::Result<()> {
         .await
         .expect("failed to connect to Redis — check REDIS_URL");
 
+    if let Err(e) = backfill_report_cells(&db).await {
+        tracing::warn!("report cell backfill failed: {e:#}");
+    }
+
     let state = AppState {
         db: db.clone(),
+        reputation_db: reputation_db.clone(),
         config: config.clone(),
         http_client,
         hub: hub.clone(),
@@ -198,6 +205,27 @@ async fn health_detailed(State(state): State<AppState>) -> Json<serde_json::Valu
         .load(std::sync::atomic::Ordering::Relaxed);
     let ts = chrono::Utc::now().to_rfc3339();
     Json(serde_json::json!({ "ok": true, "service": "gateway", "ts": ts, "redis": redis_ok }))
+}
+
+/// One-shot: snap any pre-C-2 community_reports rows (h3_r9 IS NULL) to their r9
+/// centroid, coarsening their stored lat/lng in place. Idempotent and a no-op on
+/// a fresh database.
+async fn backfill_report_cells(pool: &sqlx::PgPool) -> anyhow::Result<()> {
+    let rows: Vec<(uuid::Uuid, f64, f64)> =
+        sqlx::query_as("SELECT id, lat::float8, lng::float8 FROM community_reports WHERE h3_r9 IS NULL")
+            .fetch_all(pool)
+            .await?;
+    for (id, lat, lng) in rows {
+        let (cell, clat, clng) = reports::geo::snap_to_r9(lat, lng);
+        sqlx::query("UPDATE community_reports SET h3_r9 = $2, lat = $3, lng = $4 WHERE id = $1")
+            .bind(id)
+            .bind(&cell)
+            .bind(clat)
+            .bind(clng)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
 }
 
 async fn shutdown_signal() {

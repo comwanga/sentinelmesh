@@ -97,6 +97,7 @@ mod tests {
             .expect("Redis required for gateway tests — ensure Redis is running on localhost:6379");
         AppState {
             db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
+            reputation_db: sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap(),
             config: Arc::new(Config {
                 database_url: "postgres://localhost/test".into(),
                 redis_url: "redis://localhost".into(),
