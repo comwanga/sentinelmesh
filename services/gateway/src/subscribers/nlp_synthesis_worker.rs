@@ -103,6 +103,7 @@ pub async fn run(
     }
 }
 
+#[allow(clippy::field_reassign_with_default)]
 async fn tick(
     pool: &PgPool,
     push: &PushConfig,
