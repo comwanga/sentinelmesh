@@ -46,6 +46,29 @@ ZK membership, which is the wrong complexity for this phase. This is the same li
 - Operator-blind membership (PSI/anonymous credentials/ZK).
 - `safety_events` / `community_reports` (C-2, done).
 
+## Execution phasing (split into two branches/PRs)
+
+The design is implemented in two independently-shippable phases to isolate the (large) migration and
+crypto surfaces:
+
+- **Phase A — Backend tokenization (goal: eliminate graph leakage).** Token module +
+  `CIRCLE_TOKEN_SECRET`; migration 013 adds `owner_token`/`member_token`/`recipient_token` + indexes;
+  gateway authorizes by token and backfills legacy rows; migration 014 **drops** the plaintext
+  `owner_pubkey`/`member_pubkey`/`recipient_pubkey_hash` and the vestigial `display_name`;
+  client-driven listing (`GET /circles?ids=`); raw-recipient blob push (H-1 fix). Plus the **minimal**
+  PWA changes to keep the app working on the tokenized API: a **degraded roster** ("N members" +
+  any locally-known names), the `ids`-driven listing call, and raw-recipient push. After Phase A the
+  social graph is gone from the DB at rest; the roster is unlabeled until Phase B.
+- **Phase B — Client encryption (goal: hide metadata).** Migration 015 adds
+  `name_ciphertext`/`name_version` (circles) and `member_label_ciphertext` (circle_members);
+  client-side AES-GCM encryption of the circle name and per-member labels under the circle key; the
+  rich decrypted roster (recovering pubkeys for presence/status); the lazy migration via
+  `PUT /circles/:id/encryption`; migration 016 (deferred) drops the legacy plaintext `circles.name`.
+
+The per-phase column/migration assignments are tagged inline below. Parts A, C (auth/tokens, listing,
+recipient), D, and the token rows of B are **Phase A**; the `*_ciphertext`/`name_version` columns and
+Parts E/F's encryption work are **Phase B**.
+
 ## Part A — The token primitive
 
 A dedicated secret **`CIRCLE_TOKEN_SECRET`**, separate from `INTERNAL_SERVICE_SECRET` (different
@@ -76,28 +99,38 @@ Implemented once in a `circles::token` module in the gateway (`hmac` + `sha2` cr
 unit-tested. **No token is ever computed in SQL** (no secret in migrations, no `pgcrypto`
 dependency).
 
-## Part B — Schema (migration 013 add; migration 014 deferred drop)
+## Part B — Schema
 
-`013_circle_tokenization.sql`:
-- `circles`: ADD `owner_token TEXT`, `name_ciphertext TEXT`, `name_version SMALLINT NOT NULL DEFAULT
-  0`. (Keep `owner_pubkey`, `name` for now.)
+### Phase A migrations
+
+`013_circle_tokenization.sql` (Phase A, additive):
+- `circles`: ADD `owner_token TEXT`. (Keep `owner_pubkey` for now.)
+- `circle_members`: ADD `member_token TEXT`; DROP the never-written `display_name` immediately (it is
+  vestigial, never read or written). Add `UNIQUE (circle_id, member_token)` (the analogue of
+  `UNIQUE(circle_id, member_pubkey)`). Index `(circle_id, member_token)`.
+- `location_blobs`: ADD `recipient_token TEXT`. Index `(circle_id, recipient_token, expires_at)`
+  (mirrors the existing recipient/expiry index).
+
+`014_circle_drop_plaintext.sql` (Phase A; applied after the gateway token backfill is confirmed;
+collapses into one step on a fresh deploy): DROP `circles.owner_pubkey`,
+`circle_members.member_pubkey`, `location_blobs.recipient_pubkey_hash`, and the old plaintext
+indexes/uniques. **Note:** `circles.name` is *not* dropped here — it stays until Phase B's lazy name
+encryption converges (migration 016).
+
+### Phase B migrations
+
+`015_circle_name_label_ciphertext.sql` (Phase B, additive):
+- `circles`: ADD `name_ciphertext TEXT`, `name_version SMALLINT NOT NULL DEFAULT 0`.
   - `name_version`: `0` = legacy plaintext still in `name`; `1` = AES-GCM(circle key) in
     `name_ciphertext`. Doubles as the name-encryption scheme version and disambiguates
     not-yet-migrated / intentionally-blank / new-circle.
-- `circle_members`: ADD `member_token TEXT`, `member_label_ciphertext TEXT` (AES-GCM under the
-  circle key — typically `{pubkey, name}` — supplied by the owner at add-time so clients can render
-  the roster and keep pubkey-keyed presence/status working after decrypting). (Keep `member_pubkey`;
-  DROP the never-written `display_name` immediately — it is vestigial, never read or written.) Add
-  `UNIQUE (circle_id, member_token)` (the new analogue of `UNIQUE(circle_id, member_pubkey)`).
-- `location_blobs`: ADD `recipient_token TEXT`. (Keep `recipient_pubkey_hash` for now.)
-- Indexes: `circle_members (circle_id, member_token)`; `location_blobs (circle_id, recipient_token,
-  expires_at)` (mirrors the existing recipient/expiry index).
+- `circle_members`: ADD `member_label_ciphertext TEXT` (AES-GCM under the circle key — typically
+  `{pubkey, name}` — supplied by the owner at add-time so clients render the roster and keep
+  pubkey-keyed presence/status working after decrypting).
 
-`014_circle_drop_plaintext.sql` (applied after the gateway backfill is confirmed; collapses into one
-step on a fresh deploy with no rows): DROP `circles.owner_pubkey`, `circles.name`,
-`circle_members.member_pubkey`, `location_blobs.recipient_pubkey_hash`, and the old plaintext
-indexes/uniques. Circles still at `name_version = 0` at 014 lose the server-stored plaintext name
-(owner re-enters it) — acceptable, and `name_version` makes that state explicit.
+`016_circle_drop_plaintext_name.sql` (Phase B, deferred; after lazy migration converges): DROP
+`circles.name`. Circles still at `name_version = 0` at this point lose the server-stored plaintext
+name (owner re-enters it) — acceptable, and `name_version` makes that state explicit.
 
 ## Part C — Gateway
 
@@ -109,6 +142,11 @@ circle_ids); distinct pubkeys → distinct tokens.
 ### Endpoint changes (`routes/circles.rs`, `routes/location_blobs.rs`)
 All circle-scoped endpoints already carry a `circle_id` (path) and an authenticated `auth.pubkey`,
 so each recomputes the token and matches/inserts by it. No endpoint stores or returns a raw pubkey.
+
+> **Phasing note:** the token + authorization + listing + recipient changes below are **Phase A**.
+> The `name_ciphertext`/`member_label_ciphertext` handling described for `create_circle`/`add_member`/
+> `get_circle` is **Phase B**; in Phase A `create_circle` stores the existing plaintext `name`
+> alongside `owner_token`, and `add_member`/`get_circle` carry no label (the roster is degraded).
 - `create_circle`: generate the circle UUID app-side, compute `owner_token`, store it +
   client-supplied `name_ciphertext` with `name_version = 1`.
 - `add_member`: body carries the raw `member_pubkey` (server tokenizes it, never stores it) plus the
