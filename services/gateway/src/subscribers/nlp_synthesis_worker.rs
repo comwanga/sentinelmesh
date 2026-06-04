@@ -417,6 +417,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn ttls_are_ordered_and_sane() {
         // Corroborating gets longer to find a third source than heuristic does
         // to find a second.
