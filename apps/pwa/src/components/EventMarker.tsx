@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { SafetyEvent } from '../../../../shared/types'
 import { SEVERITY_COLORS } from '../styles/map-tokens'
+import { trustStyle, isUnverified } from '../lib/trust'
 
 const SIZES: Record<string, number> = {
   CRITICAL: 24,
@@ -43,11 +44,15 @@ export default function EventMarker({ event, onClick }: Props) {
   const fill = SEVERITY_COLORS[severity] ?? '#4a5568'
   const size = SIZES[severity] ?? 12
   const ring = BORDER_RING[severity]
-  const showExclamation = severity === 'CRITICAL' || severity === 'HIGH'
+  // Automated, unverified detections (heuristic/corroborating) are muted and never
+  // pulse — they are visible but must not read as a confirmed threat.
+  const unverified = isUnverified(event)
+  const markerStyle = trustStyle(event)
+  const showExclamation = (severity === 'CRITICAL' || severity === 'HIGH') && !unverified
 
   useEffect(() => {
-    if (severity === 'CRITICAL') injectPulseStyles()
-  }, [severity])
+    if (severity === 'CRITICAL' && !unverified) injectPulseStyles()
+  }, [severity, unverified])
 
   return (
     <div
@@ -56,8 +61,9 @@ export default function EventMarker({ event, onClick }: Props) {
         padding: '8px',
         cursor: 'pointer',
         pointerEvents: 'all',
+        opacity: markerStyle.opacity,
       }}
-      title={event.title}
+      title={markerStyle.badge ? `${event.title} · ${markerStyle.badge}` : event.title}
     >
       <div
         style={{
@@ -72,7 +78,7 @@ export default function EventMarker({ event, onClick }: Props) {
           border: ring ? `${ring.width}px solid ${ring.color}` : 'none',
         }}
       >
-        {ring && severity === 'CRITICAL' && (
+        {ring && severity === 'CRITICAL' && !unverified && (
           <span
             className="sm-critical-border"
             style={{

@@ -43,6 +43,13 @@
       "type": "number",
       "format": "double"
     },
+    "origin_channel": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "place_name": {
       "type": [
         "string",
@@ -57,11 +64,19 @@
     "severity": {
       "type": "string"
     },
+    "source_id": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "started_at": {
       "type": "string",
       "format": "date-time"
     },
     "state": {
+      "default": null,
       "type": [
         "string",
         "null"

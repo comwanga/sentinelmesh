@@ -7,6 +7,7 @@ mod nudge;
 mod reports;
 mod routes;
 mod subscribers;
+mod trust;
 mod ws;
 
 use axum::http::{HeaderName, Method};
@@ -110,6 +111,22 @@ async fn main() -> anyhow::Result<()> {
                 tx_synth,
             )
             .await;
+        });
+    }
+
+    // Spawn NLP trust-ladder synthesis worker (promotes heuristic->corroborating
+    // ->confirmed from staged nlp_signals, expires stale detections, and fires
+    // push only on the confirm transition). H-5 Phase 2B-ii.
+    {
+        let pool_nlp = db.clone();
+        let nlp_enabled = config.nlp_synthesis_enabled;
+        let push = subscribers::nlp_synthesis_worker::PushConfig {
+            vapid_private_key: config.vapid_private_key.clone(),
+            vapid_subject: config.vapid_subject.clone(),
+        };
+        let tx_nlp = event_tx.clone();
+        tokio::spawn(async move {
+            subscribers::nlp_synthesis_worker::run(pool_nlp, nlp_enabled, push, tx_nlp).await;
         });
     }
 
