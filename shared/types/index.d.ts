@@ -78,9 +78,6 @@ export interface CommunityReport {
   lat: number
   lng: number
   place_name: string | null
-  nostr_pubkey: string
-  nostr_signature: string
-  nostr_event_id: string | null
   reporter_tier: ReporterTier
   consensus_score: number
   status: ReportStatus

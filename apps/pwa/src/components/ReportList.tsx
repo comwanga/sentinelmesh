@@ -101,7 +101,7 @@ export function ReportList() {
           </div>
 
           <VerificationBadges
-            nostrEventId={report.nostr_event_id}
+            nostrEventId={null}
             bitcoinTxid={null}
           />
         </div>

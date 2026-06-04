@@ -318,7 +318,10 @@ pub async fn list_reports(pool: &PgPool, params: ListReportsParams) -> Result<Ve
     let radius_m = params.radius_km.unwrap_or(10.0) * 1000.0;
 
     let reports = sqlx::query_as::<_, Report>(
-        "SELECT * FROM community_reports
+        "SELECT id, report_type, description, lat::float8 AS lat, lng::float8 AS lng,
+                place_name, reporter_tier, consensus_score, confirmation_count,
+                denial_count, status, photo_ipfs_cid, linked_event_id, created_at, updated_at
+         FROM community_reports
          WHERE ($1::float8 IS NULL OR
                 earth_distance(ll_to_earth($1,$2), ll_to_earth(lat,lng)) <= $3)
            AND ($4::text IS NULL OR status = $4)

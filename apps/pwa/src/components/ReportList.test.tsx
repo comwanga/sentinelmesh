@@ -32,7 +32,6 @@ function makeReport(id: string, status: ReportStatus = 'PENDING'): CommunityRepo
   return {
     report_id: id, report_type: 'FLOODING', description: 'road blocked',
     lat: -1.29, lng: 36.82, place_name: 'Mathare',
-    nostr_pubkey: 'pk2', nostr_signature: 'sig', nostr_event_id: 'ev',
     reporter_tier: 'NEWCOMER', consensus_score: 1, status,
     confirmation_count: 0, denial_count: 0, photo_ipfs_cid: null,
     linked_event_id: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
