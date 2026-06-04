@@ -10,12 +10,14 @@
 
 -- 1. Coarse cell column (nullable: legacy rows are backfilled by the gateway,
 --    new rows always set it in create_report).
-ALTER TABLE community_reports ADD COLUMN IF NOT EXISTS h3_r9 TEXT;
+ALTER TABLE community_reports ADD COLUMN IF NOT EXISTS h3_r9 TEXT; -- (gateway backfill in plan Task 3 fills legacy rows; new rows set it in create_report)
 
 -- 2. Identity table. One row per report; holds every identity-linked field.
 CREATE TABLE IF NOT EXISTS report_authors (
     report_id       UUID PRIMARY KEY REFERENCES community_reports(id) ON DELETE CASCADE,
     nostr_pubkey    TEXT NOT NULL,
+    -- nullable here (TEXT): the source community_reports column was NOT NULL, but
+    -- some Nostr events omit a signature; report_authors does not re-impose it.
     nostr_signature TEXT,
     nostr_event_id  TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -53,12 +55,19 @@ REVOKE SELECT ON report_authors FROM PUBLIC;
 REVOKE SELECT ON report_authors FROM sentinel;
 GRANT  INSERT ON report_authors TO sentinel;          -- app role: write-only
 GRANT  SELECT ON report_authors TO sentinel_reputation;
--- Let the app role assume the restricted role for the reputation pool, but do
--- NOT inherit its privileges implicitly (requires an explicit SET ROLE).
-GRANT sentinel_reputation TO sentinel;
-ALTER ROLE sentinel NOINHERIT;
+-- Member of the restricted role so the app role can SET ROLE to it, but WITHOUT
+-- inheriting its privileges (PG16 scoped non-inheritance — avoids a global
+-- ALTER ROLE ... NOINHERIT footgun). The app role must SET ROLE explicitly to
+-- gain SELECT on report_authors.
+GRANT sentinel_reputation TO sentinel WITH INHERIT FALSE;
 
 ALTER TABLE report_authors ENABLE ROW LEVEL SECURITY;
+-- FORCE so the table OWNER (the migration runner / app role) is ALSO subject to
+-- RLS. Owners otherwise bypass policies, which would let a non-superuser
+-- production app role that owns this table SELECT it without SET ROLE — defeating
+-- the read restriction. (A superuser still bypasses; the dev `sentinel` is a
+-- superuser, so the control is proven by the non-superuser probe test instead.)
+ALTER TABLE report_authors FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS report_authors_select ON report_authors;
 CREATE POLICY report_authors_select ON report_authors
     FOR SELECT TO sentinel_reputation USING (true);
