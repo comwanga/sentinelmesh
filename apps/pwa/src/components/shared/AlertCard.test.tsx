@@ -11,6 +11,7 @@ const base: AlertCardProps = {
   confidence: 0.86,
   rating: 4.0,
   status: 'VERIFIED',
+  trustState: 'confirmed',
   sources: ['NLP', 'Community'],
   voteCount: 12,
   onBookmark: vi.fn(),
@@ -50,5 +51,23 @@ describe('AlertCard', () => {
     render(<AlertCard {...base} onBookmark={onBookmark} />)
     fireEvent.click(screen.getByLabelText('bookmark'))
     expect(onBookmark).toHaveBeenCalledWith('e1')
+  })
+
+  it('shows the Automated Detection badge for heuristic events instead of a status', () => {
+    render(<AlertCard {...base} status="VERIFIED" trustState="heuristic" />)
+    expect(screen.getByText('Automated Detection')).toBeInTheDocument()
+    // the heuristic badge replaces the trust status pill
+    expect(screen.queryByText('VERIFIED')).not.toBeInTheDocument()
+  })
+
+  it('flags corroborating events as still automated', () => {
+    render(<AlertCard {...base} trustState="corroborating" />)
+    expect(screen.getByText('Corroborating')).toBeInTheDocument()
+  })
+
+  it('shows the normal status badge for confirmed events', () => {
+    render(<AlertCard {...base} status="VERIFIED" trustState="confirmed" />)
+    expect(screen.getByText('VERIFIED')).toBeInTheDocument()
+    expect(screen.queryByText('Automated Detection')).not.toBeInTheDocument()
   })
 })

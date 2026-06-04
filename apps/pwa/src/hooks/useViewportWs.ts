@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useAppDispatch } from '../store'
 import { viewportEventsSet, viewportEventsBatchApply } from '../store/viewportEventsSlice'
-import type { SafetyEvent, EventType, EventState, Severity } from '../../../../shared/types'
+import type { SafetyEvent, EventType, EventState, Severity, TrustState } from '../../../../shared/types'
 
 export interface ViewportBounds {
   north: number
@@ -15,10 +15,21 @@ interface WsEvent {
   event_type: string
   severity: string
   state: string
+  trust_state?: string
   title: string
   lat: number
   lng: number
   started_at: string
+}
+
+// The map WS emits trust_state lowercase ('heuristic'|'corroborating'|'confirmed').
+// Older payloads omit it; treat those as confirmed for back-compat.
+function normalizeTrustState(s: string | undefined): TrustState {
+  switch ((s ?? '').toLowerCase()) {
+    case 'heuristic':     return 'heuristic'
+    case 'corroborating': return 'corroborating'
+    default:              return 'confirmed'
+  }
 }
 
 type ViewportServerMsg =
@@ -57,6 +68,7 @@ function toSafetyEvent(e: WsEvent): SafetyEvent {
     created_at: e.started_at,
     nostr_event_id: null,
     bitcoin_txid: null,
+    trust_state: normalizeTrustState(e.trust_state),
   }
 }
 

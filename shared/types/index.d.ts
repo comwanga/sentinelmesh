@@ -31,6 +31,13 @@ export type ReportStatus =
 
 export type ReporterTier = 'NEWCOMER' | 'TRUSTED' | 'VETERAN' | 'SENTINEL'
 
+// H-5 NLP trust ladder. Machine-origin detections enter as `heuristic` (visible
+// but unverified), climb to `corroborating`, then `confirmed` once independent
+// sources across channels agree. `origin_class` records whether the evidence is
+// machine- or human-generated.
+export type TrustState = 'heuristic' | 'corroborating' | 'confirmed'
+export type OriginClass = 'machine' | 'human'
+
 export interface SafetyEvent {
   id: string
   event_type: EventType
@@ -47,6 +54,10 @@ export interface SafetyEvent {
   created_at: string
   nostr_event_id: string | null
   bitcoin_txid: string | null
+  // Optional for back-compat: older payloads and the lighter viewport-WS event
+  // omit these. Consumers treat a missing trust_state as `confirmed`.
+  trust_state?: TrustState
+  origin_class?: OriginClass
 }
 
 export type ReportType =

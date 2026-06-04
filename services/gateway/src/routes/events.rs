@@ -27,6 +27,8 @@ pub struct SafetyEvent {
     pub confidence: Option<f64>,
     pub source_count: Option<i32>,
     pub source_breakdown: Option<serde_json::Value>,
+    pub trust_state: String,
+    pub origin_class: String,
     pub is_active: bool,
     pub state: String,
     pub nostr_event_id: Option<String>,
@@ -103,7 +105,8 @@ async fn create_event(
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          RETURNING id, event_type, severity, title, lat, lng, started_at,
                    summary, place_name, county, radius_meters, confidence,
-                   source_count, source_breakdown, is_active, state,
+                   source_count, source_breakdown, trust_state, origin_class,
+                   is_active, state,
                    nostr_event_id, bitcoin_txid, created_at, updated_at",
     )
     .bind(&body.event_type)
@@ -171,7 +174,8 @@ async fn list_events(
     let events = sqlx::query_as::<_, SafetyEvent>(
         "SELECT id, event_type, severity, title, lat, lng, started_at,
                 summary, place_name, county, radius_meters, confidence,
-                source_count, source_breakdown, is_active, state,
+                source_count, source_breakdown, trust_state, origin_class,
+                is_active, state,
                 nostr_event_id, bitcoin_txid, created_at, updated_at
          FROM safety_events
          WHERE ($1::float8 IS NULL OR
@@ -205,7 +209,8 @@ async fn get_event(
     let event = sqlx::query_as::<_, SafetyEvent>(
         "SELECT id, event_type, severity, title, lat, lng, started_at,
                 summary, place_name, county, radius_meters, confidence,
-                source_count, source_breakdown, is_active, state,
+                source_count, source_breakdown, trust_state, origin_class,
+                is_active, state,
                 nostr_event_id, bitcoin_txid, created_at, updated_at
          FROM safety_events WHERE id = $1",
     )
@@ -225,7 +230,8 @@ async fn list_events_by_bounds(
     let events = sqlx::query_as::<_, SafetyEvent>(
         "SELECT id, event_type, severity, title, lat, lng, started_at,
                 summary, place_name, county, radius_meters, confidence,
-                source_count, source_breakdown, is_active, state,
+                source_count, source_breakdown, trust_state, origin_class,
+                is_active, state,
                 nostr_event_id, bitcoin_txid, created_at, updated_at
            FROM safety_events
           WHERE geog && ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
@@ -296,6 +302,8 @@ mod tests {
             confidence: Some(0.95),
             source_count: Some(3),
             source_breakdown: None,
+            trust_state: "confirmed".into(),
+            origin_class: "machine".into(),
             is_active: true,
             state: "ACTIVE".into(),
             nostr_event_id: Some("nevent1abc".into()),

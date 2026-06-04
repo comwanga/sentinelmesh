@@ -1,5 +1,6 @@
-import type { EventType, SafetyEvent } from '../../../../../shared/types'
+import type { EventType, SafetyEvent, TrustState } from '../../../../../shared/types'
 import { Bookmark } from 'lucide-react'
+import { trustStateOf, trustStyle } from '../../lib/trust'
 
 export interface AlertCardProps {
   eventId: string
@@ -10,6 +11,7 @@ export interface AlertCardProps {
   confidence: number
   rating: number
   status: 'VERIFIED' | 'PENDING'
+  trustState: TrustState
   sources: Array<'NLP' | 'Radio' | 'Community' | 'Social'>
   voteCount: number
   onBookmark: (eventId: string) => void
@@ -42,6 +44,7 @@ export function safetyEventToCardProps(
     confidence: SEVERITY_CONFIDENCE[e.severity] ?? 0.5,
     rating:     SEVERITY_RATING[e.severity] ?? 3.0,
     status:     (e.severity === 'CRITICAL' || e.severity === 'HIGH') ? 'VERIFIED' : 'PENDING',
+    trustState: trustStateOf(e),
     sources:    inferSources(e.event_type),
     voteCount:  0,
     onBookmark,
@@ -88,10 +91,11 @@ function Stars({ rating }: { rating: number }) {
 
 export function AlertCard({
   eventId, eventType, title, location, timestamp,
-  confidence, rating, status, sources, voteCount, onBookmark,
+  confidence, rating, status, trustState, sources, voteCount, onBookmark,
 }: AlertCardProps) {
   const accent = typeColor[eventType] ?? '#4a5568'
   const pct = Math.round(confidence * 100)
+  const trust = trustStyle({ trust_state: trustState })
 
   return (
     <div style={{
@@ -128,14 +132,24 @@ export function AlertCard({
 
       {/* Status + rating + sources + votes */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const }}>
-        <span style={{
-          fontFamily: "'Courier New', monospace", fontSize: 11, padding: '2px 6px',
-          borderRadius: 4, letterSpacing: '0.08em',
-          background: status === 'VERIFIED' ? '#1B5E20' : '#1A237E',
-          color: status === 'VERIFIED' ? '#4CAF50' : '#BB86FC',
-        }}>
-          {status}
-        </span>
+        {trust.badge ? (
+          <span style={{
+            fontFamily: "'Courier New', monospace", fontSize: 11, padding: '2px 6px',
+            borderRadius: 4, letterSpacing: '0.08em',
+            background: '#11151f', color: trust.color, border: `1px solid ${trust.color}`,
+          }}>
+            {trust.badge}
+          </span>
+        ) : (
+          <span style={{
+            fontFamily: "'Courier New', monospace", fontSize: 11, padding: '2px 6px',
+            borderRadius: 4, letterSpacing: '0.08em',
+            background: status === 'VERIFIED' ? '#1B5E20' : '#1A237E',
+            color: status === 'VERIFIED' ? '#4CAF50' : '#BB86FC',
+          }}>
+            {status}
+          </span>
+        )}
 
         <Stars rating={rating} />
 
