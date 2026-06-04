@@ -27,6 +27,18 @@ impl TrustTier {
             TrustTier::Confirmed => "confirmed",
         }
     }
+
+    /// Parse the lowercase DB form back into a tier. `None` for any unknown
+    /// value (the synthesis worker treats that as a data error and skips the row
+    /// rather than silently downgrading).
+    pub fn from_db_str(s: &str) -> Option<TrustTier> {
+        match s {
+            "heuristic" => Some(TrustTier::Heuristic),
+            "corroborating" => Some(TrustTier::Corroborating),
+            "confirmed" => Some(TrustTier::Confirmed),
+            _ => None,
+        }
+    }
 }
 
 /// Distinct independent evidence backing a cluster.
@@ -90,6 +102,39 @@ mod tests {
         assert_eq!(TrustTier::Heuristic.as_str(), "heuristic");
         assert_eq!(TrustTier::Corroborating.as_str(), "corroborating");
         assert_eq!(TrustTier::Confirmed.as_str(), "confirmed");
+    }
+
+    #[test]
+    fn from_db_str_round_trips_every_tier() {
+        for t in [
+            TrustTier::Heuristic,
+            TrustTier::Corroborating,
+            TrustTier::Confirmed,
+        ] {
+            assert_eq!(TrustTier::from_db_str(t.as_str()), Some(t));
+        }
+    }
+
+    #[test]
+    fn from_db_str_rejects_unknown() {
+        assert_eq!(TrustTier::from_db_str("authoritative"), None);
+        assert_eq!(TrustTier::from_db_str(""), None);
+        assert_eq!(TrustTier::from_db_str("Confirmed"), None); // case-sensitive
+    }
+
+    #[test]
+    fn max_of_current_and_computed_never_downgrades() {
+        // The worker promotes via std::cmp::max so a transient lower computation
+        // can never lower an already-higher stored tier.
+        use std::cmp::max;
+        assert_eq!(
+            max(TrustTier::Confirmed, TrustTier::Heuristic),
+            TrustTier::Confirmed
+        );
+        assert_eq!(
+            max(TrustTier::Heuristic, TrustTier::Corroborating),
+            TrustTier::Corroborating
+        );
     }
 
     #[test]

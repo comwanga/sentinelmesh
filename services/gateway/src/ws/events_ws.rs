@@ -148,7 +148,7 @@ pub async fn query_viewport_events(
         sqlx::query_as::<_, WsEvent>(
             "SELECT id, event_type, severity,
                     CASE WHEN is_active THEN 'ACTIVE' ELSE 'INACTIVE' END AS state,
-                    'CONFIRMED'::TEXT AS trust_state,
+                    trust_state,
                     title, lat::float8 AS lat, lng::float8 AS lng, started_at
                FROM safety_events
               WHERE lat BETWEEN $2 AND $4
@@ -170,7 +170,7 @@ pub async fn query_viewport_events(
         sqlx::query_as::<_, WsEvent>(
             "SELECT id, event_type, severity,
                     CASE WHEN is_active THEN 'ACTIVE' ELSE 'INACTIVE' END AS state,
-                    'CONFIRMED'::TEXT AS trust_state,
+                    trust_state,
                     title, lat::float8 AS lat, lng::float8 AS lng, started_at
                FROM safety_events
               WHERE lat BETWEEN $2 AND $4

@@ -15,6 +15,9 @@ pub struct Config {
     pub ws_events_rate_cap: u32,
     pub public_base_url: Option<String>,
     pub synthesis_enabled: bool,
+    /// Gates the NLP trust-ladder synthesis worker (promotion + push-on-confirm
+    /// + TTL expiry). Default true so the ladder is live; set false to dark-launch.
+    pub nlp_synthesis_enabled: bool,
     pub soft_visibility_enabled: bool,
     pub emergency_mode_enabled: bool,
     /// Gates acoustic cluster promotion to `confirmed` + public_event creation.
@@ -70,6 +73,12 @@ impl Config {
             synthesis_enabled: std::env::var("SYNTHESIS_ENABLED")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
+            // Default true (on): unlike acoustic, the NLP ladder is meant to run
+            // by default — heuristic events surface immediately and the worker is
+            // what eventually promotes/expires them. Set "false"/"0" to disable.
+            nlp_synthesis_enabled: std::env::var("NLP_SYNTHESIS_ENABLED")
+                .map(|v| !(v == "false" || v == "0"))
+                .unwrap_or(true),
             soft_visibility_enabled: std::env::var("SOFT_VISIBILITY_ENABLED")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),

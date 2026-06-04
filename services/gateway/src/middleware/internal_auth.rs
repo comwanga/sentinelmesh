@@ -112,6 +112,7 @@ mod tests {
                 ws_events_rate_cap: 30,
                 public_base_url: None,
                 synthesis_enabled: false,
+                nlp_synthesis_enabled: false,
                 soft_visibility_enabled: false,
                 emergency_mode_enabled: false,
                 acoustic_confirm_enabled: false,
