@@ -307,6 +307,16 @@ async fn vote(
         .to_string();
     replay_guard(&state.redis, &vote_event_id).await?;
 
+    // C-2: the report author lives in report_authors, readable only via the
+    // reputation pool. Resolve it once: it gates self-votes and credits accuracy.
+    let author = crate::reports::service::report_author(&state.reputation_db, report_id)
+        .await
+        .map_err(AppError::Internal)?
+        .ok_or(AppError::NotFound)?;
+    if author == body.voter_pubkey {
+        return Err(AppError::BadRequest("cannot vote on your own report".into()));
+    }
+
     let (updated, old_score, established_confirmations) = cast_vote(
         &state.db,
         report_id,
@@ -324,14 +334,11 @@ async fn vote(
             AppError::BadRequest("already voted on this report".into())
         } else if msg.contains("not found") {
             AppError::NotFound
-        } else if msg.contains("own report") {
-            AppError::BadRequest("cannot vote on your own report".into())
         } else {
             AppError::Internal(e)
         }
     })?;
 
-    // Evaluate whether the new vote score crosses a status boundary.
     if let Some(new_status) = compute_new_status(
         &updated.status,
         updated.consensus_score,
@@ -340,7 +347,7 @@ async fn vote(
         established_confirmations,
         state.config.consensus_require_established,
     ) {
-        apply_status_transition(&state.db, report_id, &new_status, &updated.nostr_pubkey).await?;
+        apply_status_transition(&state.db, report_id, &new_status, &author).await?;
 
         // Once the score crosses 3 for the first time, queue a publish job and
         // nudge the blockchain service so it picks it up quickly.
