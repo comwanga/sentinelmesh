@@ -1,3 +1,4 @@
+mod circles;
 mod config;
 mod db;
 mod error;
