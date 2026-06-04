@@ -357,11 +357,17 @@ mod tests {
     #[test]
     fn confirm_fires_only_on_transition_into_confirmed() {
         assert!(should_confirm(TrustTier::Heuristic, TrustTier::Confirmed));
-        assert!(should_confirm(TrustTier::Corroborating, TrustTier::Confirmed));
+        assert!(should_confirm(
+            TrustTier::Corroborating,
+            TrustTier::Confirmed
+        ));
         // Already confirmed -> not a transition, must not re-fire.
         assert!(!should_confirm(TrustTier::Confirmed, TrustTier::Confirmed));
         // Lower targets never confirm.
-        assert!(!should_confirm(TrustTier::Heuristic, TrustTier::Corroborating));
+        assert!(!should_confirm(
+            TrustTier::Heuristic,
+            TrustTier::Corroborating
+        ));
         assert!(!should_confirm(TrustTier::Heuristic, TrustTier::Heuristic));
     }
 

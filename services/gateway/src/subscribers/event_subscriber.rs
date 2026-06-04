@@ -42,7 +42,9 @@ impl ConfidenceDefault for sentinel_core::RedisEventPayload {
 /// which are NOT NULL. (The payload carries origin_channel but no source_type;
 /// for current emitters the two are identical.)
 fn channel_or_unknown(origin_channel: &Option<String>) -> String {
-    origin_channel.clone().unwrap_or_else(|| "unknown".to_string())
+    origin_channel
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 /// Resolution-9 (~100 m clustering cell) and resolution-7 (~5 km region) H3 cells

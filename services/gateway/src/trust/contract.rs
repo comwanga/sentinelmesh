@@ -72,7 +72,10 @@ mod tests {
     use super::*;
 
     fn ev(sources: usize, channels: usize) -> Independence {
-        Independence { distinct_sources: sources, distinct_channels: channels }
+        Independence {
+            distinct_sources: sources,
+            distinct_channels: channels,
+        }
     }
 
     #[test]
@@ -155,7 +158,11 @@ mod tests {
         let tiers = [decide(ev(1, 2)), decide(ev(2, 2)), decide(ev(3, 2))];
         assert_eq!(
             tiers,
-            [TrustTier::Heuristic, TrustTier::Corroborating, TrustTier::Confirmed]
+            [
+                TrustTier::Heuristic,
+                TrustTier::Corroborating,
+                TrustTier::Confirmed
+            ]
         );
     }
 }
