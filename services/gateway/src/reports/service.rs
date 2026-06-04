@@ -12,9 +12,6 @@ pub struct Report {
     pub lat: f64,
     pub lng: f64,
     pub place_name: Option<String>,
-    pub nostr_pubkey: String,
-    pub nostr_signature: String,
-    pub nostr_event_id: String,
     pub reporter_tier: String,
     pub consensus_score: i32,
     pub confirmation_count: i32,
@@ -91,6 +88,17 @@ fn compute_tier(score: i64) -> &'static str {
     }
 }
 
+/// Resolve a report's author pubkey via the reputation pool (the only pool that
+/// can read report_authors). `None` if the report does not exist.
+pub async fn report_author(reputation_pool: &PgPool, report_id: Uuid) -> Result<Option<String>> {
+    let pk: Option<String> =
+        sqlx::query_scalar("SELECT nostr_pubkey FROM report_authors WHERE report_id = $1")
+            .bind(report_id)
+            .fetch_optional(reputation_pool)
+            .await?;
+    Ok(pk)
+}
+
 pub async fn create_report(pool: &PgPool, input: CreateReportInput) -> Result<Report> {
     let mut tx = pool.begin().await?;
 
@@ -112,22 +120,26 @@ pub async fn create_report(pool: &PgPool, input: CreateReportInput) -> Result<Re
 
     let initial_score = tier_score(&tier);
 
+    // C-2: persist only the r9 centroid + cell, never the exact submitted GPS.
+    let (h3_r9, lat, lng) = crate::reports::geo::snap_to_r9(input.lat, input.lng);
+
     let report = sqlx::query_as::<_, Report>(
         "INSERT INTO community_reports
-           (report_type, description, lat, lng, place_name, nostr_pubkey, nostr_signature,
-            nostr_event_id, reporter_tier, consensus_score, confirmation_count, denial_count,
-            status, photo_ipfs_cid, linked_event_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,0,'PENDING',$11,$12)
-         RETURNING *",
+           (report_type, description, lat, lng, h3_r9, place_name, reporter_tier,
+            consensus_score, confirmation_count, denial_count, status, photo_ipfs_cid,
+            linked_event_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,0,'PENDING',$9,$10)
+         RETURNING id, report_type, description, lat::float8 AS lat, lng::float8 AS lng,
+                   place_name, reporter_tier, consensus_score, confirmation_count,
+                   denial_count, status, photo_ipfs_cid, linked_event_id,
+                   created_at, updated_at",
     )
     .bind(&input.report_type)
     .bind(&input.description)
-    .bind(input.lat)
-    .bind(input.lng)
+    .bind(lat)
+    .bind(lng)
+    .bind(&h3_r9)
     .bind(&input.place_name)
-    .bind(&input.nostr_pubkey)
-    .bind(&input.nostr_signature)
-    .bind(&input.nostr_event_id)
     .bind(&tier)
     .bind(initial_score)
     .bind(&input.photo_ipfs_cid)
@@ -135,12 +147,26 @@ pub async fn create_report(pool: &PgPool, input: CreateReportInput) -> Result<Re
     .fetch_one(&mut *tx)
     .await?;
 
+    // C-2: identity fields live in the access-controlled author table, written
+    // here via the app role's INSERT grant (it cannot read them back).
+    sqlx::query(
+        "INSERT INTO report_authors (report_id, nostr_pubkey, nostr_signature, nostr_event_id)
+         VALUES ($1, $2, $3, $4)",
+    )
+    .bind(report.id)
+    .bind(&input.nostr_pubkey)
+    .bind(&input.nostr_signature)
+    .bind(&input.nostr_event_id)
+    .execute(&mut *tx)
+    .await?;
+
     tx.commit().await?;
     Ok(report)
 }
 
-/// Returns (updated_report, old_score, established_confirmations) so callers can
-/// detect threshold crossings and apply the established-voter gate.
+/// Returns (updated_report, old_score, established_confirmations). The caller must
+/// have already rejected self-votes (the author pubkey lives in report_authors,
+/// reachable only via the reputation pool).
 pub async fn cast_vote(
     pool: &PgPool,
     report_id: Uuid,
@@ -148,20 +174,19 @@ pub async fn cast_vote(
 ) -> Result<(Report, i32, i32)> {
     let mut tx = pool.begin().await?;
 
-    let report =
-        sqlx::query_as::<_, Report>("SELECT * FROM community_reports WHERE id = $1 FOR UPDATE")
-            .bind(report_id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("report not found"))?;
-
-    if report.nostr_pubkey == input.voter_pubkey {
-        anyhow::bail!("cannot vote on your own report");
-    }
+    let report = sqlx::query_as::<_, Report>(
+        "SELECT id, report_type, description, lat::float8 AS lat, lng::float8 AS lng,
+                place_name, reporter_tier, consensus_score, confirmation_count,
+                denial_count, status, photo_ipfs_cid, linked_event_id, created_at, updated_at
+           FROM community_reports WHERE id = $1 FOR UPDATE",
+    )
+    .bind(report_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| anyhow::anyhow!("report not found"))?;
 
     let old_score = report.consensus_score;
 
-    // Ensure the voter exists in users so they carry a reputation tier.
     sqlx::query(
         "INSERT INTO users (nostr_pubkey, last_active)
          VALUES ($1, NOW())
@@ -177,12 +202,11 @@ pub async fn cast_vote(
             .fetch_one(&mut *tx)
             .await?;
 
-    // Reputation-weighted vote magnitude. NEWCOMER = 1; earned tiers weigh more.
     let weight = vote_weight(&voter_tier);
 
-    // Proximity is a WEAK signal only: a flat +1 nudge, never a multiplier, and
-    // only for established voters (self-reported coordinates are spoofable, so we
-    // refuse to let proximity amplify cheap NEWCOMER keys).
+    // Proximity is a WEAK signal: a flat +1 for established voters near the report.
+    // The voter's coordinates are used transiently here and never stored — only
+    // the resulting boolean is persisted (C-2).
     let nearby = match (input.voter_lat, input.voter_lng) {
         (Some(vlat), Some(vlng)) => {
             let dist: f64 =
@@ -197,11 +221,7 @@ pub async fn cast_vote(
         }
         _ => false,
     };
-    let proximity_bonus = if nearby && voter_tier != "NEWCOMER" {
-        1
-    } else {
-        0
-    };
+    let proximity_bonus = if nearby && voter_tier != "NEWCOMER" { 1 } else { 0 };
     let magnitude = weight + proximity_bonus;
 
     let (score_delta, conf_delta, deny_delta) = match input.vote.as_str() {
@@ -211,14 +231,13 @@ pub async fn cast_vote(
     };
 
     sqlx::query(
-        "INSERT INTO report_votes (report_id, voter_pubkey, vote, voter_lat, voter_lng)
-         VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO report_votes (report_id, voter_pubkey, vote, voter_was_nearby)
+         VALUES ($1, $2, $3, $4)",
     )
     .bind(report_id)
     .bind(&input.voter_pubkey)
     .bind(&input.vote)
-    .bind(input.voter_lat)
-    .bind(input.voter_lng)
+    .bind(nearby)
     .execute(&mut *tx)
     .await?;
 
@@ -229,7 +248,10 @@ pub async fn cast_vote(
              denial_count       = denial_count + $4,
              updated_at         = NOW()
          WHERE id = $1
-         RETURNING *",
+         RETURNING id, report_type, description, lat::float8 AS lat, lng::float8 AS lng,
+                   place_name, reporter_tier, consensus_score, confirmation_count,
+                   denial_count, status, photo_ipfs_cid, linked_event_id,
+                   created_at, updated_at",
     )
     .bind(report_id)
     .bind(score_delta)
@@ -316,4 +338,32 @@ pub async fn list_reports(pool: &PgPool, params: ListReportsParams) -> Result<Ve
     .await?;
 
     Ok(reports)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Compile-time guard: Report must not carry identity fields (C-2).
+    #[test]
+    fn report_struct_has_no_identity_fields() {
+        let r = Report {
+            id: Uuid::nil(),
+            report_type: "FIRE".into(),
+            description: None,
+            lat: 0.0,
+            lng: 0.0,
+            place_name: None,
+            reporter_tier: "NEWCOMER".into(),
+            consensus_score: 0,
+            confirmation_count: 0,
+            denial_count: 0,
+            status: "PENDING".into(),
+            photo_ipfs_cid: None,
+            linked_event_id: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        assert_eq!(r.report_type, "FIRE");
+    }
 }
