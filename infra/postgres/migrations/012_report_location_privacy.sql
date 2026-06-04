@@ -24,17 +24,28 @@ CREATE TABLE IF NOT EXISTS report_authors (
 );
 
 -- 3. Backfill identity rows from existing community_reports, then drop the
---    identity columns + the pubkey index from the public table.
-INSERT INTO report_authors (report_id, nostr_pubkey, nostr_signature, nostr_event_id)
-SELECT id, nostr_pubkey, nostr_signature, nostr_event_id
-  FROM community_reports
-ON CONFLICT (report_id) DO NOTHING;
+--    identity columns + the pubkey index from the public table. Guarded on the
+--    source column still existing so the whole step is idempotent: on a re-run
+--    the columns are already gone and the block is skipped (a bare INSERT ...
+--    SELECT nostr_pubkey would otherwise error after the drop).
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'community_reports' AND column_name = 'nostr_pubkey'
+    ) THEN
+        INSERT INTO report_authors (report_id, nostr_pubkey, nostr_signature, nostr_event_id)
+        SELECT id, nostr_pubkey, nostr_signature, nostr_event_id
+          FROM community_reports
+        ON CONFLICT (report_id) DO NOTHING;
 
-DROP INDEX IF EXISTS idx_reports_pubkey;
-ALTER TABLE community_reports
-    DROP COLUMN IF EXISTS nostr_pubkey,
-    DROP COLUMN IF EXISTS nostr_signature,
-    DROP COLUMN IF EXISTS nostr_event_id;
+        DROP INDEX IF EXISTS idx_reports_pubkey;
+        ALTER TABLE community_reports
+            DROP COLUMN nostr_pubkey,
+            DROP COLUMN nostr_signature,
+            DROP COLUMN nostr_event_id;
+    END IF;
+END$$;
 
 -- 4. Voter coordinates -> boolean.
 ALTER TABLE report_votes ADD COLUMN IF NOT EXISTS voter_was_nearby BOOLEAN;
@@ -51,15 +62,20 @@ BEGIN
     END IF;
 END$$;
 
+-- CURRENT_USER (not a hardcoded role name) is the role applying this migration,
+-- which in every environment is the runtime app role (gateway connects with the
+-- same DATABASE_URL that applies migrations). Referencing it keeps the migration
+-- portable: a fresh CI database has no `sentinel` role, but CURRENT_USER always
+-- exists. The intent is "the app role gets INSERT-only, never SELECT".
 REVOKE SELECT ON report_authors FROM PUBLIC;
-REVOKE SELECT ON report_authors FROM sentinel;
-GRANT  INSERT ON report_authors TO sentinel;          -- app role: write-only
+REVOKE SELECT ON report_authors FROM CURRENT_USER;
+GRANT  INSERT ON report_authors TO CURRENT_USER;      -- app role: write-only
 GRANT  SELECT ON report_authors TO sentinel_reputation;
 -- Member of the restricted role so the app role can SET ROLE to it, but WITHOUT
 -- inheriting its privileges (PG16 scoped non-inheritance — avoids a global
 -- ALTER ROLE ... NOINHERIT footgun). The app role must SET ROLE explicitly to
 -- gain SELECT on report_authors.
-GRANT sentinel_reputation TO sentinel WITH INHERIT FALSE;
+GRANT sentinel_reputation TO CURRENT_USER WITH INHERIT FALSE;
 
 ALTER TABLE report_authors ENABLE ROW LEVEL SECURITY;
 -- FORCE so the table OWNER (the migration runner / app role) is ALSO subject to
@@ -73,4 +89,4 @@ CREATE POLICY report_authors_select ON report_authors
     FOR SELECT TO sentinel_reputation USING (true);
 DROP POLICY IF EXISTS report_authors_insert ON report_authors;
 CREATE POLICY report_authors_insert ON report_authors
-    FOR INSERT TO sentinel WITH CHECK (true);
+    FOR INSERT TO CURRENT_USER WITH CHECK (true);
