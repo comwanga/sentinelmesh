@@ -5,8 +5,7 @@ import type { CommunityReport } from '../../../../shared/types'
 function makeReport(id: string): CommunityReport {
   return {
     report_id: id, report_type: 'FLOODING', description: null,
-    lat: 0, lng: 0, place_name: null, nostr_pubkey: 'pk',
-    nostr_signature: 'sig', nostr_event_id: 'ev',
+    lat: 0, lng: 0, place_name: null,
     reporter_tier: 'NEWCOMER', consensus_score: 1, status: 'PENDING',
     confirmation_count: 0, denial_count: 0, photo_ipfs_cid: null,
     linked_event_id: null, created_at: '', updated_at: '',

@@ -193,20 +193,20 @@ pub async fn update_source_nostr_id(
     job: &PublishJob,
     kind30078_id: &str,
 ) -> Result<()> {
-    let table = if job.source_type == "SAFETY_EVENT" {
-        "safety_events"
-    } else {
-        "community_reports"
-    };
-    let sql = format!(
-        "UPDATE {} SET nostr_event_id = $2 WHERE id = $1 AND nostr_event_id IS NULL",
-        table
-    );
-    sqlx::query(&sql)
+    // Only safety_events carries nostr_event_id now. C-2 moved the community-report
+    // identity (including nostr_event_id) into the access-controlled report_authors
+    // table and dropped the column from community_reports, so the old write-back to
+    // community_reports would fail. Community-report anchoring is default-off (audit
+    // H-8/C-1) and will set this via the identity tier when it is reworked.
+    if job.source_type == "SAFETY_EVENT" {
+        sqlx::query(
+            "UPDATE safety_events SET nostr_event_id = $2 WHERE id = $1 AND nostr_event_id IS NULL",
+        )
         .bind(job.source_id)
         .bind(kind30078_id)
         .execute(pool)
         .await?;
+    }
     Ok(())
 }
 
