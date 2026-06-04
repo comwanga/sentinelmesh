@@ -194,6 +194,10 @@ async fn handle_message(
     // Corroboration window: how long an active cluster keeps accepting new signals.
     const CLUSTER_WINDOW_SECS: i64 = 1800; // 30 min, matches the Python fuse window
 
+    // Steps 1-3 run in one transaction so a failure cannot leave a safety_events
+    // row without its staged signal (which redelivery would then duplicate).
+    let mut tx = pool.begin().await?;
+
     // 1. Find an existing active (heuristic/corroborating) event for this cell+type
     //    within the window, via already-staged signals. None -> we create one.
     let existing: Option<uuid::Uuid> = sqlx::query_scalar(
@@ -207,33 +211,44 @@ async fn handle_message(
     .bind(&h3_r9)
     .bind(&event.event_type)
     .bind(CLUSTER_WINDOW_SECS)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
 
-    // 2. Resolve the surfaced event id: reuse the cluster's event, or insert a new
-    //    HEURISTIC one. New machine events are heuristic + origin_class=machine.
-    let event_id: uuid::Uuid = match existing {
-        Some(id) => id,
-        None => sqlx::query_scalar(
-            "INSERT INTO safety_events
-               (event_type, severity, title, lat, lng, started_at, summary,
-                place_name, county, is_active, trust_state, origin_class,
-                distinct_source_count, distinct_channel_count, created_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,'heuristic','machine',1,1,$10)
-             RETURNING id",
-        )
-        .bind(&event.event_type)
-        .bind(&event.severity)
-        .bind(&event.title)
-        .bind(event.lat)
-        .bind(event.lng)
-        .bind(event.started_at)
-        .bind(event.summary.as_deref())
-        .bind(event.place_name.as_deref())
-        .bind(county.as_deref())
-        .bind(event.created_at)
-        .fetch_one(pool)
-        .await?,
+    // 2. Resolve the surfaced event id and its current trust_state. Reuse the
+    //    cluster's event (reading its possibly-promoted trust_state), or insert a
+    //    new HEURISTIC machine event (trust_state is known to be 'heuristic').
+    let (event_id, trust_state): (uuid::Uuid, String) = match existing {
+        Some(id) => {
+            let ts: String =
+                sqlx::query_scalar("SELECT trust_state FROM safety_events WHERE id = $1")
+                    .bind(id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+            (id, ts)
+        }
+        None => {
+            let id: uuid::Uuid = sqlx::query_scalar(
+                "INSERT INTO safety_events
+                   (event_type, severity, title, lat, lng, started_at, summary,
+                    place_name, county, is_active, trust_state, origin_class,
+                    distinct_source_count, distinct_channel_count, created_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,'heuristic','machine',1,1,$10)
+                 RETURNING id",
+            )
+            .bind(&event.event_type)
+            .bind(&event.severity)
+            .bind(&event.title)
+            .bind(event.lat)
+            .bind(event.lng)
+            .bind(event.started_at)
+            .bind(event.summary.as_deref())
+            .bind(event.place_name.as_deref())
+            .bind(county.as_deref())
+            .bind(event.created_at)
+            .fetch_one(&mut *tx)
+            .await?;
+            (id, "heuristic".to_string())
+        }
     };
 
     // 3. Stage the raw signal (pending) linked to the surfaced event. The synthesis
@@ -260,20 +275,15 @@ async fn handle_message(
     .bind(county.as_deref())
     .bind(event.place_name.as_deref())
     .bind(event.confidence_or_default())
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
-    // 4. Read back the event's current trust_state so the broadcast is labeled
-    //    correctly (it may already be corroborating/confirmed from earlier signals).
-    let trust_state: String =
-        sqlx::query_scalar("SELECT trust_state FROM safety_events WHERE id = $1")
-            .bind(event_id)
-            .fetch_one(pool)
-            .await?;
+    tx.commit().await?;
 
-    // 5. Broadcast to the map viewport channel (fire-and-forget). Heuristic events
-    //    ARE shown — labeled — but never push. Push is gated to confirmed and is
-    //    applied by the synthesis worker on the confirm transition (Phase 2B-ii).
+    // 4. Broadcast to the map viewport channel (fire-and-forget), after commit so we
+    //    never surface an event that rolled back. Heuristic events ARE shown —
+    //    labeled — but never push. Push is gated to confirmed and applied by the
+    //    synthesis worker on the confirm transition (Phase 2B-ii).
     let ws_event_json = serde_json::json!({
         "id": event_id,
         "event_type": event.event_type,

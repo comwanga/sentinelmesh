@@ -416,6 +416,12 @@ async fn handle_message(
 
 This removes the old direct `safety_events` upsert keyed by `event.id`, the hardcoded `trust_state: "confirmed"` in the broadcast, and the entire push-notification block. `event.confidence_or_default()` is added in the next step.
 
+**Review hardening (applied):** steps 1–3 (the existing-cluster lookup, the `safety_events` find-or-create, and the `nlp_signals` insert) are wrapped in a single `sqlx` transaction (`let mut tx = pool.begin().await?;` … `tx.commit().await?;`, binding each query to `&mut *tx`), with the broadcasts moved after commit. This prevents at-least-once redelivery from leaving a `safety_events` row without its staged signal and thereby creating a duplicate event on retry. The `trust_state` read-back is skipped on the new-event branch (it is known to be `"heuristic"`) and only performed when reusing an existing cluster (whose `trust_state` may have been promoted). See the committed `handle_message` for the final transactional form.
+
+**Forward notes for 2B-ii / later (deferred, not fixed here):**
+- **Poison pill:** `safety_events.severity`/`event_type` have DB CHECK constraints but `event_schema.json` only enforces `type: string`. An out-of-enum value would fail the INSERT and redeliver forever. The Python emitters only ever produce valid enum values, so this is latent; the clean fix (enum constraints) belongs with the schema-generation pipeline, not 2B-i.
+- **Multi-replica:** the Redis consumer name is hardcoded (`gateway-main`); with >1 gateway replica the find-or-create has a cross-process TOCTOU. This is audit item H-7 (in-process workers across replicas), explicitly out of H-5 scope; single-replica today.
+
 - [ ] **Step 6: Add the `confidence_or_default` helper to the payload**
 
 `RedisEventPayload` has no `confidence` field, but `nlp_signals.confidence` is NOT NULL. The Python signal carries confidence but `build_event` does not currently put it on the payload, so default it here rather than widening the schema in this slice. Add this impl block in `services/gateway/src/subscribers/event_subscriber.rs` (just below the `use` lines):
