@@ -256,7 +256,11 @@ pub fn router() -> Router<AppState> {
 
 impl From<Circle> for sentinel_core::Circle {
     fn from(row: Circle) -> Self {
-        Self { id: row.id, name: row.name, created_at: row.created_at }
+        Self {
+            id: row.id,
+            name: row.name,
+            created_at: row.created_at,
+        }
     }
 }
 

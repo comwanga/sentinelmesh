@@ -244,7 +244,8 @@ async fn backfill_circle_tokens(pool: &sqlx::PgPool, secret: &str) -> anyhow::Re
     // (Postgres rejects the column reference regardless of the WHERE clause).
     let has_plaintext: bool = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM information_schema.columns
-                         WHERE table_name = 'circles' AND column_name = 'owner_pubkey')",
+                         WHERE table_schema = 'public'
+                           AND table_name = 'circles' AND column_name = 'owner_pubkey')",
     )
     .fetch_one(pool)
     .await?;

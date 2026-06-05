@@ -1,3 +1,4 @@
+use crate::circles::token::circle_token;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -7,7 +8,6 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::circles::token::circle_token;
 use uuid::Uuid;
 
 use crate::{error::AppError, middleware::nostr_auth::NostrAuth, AppState};

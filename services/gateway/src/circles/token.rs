@@ -53,7 +53,10 @@ mod tests {
     fn same_pubkey_differs_per_circle() {
         let c1 = Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap();
         let c2 = Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap();
-        assert_ne!(circle_token("secret", c1, "pk"), circle_token("secret", c2, "pk"));
+        assert_ne!(
+            circle_token("secret", c1, "pk"),
+            circle_token("secret", c2, "pk")
+        );
     }
 
     #[test]
