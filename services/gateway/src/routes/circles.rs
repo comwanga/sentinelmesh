@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post},
@@ -42,13 +42,60 @@ struct AddMemberBody {
     alert_severity: Option<String>,
 }
 
-// list_circles replaced in Task 6 — stub kept for router registration
+#[derive(Deserialize)]
+struct ListCirclesQuery {
+    /// Comma-separated circle UUIDs the client knows it belongs to.
+    ids: Option<String>,
+}
+
 async fn list_circles(
     State(state): State<AppState>,
     auth: NostrAuth,
+    Query(q): Query<ListCirclesQuery>,
 ) -> Result<Json<Vec<serde_json::Value>>, AppError> {
-    let _ = (state, auth);
-    Ok(Json(vec![]))
+    let ids: Vec<Uuid> = q
+        .ids
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|s| Uuid::parse_str(s.trim()).ok())
+        .collect();
+    if ids.is_empty() {
+        return Ok(Json(vec![]));
+    }
+
+    let secret = &state.config.circle_token_secret;
+    let mut out = Vec::new();
+    for id in ids {
+        let circle = sqlx::query_as::<_, Circle>("SELECT * FROM circles WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?;
+        let Some(circle) = circle else { continue };
+        let my_token = circle_token(secret, id, &auth.pubkey);
+        let is_owner = circle.owner_token == my_token;
+        let is_member = if is_owner {
+            true
+        } else {
+            let count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM circle_members WHERE circle_id = $1 AND member_token = $2",
+            )
+            .bind(id)
+            .bind(&my_token)
+            .fetch_one(&state.db)
+            .await?;
+            count > 0
+        };
+        if !is_member {
+            continue;
+        }
+        out.push(serde_json::json!({
+            "id": circle.id,
+            "name": circle.name,
+            "created_at": circle.created_at,
+            "is_owner": is_owner,
+        }));
+    }
+    Ok(Json(out))
 }
 
 async fn create_circle(
