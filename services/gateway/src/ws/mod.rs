@@ -128,15 +128,20 @@ async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
                     }
                 };
 
+                let join_token = crate::circles::token::circle_token(
+                    &state.config.circle_token_secret,
+                    circle_id,
+                    &resolved_pubkey,
+                );
                 let is_member: bool = sqlx::query_scalar::<_, i64>(
                     "SELECT COUNT(*) FROM (
-                       SELECT 1 FROM circle_members WHERE circle_id = $1 AND member_pubkey = $2
+                       SELECT 1 FROM circle_members WHERE circle_id = $1 AND member_token = $2
                        UNION
-                       SELECT 1 FROM circles WHERE id = $1 AND owner_pubkey = $2
+                       SELECT 1 FROM circles WHERE id = $1 AND owner_token = $2
                      ) sub",
                 )
                 .bind(circle_id)
-                .bind(&resolved_pubkey)
+                .bind(&join_token)
                 .fetch_one(&state.db)
                 .await
                 .map(|n| n > 0)
