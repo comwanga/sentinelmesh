@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { useAppSelector, useAppDispatch } from '../store'
 import { activeAlertDismissed, circleLeft, circleLoaded } from '../store/circlesSlice'
 import { loadOrCreateKeypair, signAuthEvent, toNpub, hexFromNpubOrHex } from '../services/nostrService'
+import { addCircleId } from '../services/circleIdStore'
 import { CircleSidebar } from './CircleSidebar'
 import { CircleMapLayer } from './CircleMapLayer'
 import { AlertBanner } from './AlertBanner'
@@ -18,17 +19,17 @@ const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
 
 const EMPTY_MEMBERS: never[] = []
 
-interface RawCircle { id: string; owner_pubkey: string; name: string; created_at: string }
-interface RawMember { circle_id: string; member_pubkey: string; alert_radius_km: number | null; alert_severity: string | null; joined_at: string }
+interface RawCircle { id: string; name: string; created_at: string; is_owner?: boolean }
+interface RawMember { circle_id: string; member_token: string; alert_radius_km: number | null; alert_severity: string | null; joined_at: string }
 
 function toCircle(raw: RawCircle): Circle {
-  return { circle_id: raw.id, owner_pubkey: raw.owner_pubkey, name: raw.name, created_at: raw.created_at }
+  return { circle_id: raw.id, name: raw.name, created_at: raw.created_at, is_owner: raw.is_owner ?? false }
 }
 
 function toMember(raw: RawMember): CircleMember {
   return {
     circle_id: raw.circle_id,
-    member_pubkey: raw.member_pubkey,
+    member_token: raw.member_token,
     alert_radius_km: raw.alert_radius_km ?? 5,
     alert_severity: (raw.alert_severity ?? 'MEDIUM') as CircleMember['alert_severity'],
     joined_at: raw.joined_at,
@@ -105,6 +106,7 @@ function EmptyState() {
       })
       if (!res.ok) { setCreateError(`Server error (${res.status})`); return }
       const raw = await res.json() as RawCircle
+      addCircleId(raw.id)
       const circle = toCircle(raw)
       let members: CircleMember[] = []
       try {
@@ -292,6 +294,16 @@ function EmptyState() {
                   Copy my key
                 </button>
               </div>
+              <button
+                onClick={() => { addCircleId(parsedInvite.circleId); setJoinError(null) }}
+                style={{
+                  marginTop: 10, width: '100%', background: '#1B5E20', border: '1px solid #4CAF50',
+                  borderRadius: 4, color: '#4CAF50', fontFamily: "'Courier New', monospace",
+                  fontSize: 11, padding: '7px 0', cursor: 'pointer',
+                }}
+              >
+                Track this circle
+              </button>
             </div>
           ) : inviteInput.trim().length > 0 ? (
             <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#FF2D2D', marginBottom: 12 }}>

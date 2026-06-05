@@ -39,11 +39,8 @@ const circlesSlice = createSlice({
       }
       state.members[circle.circle_id] = members
       state.activeCircleId = circle.circle_id
-      members.forEach(m => {
-        if (!state.memberStatuses[m.member_pubkey]) {
-          state.memberStatuses[m.member_pubkey] = 'OFFLINE'
-        }
-      })
+      // No pubkey-keyed seeding: the roster carries opaque member_tokens now;
+      // presence is keyed by sender_pubkey from the circle WS as locations arrive.
     },
     memberStatusUpdated(state, action: PayloadAction<{ pubkey: string; status: MemberStatus }>) {
       state.memberStatuses[action.payload.pubkey] = action.payload.status

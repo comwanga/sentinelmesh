@@ -31,9 +31,9 @@ vi.mock('../../services/nostrService', () => ({
   hexFromNpubOrHex: (s: string) => s,
 }))
 
-const circle: Circle = { circle_id: 'c1', owner_pubkey: 'aaa', name: 'Wanga Family', created_at: '' }
+const circle: Circle = { circle_id: 'c1', name: 'Wanga Family', created_at: '' }
 const members: CircleMember[] = [
-  { circle_id: 'c1', member_pubkey: 'npub1aaa', alert_radius_km: 1, alert_severity: 'HIGH', joined_at: '' },
+  { circle_id: 'c1', member_token: 'tok_aaa', alert_radius_km: 1, alert_severity: 'HIGH', joined_at: '' },
 ]
 
 function makeStore() {

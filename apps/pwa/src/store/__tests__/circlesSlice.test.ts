@@ -11,14 +11,13 @@ import type { Circle, CircleMember } from '../../../../../shared/types'
 
 const mockCircle: Circle = {
   circle_id: 'c1',
-  owner_pubkey: 'aaa',
   name: 'Wanga Family',
   created_at: '2026-05-03T00:00:00Z',
 }
 
 const mockMember: CircleMember = {
   circle_id: 'c1',
-  member_pubkey: 'bbb',
+  member_token: 'v1:tok_bbb',
   alert_radius_km: 1,
   alert_severity: 'HIGH',
   joined_at: '2026-05-03T00:00:00Z',
@@ -32,10 +31,17 @@ describe('circlesSlice', () => {
     expect(state.members['c1']).toHaveLength(1)
   })
 
-  it('updates member status', () => {
+  it('does not seed memberStatuses from roster (tokens are opaque)', () => {
+    const state = reducer(undefined, circleLoaded({ circle: mockCircle, members: [mockMember] }))
+    // memberStatuses must remain empty after loading; presence is keyed by
+    // sender_pubkey from the circle WS, not from roster member_tokens.
+    expect(Object.keys(state.memberStatuses)).toHaveLength(0)
+  })
+
+  it('updates member status by pubkey when WS presence arrives', () => {
     let state = reducer(undefined, circleLoaded({ circle: mockCircle, members: [mockMember] }))
-    state = reducer(state, memberStatusUpdated({ pubkey: 'bbb', status: 'GHOST' }))
-    expect(state.memberStatuses['bbb']).toBe('GHOST')
+    state = reducer(state, memberStatusUpdated({ pubkey: 'sender_bbb', status: 'GHOST' }))
+    expect(state.memberStatuses['sender_bbb']).toBe('GHOST')
   })
 
   it('stores decrypted location', () => {

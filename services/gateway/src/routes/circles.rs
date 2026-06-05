@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{delete, get, post},
@@ -9,12 +9,14 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{error::AppError, middleware::nostr_auth::NostrAuth, AppState};
+use crate::{
+    circles::token::circle_token, error::AppError, middleware::nostr_auth::NostrAuth, AppState,
+};
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct Circle {
     pub id: Uuid,
-    pub owner_pubkey: String,
+    pub owner_token: String,
     pub name: String,
     pub created_at: DateTime<Utc>,
 }
@@ -22,7 +24,7 @@ pub struct Circle {
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct CircleMember {
     pub circle_id: Uuid,
-    pub member_pubkey: String,
+    pub member_token: String,
     pub alert_radius_km: Option<f64>,
     pub alert_severity: Option<String>,
     pub joined_at: DateTime<Utc>,
@@ -40,36 +42,86 @@ struct AddMemberBody {
     alert_severity: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct ListCirclesQuery {
+    /// Comma-separated circle UUIDs the client knows it belongs to.
+    ids: Option<String>,
+}
+
 async fn list_circles(
     State(state): State<AppState>,
     auth: NostrAuth,
-) -> Result<Json<Vec<Circle>>, AppError> {
-    let circles = sqlx::query_as::<_, Circle>(
-        "SELECT DISTINCT c.id, c.owner_pubkey, c.name, c.created_at
-         FROM circles c
-         LEFT JOIN circle_members m ON m.circle_id = c.id
-         WHERE c.owner_pubkey = $1 OR m.member_pubkey = $1
-         ORDER BY c.created_at DESC",
-    )
-    .bind(&auth.pubkey)
-    .fetch_all(&state.db)
-    .await?;
-    Ok(Json(circles))
+    Query(q): Query<ListCirclesQuery>,
+) -> Result<Json<Vec<serde_json::Value>>, AppError> {
+    let ids: Vec<Uuid> = q
+        .ids
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|s| Uuid::parse_str(s.trim()).ok())
+        .collect();
+    if ids.is_empty() {
+        return Ok(Json(vec![]));
+    }
+
+    let secret = &state.config.circle_token_secret;
+    let mut out = Vec::new();
+    for id in ids {
+        let circle = sqlx::query_as::<_, Circle>("SELECT * FROM circles WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?;
+        let Some(circle) = circle else { continue };
+        let my_token = circle_token(secret, id, &auth.pubkey);
+        let is_owner = circle.owner_token == my_token;
+        let is_member = if is_owner {
+            true
+        } else {
+            let count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM circle_members WHERE circle_id = $1 AND member_token = $2",
+            )
+            .bind(id)
+            .bind(&my_token)
+            .fetch_one(&state.db)
+            .await?;
+            count > 0
+        };
+        if !is_member {
+            continue;
+        }
+        out.push(serde_json::json!({
+            "id": circle.id,
+            "name": circle.name,
+            "created_at": circle.created_at,
+            "is_owner": is_owner,
+        }));
+    }
+    Ok(Json(out))
 }
 
 async fn create_circle(
     State(state): State<AppState>,
     auth: NostrAuth,
     Json(body): Json<CreateCircleBody>,
-) -> Result<(StatusCode, Json<Circle>), AppError> {
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    let id = Uuid::new_v4();
+    let owner_token = circle_token(&state.config.circle_token_secret, id, &auth.pubkey);
     let circle = sqlx::query_as::<_, Circle>(
-        "INSERT INTO circles (id, owner_pubkey, name) VALUES (gen_random_uuid(), $1, $2) RETURNING *"
+        "INSERT INTO circles (id, owner_token, name) VALUES ($1, $2, $3) RETURNING *",
     )
-    .bind(&auth.pubkey)
+    .bind(id)
+    .bind(&owner_token)
     .bind(&body.name)
     .fetch_one(&state.db)
     .await?;
-    Ok((StatusCode::CREATED, Json(circle)))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "id": circle.id,
+            "name": circle.name,
+            "created_at": circle.created_at,
+            "is_owner": true,
+        })),
+    ))
 }
 
 async fn get_circle(
@@ -83,13 +135,14 @@ async fn get_circle(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    // Authorization: requester must be owner or a member
-    if circle.owner_pubkey != auth.pubkey {
+    let my_token = circle_token(&state.config.circle_token_secret, id, &auth.pubkey);
+    let is_owner = circle.owner_token == my_token;
+    if !is_owner {
         let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM circle_members WHERE circle_id = $1 AND member_pubkey = $2",
+            "SELECT COUNT(*) FROM circle_members WHERE circle_id = $1 AND member_token = $2",
         )
         .bind(id)
-        .bind(&auth.pubkey)
+        .bind(&my_token)
         .fetch_one(&state.db)
         .await?;
         if count == 0 {
@@ -105,10 +158,10 @@ async fn get_circle(
 
     Ok(Json(serde_json::json!({
         "id": circle.id,
-        "owner_pubkey": circle.owner_pubkey,
         "name": circle.name,
         "created_at": circle.created_at,
-        "members": members
+        "is_owner": is_owner,
+        "members": members,
     })))
 }
 
@@ -118,25 +171,27 @@ async fn add_member(
     Path(id): Path<Uuid>,
     Json(body): Json<AddMemberBody>,
 ) -> Result<(StatusCode, Json<CircleMember>), AppError> {
-    let owner: Option<String> =
-        sqlx::query_scalar("SELECT owner_pubkey FROM circles WHERE id = $1")
+    let owner_token: Option<String> =
+        sqlx::query_scalar("SELECT owner_token FROM circles WHERE id = $1")
             .bind(id)
             .fetch_optional(&state.db)
             .await?;
-    if owner.as_deref() != Some(auth.pubkey.as_str()) {
+    let my_token = circle_token(&state.config.circle_token_secret, id, &auth.pubkey);
+    if owner_token.as_deref() != Some(my_token.as_str()) {
         return Err(AppError::Forbidden);
     }
 
+    let member_token = circle_token(&state.config.circle_token_secret, id, &body.member_pubkey);
     let member = sqlx::query_as::<_, CircleMember>(
-        "INSERT INTO circle_members (circle_id, member_pubkey, alert_radius_km, alert_severity)
+        "INSERT INTO circle_members (circle_id, member_token, alert_radius_km, alert_severity)
          VALUES ($1, $2, $3, $4)
-         ON CONFLICT (circle_id, member_pubkey) DO UPDATE
+         ON CONFLICT (circle_id, member_token) DO UPDATE
            SET alert_radius_km = EXCLUDED.alert_radius_km,
                alert_severity  = EXCLUDED.alert_severity
          RETURNING *",
     )
     .bind(id)
-    .bind(&body.member_pubkey)
+    .bind(&member_token)
     .bind(body.alert_radius_km)
     .bind(&body.alert_severity)
     .fetch_one(&state.db)
@@ -150,23 +205,25 @@ async fn remove_member(
     auth: NostrAuth,
     Path((circle_id, member_pubkey)): Path<(Uuid, String)>,
 ) -> Result<StatusCode, AppError> {
-    let owner: Option<String> =
-        sqlx::query_scalar("SELECT owner_pubkey FROM circles WHERE id = $1")
+    let owner_token: Option<String> =
+        sqlx::query_scalar("SELECT owner_token FROM circles WHERE id = $1")
             .bind(circle_id)
             .fetch_optional(&state.db)
             .await?;
-    if owner.as_deref() != Some(auth.pubkey.as_str()) && auth.pubkey != member_pubkey {
+    let secret = &state.config.circle_token_secret;
+    let caller_token = circle_token(secret, circle_id, &auth.pubkey);
+    let target_token = circle_token(secret, circle_id, &member_pubkey);
+    if owner_token.as_deref() != Some(caller_token.as_str()) && caller_token != target_token {
         return Err(AppError::Forbidden);
     }
 
-    sqlx::query("DELETE FROM circle_members WHERE circle_id = $1 AND member_pubkey = $2")
+    sqlx::query("DELETE FROM circle_members WHERE circle_id = $1 AND member_token = $2")
         .bind(circle_id)
-        .bind(&member_pubkey)
+        .bind(&target_token)
         .execute(&state.db)
         .await?;
 
-    // Notify WebSocket clients in this circle that the member was removed
-    let msg = serde_json::json!({ "type": "MEMBER_REMOVED", "pubkey": member_pubkey }).to_string();
+    let msg = serde_json::json!({ "type": "MEMBER_REMOVED", "token": target_token }).to_string();
     state.circle_hub.broadcast(circle_id, msg.into());
 
     Ok(StatusCode::NO_CONTENT)
@@ -177,12 +234,12 @@ async fn delete_circle(
     auth: NostrAuth,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let result = sqlx::query("DELETE FROM circles WHERE id = $1 AND owner_pubkey = $2")
+    let owner_token = circle_token(&state.config.circle_token_secret, id, &auth.pubkey);
+    let result = sqlx::query("DELETE FROM circles WHERE id = $1 AND owner_token = $2")
         .bind(id)
-        .bind(&auth.pubkey)
+        .bind(&owner_token)
         .execute(&state.db)
         .await?;
-
     if result.rows_affected() == 0 {
         return Err(AppError::Forbidden);
     }
@@ -201,7 +258,6 @@ impl From<Circle> for sentinel_core::Circle {
     fn from(row: Circle) -> Self {
         Self {
             id: row.id,
-            owner_pubkey: row.owner_pubkey,
             name: row.name,
             created_at: row.created_at,
         }
@@ -212,7 +268,7 @@ impl From<CircleMember> for sentinel_core::CircleMember {
     fn from(row: CircleMember) -> Self {
         Self {
             circle_id: row.circle_id,
-            member_pubkey: row.member_pubkey,
+            member_token: row.member_token,
             alert_radius_km: row.alert_radius_km,
             alert_severity: row.alert_severity,
             joined_at: row.joined_at,
@@ -232,14 +288,13 @@ mod tests {
         let now = Utc::now();
         let row = Circle {
             id,
-            owner_pubkey: "pk".into(),
+            owner_token: "v1:x".into(),
             name: "Home".into(),
             created_at: now,
         };
         let d = sentinel_core::Circle::from(row);
         assert_eq!(d.id, id);
         assert_eq!(d.name, "Home");
-        assert_eq!(d.owner_pubkey, "pk");
     }
 
     #[test]
@@ -248,14 +303,14 @@ mod tests {
         let now = Utc::now();
         let row = CircleMember {
             circle_id: cid,
-            member_pubkey: "mpk".into(),
+            member_token: "v1:m".into(),
             alert_radius_km: Some(5.0),
             alert_severity: Some("HIGH".into()),
             joined_at: now,
         };
         let d = sentinel_core::CircleMember::from(row);
         assert_eq!(d.circle_id, cid);
-        assert_eq!(d.member_pubkey, "mpk");
+        assert_eq!(d.member_token, "v1:m");
         assert_eq!(d.alert_radius_km, Some(5.0));
         assert_eq!(d.alert_severity, Some("HIGH".into()));
     }
@@ -265,7 +320,7 @@ mod tests {
         let now = Utc::now();
         let row = CircleMember {
             circle_id: Uuid::nil(),
-            member_pubkey: "anon".into(),
+            member_token: "v1:anon".into(),
             alert_radius_km: None,
             alert_severity: None,
             joined_at: now,
