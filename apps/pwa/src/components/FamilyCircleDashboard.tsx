@@ -294,6 +294,16 @@ function EmptyState() {
                   Copy my key
                 </button>
               </div>
+              <button
+                onClick={() => { addCircleId(parsedInvite.circleId); setJoinError(null) }}
+                style={{
+                  marginTop: 10, width: '100%', background: '#1B5E20', border: '1px solid #4CAF50',
+                  borderRadius: 4, color: '#4CAF50', fontFamily: "'Courier New', monospace",
+                  fontSize: 11, padding: '7px 0', cursor: 'pointer',
+                }}
+              >
+                Track this circle
+              </button>
             </div>
           ) : inviteInput.trim().length > 0 ? (
             <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#FF2D2D', marginBottom: 12 }}>

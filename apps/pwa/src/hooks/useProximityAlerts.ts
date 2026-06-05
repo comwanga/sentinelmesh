@@ -3,31 +3,29 @@ import { useAppDispatch, useAppSelector } from '../store'
 import { proximityAlertAdded } from '../store/circlesSlice'
 import { haversineKm } from '../utils/geo'
 import { randomUUID } from '../utils/uuid'
-import type { CircleMember, SafetyEvent, ProximityAlert, Severity } from '../../../../shared/types'
-
-const EMPTY_MEMBERS: CircleMember[] = []
+import type { SafetyEvent, ProximityAlert, Severity } from '../../../../shared/types'
 
 const SEVERITY_RANK: Record<Severity, number> = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 }
 
 export function computeProximityAlerts(
-  members: CircleMember[],
   locations: Record<string, { lat: number; lng: number }>,
   events: SafetyEvent[],
 ): Omit<ProximityAlert, 'id'>[] {
+  // Degraded (C-3 Phase A): the roster carries opaque member_tokens the client
+  // cannot map to the pubkey-keyed live locations, so per-member alert
+  // radius/severity are unavailable. Alert on any circle member with a known live
+  // location using default thresholds; per-member settings return in Phase B.
+  const DEFAULT_RADIUS_KM = 5
+  const DEFAULT_MIN_SEVERITY: Severity = 'MEDIUM'
   const alerts: Omit<ProximityAlert, 'id'>[] = []
-
-  for (const member of members) {
-    const loc = locations[member.member_pubkey]
-    if (!loc) continue
-
+  for (const [pubkey, loc] of Object.entries(locations)) {
     for (const event of events) {
       if (!event.is_active) continue
-      if (SEVERITY_RANK[event.severity] < SEVERITY_RANK[member.alert_severity]) continue
-
+      if (SEVERITY_RANK[event.severity] < SEVERITY_RANK[DEFAULT_MIN_SEVERITY]) continue
       const distKm = haversineKm(loc, { lat: event.lat, lng: event.lng })
-      if (distKm <= member.alert_radius_km) {
+      if (distKm <= DEFAULT_RADIUS_KM) {
         alerts.push({
-          member_pubkey: member.member_pubkey,
+          member_pubkey: pubkey,
           zone_name: event.title,
           event_id: event.id,
           severity: event.severity,
@@ -36,13 +34,11 @@ export function computeProximityAlerts(
       }
     }
   }
-
   return alerts
 }
 
 export function useProximityAlerts(): void {
   const dispatch = useAppDispatch()
-  const members = useAppSelector(s => { const id = s.circles.activeCircleId; return id ? (s.circles.members[id] ?? EMPTY_MEMBERS) : EMPTY_MEMBERS })
   const locations = useAppSelector(s => s.circles.decryptedLocations)
   const proximityAlerts = useAppSelector(s => s.circles.proximityAlerts)
   const existingAlertKeys = useMemo(
@@ -56,12 +52,12 @@ export function useProximityAlerts(): void {
     if (locations === prevLocationsRef.current) return
     prevLocationsRef.current = locations
 
-    const newAlerts = computeProximityAlerts(members, locations, events)
+    const newAlerts = computeProximityAlerts(locations, events)
     for (const alert of newAlerts) {
       const key = `${alert.member_pubkey}:${alert.event_id}`
       if (!existingAlertKeys.has(key)) {
         dispatch(proximityAlertAdded({ ...alert, id: randomUUID() }))
       }
     }
-  }, [locations, members, events, dispatch, existingAlertKeys])
+  }, [locations, events, dispatch, existingAlertKeys])
 }
