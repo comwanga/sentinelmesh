@@ -120,14 +120,14 @@ export type PresenceMode = 'GHOST' | 'OFFLINE'
 
 export interface Circle {
   circle_id: string
-  owner_pubkey: string
   name: string
   created_at: string
+  is_owner?: boolean
 }
 
 export interface CircleMember {
   circle_id: string
-  member_pubkey: string
+  member_token: string
   alert_radius_km: number
   alert_severity: Severity
   joined_at: string
