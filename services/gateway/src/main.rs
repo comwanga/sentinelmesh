@@ -78,6 +78,9 @@ async fn main() -> anyhow::Result<()> {
     if let Err(e) = backfill_report_cells(&db).await {
         tracing::warn!("report cell backfill failed: {e:#}");
     }
+    if let Err(e) = backfill_circle_tokens(&db, &config.circle_token_secret).await {
+        tracing::warn!("circle token backfill failed: {e:#}");
+    }
 
     let state = AppState {
         db: db.clone(),
@@ -226,6 +229,43 @@ async fn backfill_report_cells(pool: &sqlx::PgPool) -> anyhow::Result<()> {
             .bind(clng)
             .execute(pool)
             .await?;
+    }
+    Ok(())
+}
+
+/// One-shot: compute owner/member tokens for legacy circle rows whose token is
+/// still NULL, from the plaintext pubkey + CIRCLE_TOKEN_SECRET. Idempotent, no-op
+/// on a fresh DB. recipient_token is intentionally NOT backfilled (the legacy
+/// column is a one-way hash; blobs are ephemeral and expire).
+async fn backfill_circle_tokens(pool: &sqlx::PgPool, secret: &str) -> anyhow::Result<()> {
+    let owners: Vec<(uuid::Uuid, String)> =
+        sqlx::query_as("SELECT id, owner_pubkey FROM circles WHERE owner_token IS NULL")
+            .fetch_all(pool)
+            .await?;
+    for (id, pk) in owners {
+        let token = crate::circles::token::circle_token(secret, id, &pk);
+        sqlx::query("UPDATE circles SET owner_token = $2 WHERE id = $1")
+            .bind(id)
+            .bind(&token)
+            .execute(pool)
+            .await?;
+    }
+
+    let members: Vec<(uuid::Uuid, String)> = sqlx::query_as(
+        "SELECT circle_id, member_pubkey FROM circle_members WHERE member_token IS NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+    for (circle_id, pk) in members {
+        let token = crate::circles::token::circle_token(secret, circle_id, &pk);
+        sqlx::query(
+            "UPDATE circle_members SET member_token = $2 WHERE circle_id = $1 AND member_pubkey = $3",
+        )
+        .bind(circle_id)
+        .bind(&token)
+        .bind(&pk)
+        .execute(pool)
+        .await?;
     }
     Ok(())
 }
