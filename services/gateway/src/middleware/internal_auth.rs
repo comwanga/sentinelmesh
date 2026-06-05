@@ -104,6 +104,7 @@ mod tests {
                 port: 3000,
                 blockchain_service_url: None,
                 internal_service_secret: secret.into(),
+                circle_token_secret: "test-circle-secret".into(),
                 trust_proxy: false,
                 max_db_connections: 5,
                 mapbox_token: None,

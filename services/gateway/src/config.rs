@@ -6,6 +6,10 @@ pub struct Config {
     pub port: u16,
     pub blockchain_service_url: Option<String>,
     pub internal_service_secret: String,
+    /// HMAC key for per-circle social-graph tokens (C-3). Dedicated and STABLE:
+    /// rotating it invalidates every stored circle/member/recipient token and
+    /// requires a re-tokenization migration. Do not reuse INTERNAL_SERVICE_SECRET.
+    pub circle_token_secret: String,
     pub trust_proxy: bool,
     pub max_db_connections: u32,
     pub mapbox_token: Option<String>,
@@ -39,6 +43,7 @@ impl Config {
         // Fail closed in production: the internal-service secret must be set to a
         // strong, non-default value or the process refuses to start.
         let internal_service_secret = resolve_internal_secret(production)?;
+        let circle_token_secret = resolve_circle_token_secret(production)?;
 
         Ok(Config {
             database_url: require("DATABASE_URL")?,
@@ -54,6 +59,7 @@ impl Config {
                 .unwrap_or(false),
             blockchain_service_url: std::env::var("BLOCKCHAIN_SERVICE_URL").ok(),
             internal_service_secret,
+            circle_token_secret,
             trust_proxy: std::env::var("TRUST_PROXY")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
@@ -130,6 +136,30 @@ fn resolve_internal_secret(production: bool) -> Result<String> {
                 "INTERNAL_SERVICE_SECRET not set — using insecure dev default (NON-PRODUCTION ONLY)"
             );
             Ok(INSECURE_INTERNAL_DEFAULT.to_string())
+        }
+    }
+}
+
+const INSECURE_CIRCLE_TOKEN_DEFAULT: &str = "dev-only-insecure-circle-token-secret";
+
+/// Resolve CIRCLE_TOKEN_SECRET. Production requires a strong, non-default value
+/// (fail closed); non-production falls back to a labelled insecure default.
+fn resolve_circle_token_secret(production: bool) -> Result<String> {
+    match std::env::var("CIRCLE_TOKEN_SECRET") {
+        Ok(s) if !s.is_empty() && s != INSECURE_CIRCLE_TOKEN_DEFAULT => {
+            if production {
+                reject_weak_secret("CIRCLE_TOKEN_SECRET", &s)?;
+            }
+            Ok(s)
+        }
+        _ if production => anyhow::bail!(
+            "CIRCLE_TOKEN_SECRET must be set to a strong, non-default value when NODE_ENV=production"
+        ),
+        _ => {
+            tracing::warn!(
+                "CIRCLE_TOKEN_SECRET not set — using insecure dev default (NON-PRODUCTION ONLY)"
+            );
+            Ok(INSECURE_CIRCLE_TOKEN_DEFAULT.to_string())
         }
     }
 }
@@ -419,5 +449,31 @@ mod tests {
     #[test]
     fn strong_secret_passes_weak_check() {
         assert!(reject_weak_secret("X", "a-strong-32-byte-secret-value-xx").is_ok());
+    }
+
+    #[test]
+    fn circle_token_secret_unset_in_production_is_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("CIRCLE_TOKEN_SECRET");
+        assert!(resolve_circle_token_secret(true).is_err());
+    }
+
+    #[test]
+    fn circle_token_secret_falls_back_in_dev() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("CIRCLE_TOKEN_SECRET");
+        assert_eq!(
+            resolve_circle_token_secret(false).unwrap(),
+            INSECURE_CIRCLE_TOKEN_DEFAULT
+        );
+    }
+
+    #[test]
+    fn circle_token_secret_strong_value_accepted_in_production() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("CIRCLE_TOKEN_SECRET", "a-strong-32-byte-circle-secret-x");
+        let r = resolve_circle_token_secret(true).unwrap();
+        std::env::remove_var("CIRCLE_TOKEN_SECRET");
+        assert_eq!(r, "a-strong-32-byte-circle-secret-x");
     }
 }
