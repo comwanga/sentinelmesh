@@ -12,6 +12,8 @@ import {
   generateEphemeralKeypair,
   wrapCircleKey,
   unwrapCircleKey,
+  encryptString,
+  decryptString,
 } from '../e2eeService'
 
 beforeAll(() => {
@@ -111,5 +113,26 @@ describe('wrapCircleKey / unwrapCircleKey', () => {
     const result = await decryptLocation(unwrapped, ciphertext)
     expect(result).not.toBeNull()
     expect(result!.lat).toBeCloseTo(-1.0)
+  })
+})
+
+describe('encryptString/decryptString', () => {
+  it('round-trips a UTF-8 string under the circle key', async () => {
+    const key = await generateCircleKey()
+    const ct = await encryptString(key, 'Family Emergency Circle 🌍')
+    expect(ct).not.toContain('Family')
+    expect(await decryptString(key, ct)).toBe('Family Emergency Circle 🌍')
+  })
+
+  it('returns null when decrypting with the wrong key', async () => {
+    const a = await generateCircleKey()
+    const b = await generateCircleKey()
+    const ct = await encryptString(a, 'secret')
+    expect(await decryptString(b, ct)).toBeNull()
+  })
+
+  it('returns null on malformed ciphertext', async () => {
+    const key = await generateCircleKey()
+    expect(await decryptString(key, 'not-base64-$$')).toBeNull()
   })
 })
