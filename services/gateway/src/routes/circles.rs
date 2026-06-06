@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use chrono::{DateTime, Utc};
@@ -44,6 +44,19 @@ struct AddMemberBody {
     member_label_ciphertext: String,
     alert_radius_km: Option<f64>,
     alert_severity: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MemberLabel {
+    member_token: String,
+    label_ciphertext: String,
+}
+
+#[derive(Deserialize)]
+struct SetEncryptionBody {
+    name_ciphertext: String,
+    #[serde(default)]
+    member_labels: Vec<MemberLabel>,
 }
 
 #[derive(Deserialize)]
@@ -242,6 +255,47 @@ async fn remove_member(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn set_encryption(
+    State(state): State<AppState>,
+    auth: NostrAuth,
+    Path(id): Path<Uuid>,
+    Json(body): Json<SetEncryptionBody>,
+) -> Result<StatusCode, AppError> {
+    let owner_token: Option<String> =
+        sqlx::query_scalar("SELECT owner_token FROM circles WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?;
+    let my_token = circle_token(&state.config.circle_token_secret, id, &auth.pubkey);
+    if owner_token.as_deref() != Some(my_token.as_str()) {
+        return Err(AppError::Forbidden);
+    }
+
+    let mut tx = state.db.begin().await?;
+    sqlx::query(
+        "UPDATE circles SET name_ciphertext = $2, name_version = 1, name = NULL WHERE id = $1",
+    )
+    .bind(id)
+    .bind(&body.name_ciphertext)
+    .execute(&mut *tx)
+    .await?;
+
+    for label in &body.member_labels {
+        sqlx::query(
+            "UPDATE circle_members SET member_label_ciphertext = $3
+              WHERE circle_id = $1 AND member_token = $2",
+        )
+        .bind(id)
+        .bind(&label.member_token)
+        .bind(&label.label_ciphertext)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn delete_circle(
     State(state): State<AppState>,
     auth: NostrAuth,
@@ -265,6 +319,7 @@ pub fn router() -> Router<AppState> {
         .route("/:id", get(get_circle).delete(delete_circle))
         .route("/:id/members", post(add_member))
         .route("/:id/members/:pubkey", delete(remove_member))
+        .route("/:id/encryption", put(set_encryption))
 }
 
 impl From<Circle> for sentinel_core::Circle {
@@ -345,5 +400,20 @@ mod tests {
         let d = sentinel_core::CircleMember::from(row);
         assert_eq!(d.alert_radius_km, None);
         assert_eq!(d.alert_severity, None);
+    }
+
+    #[test]
+    fn set_encryption_body_parses_with_labels() {
+        let json = r#"{"name_ciphertext":"ct","member_labels":[{"member_token":"v1:a","label_ciphertext":"l"}]}"#;
+        let b: SetEncryptionBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.name_ciphertext, "ct");
+        assert_eq!(b.member_labels.len(), 1);
+        assert_eq!(b.member_labels[0].member_token, "v1:a");
+    }
+
+    #[test]
+    fn set_encryption_body_defaults_empty_labels() {
+        let b: SetEncryptionBody = serde_json::from_str(r#"{"name_ciphertext":"ct"}"#).unwrap();
+        assert!(b.member_labels.is_empty());
     }
 }
