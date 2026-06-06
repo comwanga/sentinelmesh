@@ -3,6 +3,7 @@ import { useAppSelector, useAppDispatch } from '../store'
 import { activeAlertDismissed, circleLeft, circleLoaded } from '../store/circlesSlice'
 import { loadOrCreateKeypair, signAuthEvent, toNpub, hexFromNpubOrHex } from '../services/nostrService'
 import { addCircleId } from '../services/circleIdStore'
+import { generateCircleKey, saveCircleKey, loadCircleKey, encryptString } from '../services/e2eeService'
 import { CircleSidebar } from './CircleSidebar'
 import { CircleMapLayer } from './CircleMapLayer'
 import { AlertBanner } from './AlertBanner'
@@ -98,14 +99,17 @@ function EmptyState() {
     setCreating(true)
     setCreateError(null)
     try {
+      const circleKey = await generateCircleKey()
+      const nameCiphertext = await encryptString(circleKey, effectiveCircleName)
       const headers = await makeAuthHeaders()
       const res = await fetch(`${API_BASE}/api/circles`, {
         method: 'POST', headers,
-        body: JSON.stringify({ name: effectiveCircleName }),
+        body: JSON.stringify({ name_ciphertext: nameCiphertext }),
         signal: AbortSignal.timeout(15_000),
       })
       if (!res.ok) { setCreateError(`Server error (${res.status})`); return }
       const raw = await res.json() as RawCircle
+      await saveCircleKey(raw.id, circleKey)
       addCircleId(raw.id)
       const circle = toCircle(raw)
       let members: CircleMember[] = []
@@ -350,7 +354,7 @@ export function FamilyCircleDashboard() {
   const handleInvite = useCallback(() => {
     if (!activeCircleId || !activeCircle) return
     const keypair = loadOrCreateKeypair()
-    const str = buildInviteString(activeCircleId, keypair.publicKey, activeCircle.name)
+    const str = buildInviteString(activeCircleId, keypair.publicKey, activeCircle.name ?? '(circle)')
     setInviteString(str)
     setInviteOpen(true)
   }, [activeCircleId, activeCircle])
@@ -364,11 +368,14 @@ export function FamilyCircleDashboard() {
   const handleAddMember = useCallback(async (npubOrHex: string) => {
     const hex = hexFromNpubOrHex(npubOrHex)
     if (!hex || !activeCircleId) return 'Invalid key format'
+    const key = await loadCircleKey(activeCircleId)
+    if (!key) return 'Circle key not found — cannot encrypt member label'
+    const labelCiphertext = await encryptString(key, JSON.stringify({ pubkey: hex, name: hex.slice(0, 8) }))
     try {
       const headers = await makeAuthHeaders()
       const res = await fetch(`${API_BASE}/api/circles/${activeCircleId}/members`, {
         method: 'POST', headers,
-        body: JSON.stringify({ member_pubkey: hex }),
+        body: JSON.stringify({ member_pubkey: hex, member_label_ciphertext: labelCiphertext }),
         signal: AbortSignal.timeout(10_000),
       })
       if (res.status === 403) return 'Only the circle owner can add members'
