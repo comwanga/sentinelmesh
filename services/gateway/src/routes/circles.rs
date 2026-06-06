@@ -17,7 +17,9 @@ use crate::{
 pub struct Circle {
     pub id: Uuid,
     pub owner_token: String,
-    pub name: String,
+    pub name: Option<String>,
+    pub name_ciphertext: Option<String>,
+    pub name_version: i16,
     pub created_at: DateTime<Utc>,
 }
 
@@ -25,6 +27,7 @@ pub struct Circle {
 pub struct CircleMember {
     pub circle_id: Uuid,
     pub member_token: String,
+    pub member_label_ciphertext: Option<String>,
     pub alert_radius_km: Option<f64>,
     pub alert_severity: Option<String>,
     pub joined_at: DateTime<Utc>,
@@ -32,12 +35,13 @@ pub struct CircleMember {
 
 #[derive(Deserialize)]
 struct CreateCircleBody {
-    name: String,
+    name_ciphertext: String,
 }
 
 #[derive(Deserialize)]
 struct AddMemberBody {
     member_pubkey: String,
+    member_label_ciphertext: String,
     alert_radius_km: Option<f64>,
     alert_severity: Option<String>,
 }
@@ -91,6 +95,8 @@ async fn list_circles(
         out.push(serde_json::json!({
             "id": circle.id,
             "name": circle.name,
+            "name_ciphertext": circle.name_ciphertext,
+            "name_version": circle.name_version,
             "created_at": circle.created_at,
             "is_owner": is_owner,
         }));
@@ -106,18 +112,20 @@ async fn create_circle(
     let id = Uuid::new_v4();
     let owner_token = circle_token(&state.config.circle_token_secret, id, &auth.pubkey);
     let circle = sqlx::query_as::<_, Circle>(
-        "INSERT INTO circles (id, owner_token, name) VALUES ($1, $2, $3) RETURNING *",
+        "INSERT INTO circles (id, owner_token, name_ciphertext, name_version)
+         VALUES ($1, $2, $3, 1) RETURNING *",
     )
     .bind(id)
     .bind(&owner_token)
-    .bind(&body.name)
+    .bind(&body.name_ciphertext)
     .fetch_one(&state.db)
     .await?;
     Ok((
         StatusCode::CREATED,
         Json(serde_json::json!({
             "id": circle.id,
-            "name": circle.name,
+            "name_ciphertext": circle.name_ciphertext,
+            "name_version": circle.name_version,
             "created_at": circle.created_at,
             "is_owner": true,
         })),
@@ -159,6 +167,8 @@ async fn get_circle(
     Ok(Json(serde_json::json!({
         "id": circle.id,
         "name": circle.name,
+        "name_ciphertext": circle.name_ciphertext,
+        "name_version": circle.name_version,
         "created_at": circle.created_at,
         "is_owner": is_owner,
         "members": members,
@@ -183,15 +193,18 @@ async fn add_member(
 
     let member_token = circle_token(&state.config.circle_token_secret, id, &body.member_pubkey);
     let member = sqlx::query_as::<_, CircleMember>(
-        "INSERT INTO circle_members (circle_id, member_token, alert_radius_km, alert_severity)
-         VALUES ($1, $2, $3, $4)
+        "INSERT INTO circle_members
+           (circle_id, member_token, member_label_ciphertext, alert_radius_km, alert_severity)
+         VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (circle_id, member_token) DO UPDATE
-           SET alert_radius_km = EXCLUDED.alert_radius_km,
-               alert_severity  = EXCLUDED.alert_severity
+           SET member_label_ciphertext = EXCLUDED.member_label_ciphertext,
+               alert_radius_km         = EXCLUDED.alert_radius_km,
+               alert_severity          = EXCLUDED.alert_severity
          RETURNING *",
     )
     .bind(id)
     .bind(&member_token)
+    .bind(&body.member_label_ciphertext)
     .bind(body.alert_radius_km)
     .bind(&body.alert_severity)
     .fetch_one(&state.db)
@@ -258,7 +271,7 @@ impl From<Circle> for sentinel_core::Circle {
     fn from(row: Circle) -> Self {
         Self {
             id: row.id,
-            name: row.name,
+            name: row.name.unwrap_or_default(),
             created_at: row.created_at,
         }
     }
@@ -289,7 +302,9 @@ mod tests {
         let row = Circle {
             id,
             owner_token: "v1:x".into(),
-            name: "Home".into(),
+            name: Some("Home".into()),
+            name_ciphertext: None,
+            name_version: 0,
             created_at: now,
         };
         let d = sentinel_core::Circle::from(row);
@@ -304,6 +319,7 @@ mod tests {
         let row = CircleMember {
             circle_id: cid,
             member_token: "v1:m".into(),
+            member_label_ciphertext: None,
             alert_radius_km: Some(5.0),
             alert_severity: Some("HIGH".into()),
             joined_at: now,
@@ -321,6 +337,7 @@ mod tests {
         let row = CircleMember {
             circle_id: Uuid::nil(),
             member_token: "v1:anon".into(),
+            member_label_ciphertext: None,
             alert_radius_km: None,
             alert_severity: None,
             joined_at: now,
