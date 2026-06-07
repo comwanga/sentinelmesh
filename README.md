@@ -9,8 +9,8 @@ A global public safety app. It shows live threats on a map, lets communities rep
 | Feature | Description |
 |---|---|
 | **Live threat map** | Pulls public signals from news, Twitter/X, and radio. Classifies them with NLP. Shows verified safety events on a real-time map. |
-| **Community reports** | Anyone can submit a ground report. Reports are signed with a Nostr key and scored by community votes. The report's location is stored in plaintext (it is public map data) and is linked to the reporter's pubkey. Photos are processed on-device — EXIF stripped, faces blurred (best-effort, frontal faces) — before upload. |
-| **Family circles** | Share your location with trusted people. Coordinates are encrypted on your device with AES-256-GCM; the server stores a blob whose **contents** it cannot read. Circle **membership and timing metadata are visible to the server** (see Privacy below). |
+| **Community reports** | Anyone can submit a ground report. Reports are signed with a Nostr key and scored by community votes. The report's location is **coarsened to a ~100 m cell** and stored **separately from the reporter's identity** (which lives in an access-controlled table), so a database leak cannot reconstruct a precise, identity-linked location trail. Photos are processed on-device — EXIF stripped, faces blurred (best-effort, frontal faces) — before upload. |
+| **Family circles** | Share your location with trusted people. Coordinates are encrypted on your device with AES-256-GCM; the server stores a blob whose **contents** it cannot read. Circle **membership, names, and member labels are tokenized/encrypted** — a database leak cannot reconstruct who is in which circle or read circle/member names. The **timing** of location shares remains visible to the server (see Privacy below). |
 | **Push notifications** | Browser push (Web Push/VAPID) for HIGH/CRITICAL events. Payloads carry only a place name, never precise coordinates. Note: alerts are currently broadcast to all subscribers — per-location targeting is planned. |
 | **Blockchain anchoring** | Verified events can be published to Nostr relays and a digest written to Bitcoin (OP_RETURN). The anchor commits an identifier digest (event id + nostr id + severity), **not** the report's location or text — it proves an event record existed, not that its content is unaltered. Off by default (`ANCHORING_ENABLED`); testnet until maintainers switch to mainnet. |
 | **Acoustic detection** | The browser can classify sounds (gunshots, explosions, screaming) with a YAMNet model. Inference is on-device — no audio leaves your device; only a label, confidence, and location are sent. Detections are **client-asserted and not yet independently verified**; auto-publishing to the map is off by default (`ACOUSTIC_CONFIRM_ENABLED`). |
@@ -24,18 +24,22 @@ Be precise about this — overclaiming privacy is a safety risk for the people w
 
 **Protected:**
 - **Family-circle coordinates** are encrypted on-device with AES-256-GCM. The server stores a blob whose contents it cannot read.
+- **Family-circle social graph** is tokenized at rest: membership/owner/recipient identifiers are stored as per-circle keyed tokens (no plaintext pubkeys), and circle names and member labels are encrypted under the circle key. A database leak cannot reconstruct who belongs to which circle, or read circle/member names.
+- **Community-report locations** are coarsened to a ~100 m cell, and the reporter's identity (pubkey/signature) is stored in a separate access-controlled table behind a restricted database role. A database leak cannot link a precise location trail to a person.
 - **Audio** never leaves the device. Acoustic detection sends only a label, confidence, and location.
 - **No name/email/phone** is collected. Identity is a Nostr keypair generated on the device.
 - **Mapbox tiles** are proxied through the gateway (`/api/tiles`); the Mapbox token is not exposed to the browser.
 - **Photos** are EXIF-stripped and face-blurred on-device before upload (face blur is best-effort, frontal faces only).
 
+**Threat model.** The community-report and family-circle protections above defend against a **stolen database or leaked read access without the application's secrets**. They do **not** hide data from the running server operator (who holds the keying secrets) — that is a deliberate, documented scope boundary, to be narrowed by later work.
+
 **NOT protected (known limitations — do not assume otherwise):**
-- **Community-report and acoustic locations are stored in plaintext** and linked to a persistent pubkey. Treat your report history as a public, identity-linked location trail.
-- **Family-circle social graph is visible to the server**: who is in which circle, and the timing of location shares (only the coordinate payload is encrypted).
-- **A Nostr pubkey is a stable pseudonymous identifier.** Combined with plaintext locations it can be personally identifying. Anything published to Nostr relays, IPFS, or Bitcoin is effectively permanent and cannot be erased.
+- **Acoustic-detection locations are stored in plaintext** and linked to a persistent pubkey, with no retention limit yet. Treat acoustic-detection history as an identity-linked location trail.
+- **Family-circle timing metadata is visible to the server**: it can see *when* a member shares location (the coordinates, membership, and names are protected — the timing is not).
+- **A Nostr pubkey is a stable pseudonymous identifier.** Anything published to Nostr relays, IPFS, or Bitcoin is effectively permanent and cannot be erased.
 - **Bitcoin anchoring** commits an identifier digest, not report content — it is not a tamper-proof record of where/what.
 
-These gaps are tracked in `docs/audit/` with a remediation plan. Bitcoin stays on testnet until maintainers explicitly switch to mainnet.
+Remaining gaps are tracked in `docs/audit/` with a remediation plan. Bitcoin stays on testnet until maintainers explicitly switch to mainnet.
 
 ---
 
