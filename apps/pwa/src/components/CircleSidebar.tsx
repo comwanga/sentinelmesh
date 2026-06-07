@@ -69,7 +69,7 @@ export function CircleSidebar({ circle, members, memberStatuses, onInvite, onLea
       {/* Member chips */}
       <div style={{ padding: '10px 16px 6px', display: 'flex', flexWrap: 'wrap', gap: 6, borderBottom: '1px solid #1a2035' }}>
         {members.map(m => (
-          <MemberChip key={m.member_token} pubkey={m.member_token} status={memberStatuses[m.member_token] ?? 'OFFLINE'} />
+          <MemberChip key={m.member_token} pubkey={m.pubkey ?? m.member_token} status={memberStatuses[m.pubkey ?? ''] ?? 'OFFLINE'} />
         ))}
       </div>
 
@@ -84,8 +84,9 @@ export function CircleSidebar({ circle, members, memberStatuses, onInvite, onLea
           </div>
         )}
         {members.map(m => {
-          const status = memberStatuses[m.member_token] ?? 'OFFLINE'
-          const initial = m.member_token.slice(-1).toUpperCase()
+          const status = memberStatuses[m.pubkey ?? ''] ?? 'OFFLINE'
+          const displayName = m.label ?? m.pubkey ?? 'unknown member'
+          const initial = displayName.slice(0, 1).toUpperCase()
           const avatarColor = AVATAR_COLOR[status]
           return (
             <div key={m.member_token} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px' }}>
@@ -99,7 +100,7 @@ export function CircleSidebar({ circle, members, memberStatuses, onInvite, onLea
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: '#cbd5e0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {m.member_token}
+                  {displayName}
                 </div>
                 <div style={{ fontSize: 10, color: STATUS_COLOR[status], marginTop: 1 }}>
                   {STATUS_LABEL[status]}

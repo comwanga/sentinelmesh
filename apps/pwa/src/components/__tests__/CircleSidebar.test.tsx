@@ -6,11 +6,26 @@ import type { Circle, CircleMember, MemberStatus } from '../../../../../shared/t
 const circle: Circle = { circle_id: 'c1', name: 'Wanga Family', created_at: '' }
 
 const members: CircleMember[] = [
-  { circle_id: 'c1', member_token: 'v1:tok_aaabbb', alert_radius_km: 1, alert_severity: 'HIGH', joined_at: '' },
-  { circle_id: 'c1', member_token: 'v1:tok_cccdd', alert_radius_km: 2, alert_severity: 'MEDIUM', joined_at: '' },
+  {
+    circle_id: 'c1',
+    member_token: 'v1:tok_aaabbb',
+    alert_radius_km: 1,
+    alert_severity: 'HIGH',
+    joined_at: '',
+    pubkey: 'pubkey_alice',
+    label: 'Alice',
+  },
+  {
+    circle_id: 'c1',
+    member_token: 'v1:tok_cccdd',
+    alert_radius_km: 2,
+    alert_severity: 'MEDIUM',
+    joined_at: '',
+    // no pubkey or label — unlabeled member
+  },
 ]
 
-const statuses: Record<string, MemberStatus> = { 'v1:tok_aaabbb': 'ONLINE', 'v1:tok_cccdd': 'GHOST' }
+const statuses: Record<string, MemberStatus> = { 'pubkey_alice': 'ONLINE' }
 
 const noopAddMember = vi.fn().mockResolvedValue(null)
 
@@ -20,14 +35,20 @@ describe('CircleSidebar', () => {
     expect(screen.getByText('Wanga Family')).toBeInTheDocument()
   })
 
-  it('renders a MemberChip for each member', () => {
+  it('renders the decrypted label for a labeled member', () => {
     render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={vi.fn()} onLeave={vi.fn()} onAddMember={noopAddMember} />)
-    // Each full token appears once in the member list (the chip truncates it)
-    expect(screen.getAllByText('v1:tok_aaabbb')).toHaveLength(1)
-    expect(screen.getAllByText('v1:tok_cccdd')).toHaveLength(1)
-    // The chip renders a truncated version (first 8 chars + ellipsis)
-    expect(screen.getAllByText('v1:tok_a…')).toHaveLength(1)
-    expect(screen.getAllByText('v1:tok_c…')).toHaveLength(1)
+    expect(screen.getByText('Alice')).toBeInTheDocument()
+  })
+
+  it('renders "unknown member" for a member with no pubkey or label', () => {
+    render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={vi.fn()} onLeave={vi.fn()} onAddMember={noopAddMember} />)
+    expect(screen.getByText('unknown member')).toBeInTheDocument()
+  })
+
+  it('looks up status by pubkey for labeled members', () => {
+    render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={vi.fn()} onLeave={vi.fn()} onAddMember={noopAddMember} />)
+    // Alice is ONLINE; the status label should appear
+    expect(screen.getByText('● Sharing location')).toBeInTheDocument()
   })
 
   it('calls onInvite when invite button is clicked', () => {
