@@ -17,7 +17,6 @@ use crate::{
 pub struct Circle {
     pub id: Uuid,
     pub owner_token: String,
-    pub name: Option<String>,
     pub name_ciphertext: Option<String>,
     pub name_version: i16,
     pub created_at: DateTime<Utc>,
@@ -83,10 +82,12 @@ async fn list_circles(
     let secret = &state.config.circle_token_secret;
     let mut out = Vec::new();
     for id in ids {
-        let circle = sqlx::query_as::<_, Circle>("SELECT * FROM circles WHERE id = $1")
-            .bind(id)
-            .fetch_optional(&state.db)
-            .await?;
+        let circle = sqlx::query_as::<_, Circle>(
+            "SELECT id, owner_token, name_ciphertext, name_version, created_at FROM circles WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?;
         let Some(circle) = circle else { continue };
         let my_token = circle_token(secret, id, &auth.pubkey);
         let is_owner = circle.owner_token == my_token;
@@ -107,7 +108,6 @@ async fn list_circles(
         }
         out.push(serde_json::json!({
             "id": circle.id,
-            "name": circle.name,
             "name_ciphertext": circle.name_ciphertext,
             "name_version": circle.name_version,
             "created_at": circle.created_at,
@@ -126,7 +126,8 @@ async fn create_circle(
     let owner_token = circle_token(&state.config.circle_token_secret, id, &auth.pubkey);
     let circle = sqlx::query_as::<_, Circle>(
         "INSERT INTO circles (id, owner_token, name_ciphertext, name_version)
-         VALUES ($1, $2, $3, 1) RETURNING *",
+         VALUES ($1, $2, $3, 1)
+         RETURNING id, owner_token, name_ciphertext, name_version, created_at",
     )
     .bind(id)
     .bind(&owner_token)
@@ -150,11 +151,13 @@ async fn get_circle(
     auth: NostrAuth,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let circle = sqlx::query_as::<_, Circle>("SELECT * FROM circles WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or(AppError::NotFound)?;
+    let circle = sqlx::query_as::<_, Circle>(
+        "SELECT id, owner_token, name_ciphertext, name_version, created_at FROM circles WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound)?;
 
     let my_token = circle_token(&state.config.circle_token_secret, id, &auth.pubkey);
     let is_owner = circle.owner_token == my_token;
@@ -179,7 +182,6 @@ async fn get_circle(
 
     Ok(Json(serde_json::json!({
         "id": circle.id,
-        "name": circle.name,
         "name_ciphertext": circle.name_ciphertext,
         "name_version": circle.name_version,
         "created_at": circle.created_at,
@@ -273,7 +275,7 @@ async fn set_encryption(
 
     let mut tx = state.db.begin().await?;
     sqlx::query(
-        "UPDATE circles SET name_ciphertext = $2, name_version = 1, name = NULL WHERE id = $1",
+        "UPDATE circles SET name_ciphertext = $2, name_version = 1 WHERE id = $1",
     )
     .bind(id)
     .bind(&body.name_ciphertext)
@@ -326,7 +328,7 @@ impl From<Circle> for sentinel_core::Circle {
     fn from(row: Circle) -> Self {
         Self {
             id: row.id,
-            name: row.name.unwrap_or_default(),
+            name: String::new(),
             created_at: row.created_at,
         }
     }
@@ -357,14 +359,13 @@ mod tests {
         let row = Circle {
             id,
             owner_token: "v1:x".into(),
-            name: Some("Home".into()),
             name_ciphertext: None,
-            name_version: 0,
+            name_version: 1,
             created_at: now,
         };
         let d = sentinel_core::Circle::from(row);
         assert_eq!(d.id, id);
-        assert_eq!(d.name, "Home");
+        assert_eq!(d.name, "");
     }
 
     #[test]
