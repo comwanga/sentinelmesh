@@ -274,13 +274,11 @@ async fn set_encryption(
     }
 
     let mut tx = state.db.begin().await?;
-    sqlx::query(
-        "UPDATE circles SET name_ciphertext = $2, name_version = 1 WHERE id = $1",
-    )
-    .bind(id)
-    .bind(&body.name_ciphertext)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("UPDATE circles SET name_ciphertext = $2, name_version = 1 WHERE id = $1")
+        .bind(id)
+        .bind(&body.name_ciphertext)
+        .execute(&mut *tx)
+        .await?;
 
     for label in &body.member_labels {
         sqlx::query(
