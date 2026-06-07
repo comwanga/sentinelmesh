@@ -3,7 +3,7 @@ import { useAppDispatch } from '../store'
 import { circleLoaded } from '../store/circlesSlice'
 import { signAuthEvent } from '../services/nostrService'
 import { getCircleIds } from '../services/circleIdStore'
-import { loadCircleKey, decryptString } from '../services/e2eeService'
+import { loadCircleKey, decryptString, encryptString } from '../services/e2eeService'
 import type { Circle, CircleMember } from '../../../../shared/types'
 
 const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
@@ -108,6 +108,27 @@ export function useCircles(): void {
           if (!res.ok) continue
           const detail = await res.json() as RawCircleDetail
           const { circle, members } = await toCircleAndMembers(detail)
+
+          // Lazy-migrate legacy plaintext names to ciphertext (owner only,
+          // name_version === 0 means pre-Phase-B plaintext). Best-effort:
+          // a failed PUT does not block the store dispatch and retries on
+          // next load once name_version is still 0.
+          if (detail.is_owner && detail.name_version === 0 && detail.name) {
+            const migKey = await loadCircleKey(detail.id)
+            if (migKey) {
+              const nameCiphertext = await encryptString(migKey, detail.name)
+              // Names migrate now; member labels are NOT auto-migrated (the owner
+              // cannot reverse a member_token to a pubkey) — they fill in as members
+              // are (re-)added via add_member. Send an empty member_labels list.
+              await fetch(`${API_BASE}/api/circles/${detail.id}/encryption`, {
+                method: 'PUT',
+                headers,
+                signal: AbortSignal.timeout(15_000),
+                body: JSON.stringify({ name_ciphertext: nameCiphertext, member_labels: [] }),
+              }).catch(() => { /* best-effort; retried on next load */ })
+            }
+          }
+
           dispatch(circleLoaded({ circle, members }))
         } catch {
           // skip failed circles
