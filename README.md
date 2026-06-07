@@ -316,4 +316,4 @@ PRs that break any of the privacy rules listed above will not be merged.
 
 MIT — see [LICENSE](LICENSE).
 
-Built for Kenyan communities.
+Built for Global communities.
