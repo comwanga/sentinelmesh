@@ -170,6 +170,31 @@ export async function unwrapCircleKey(
   return crypto.subtle.importKey('raw', rawCircleKey, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
 }
 
+/** AES-GCM encrypt a UTF-8 string under the circle key (random 12-byte IV). */
+export async function encryptString(circleKey: CryptoKey, text: string): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv }, circleKey, new TextEncoder().encode(text),
+  )
+  return encodeB64(iv, ciphertext)
+}
+
+/** Decrypt a string produced by encryptString. Returns null on any failure. */
+export async function decryptString(circleKey: CryptoKey, ciphertextB64: string): Promise<string | null> {
+  try {
+    const decoded = decodeB64(ciphertextB64)
+    if (!decoded) return null
+    const plain = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: decoded.iv as unknown as BufferSource },
+      circleKey,
+      decoded.data as unknown as BufferSource,
+    )
+    return new TextDecoder().decode(plain)
+  } catch {
+    return null
+  }
+}
+
 export async function encryptLocation(circleKey: CryptoKey, lat: number, lng: number): Promise<string> {
   const payload = JSON.stringify({ lat, lng, ts: new Date().toISOString() })
   const iv = crypto.getRandomValues(new Uint8Array(12))

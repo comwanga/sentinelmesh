@@ -15,33 +15,56 @@ const mockCircle: Circle = {
   created_at: '2026-05-03T00:00:00Z',
 }
 
-const mockMember: CircleMember = {
+const memberWithPubkey: CircleMember = {
   circle_id: 'c1',
   member_token: 'v1:tok_bbb',
   alert_radius_km: 1,
   alert_severity: 'HIGH',
   joined_at: '2026-05-03T00:00:00Z',
+  pubkey: 'pubkey_bbb',
+  label: 'Alice',
+}
+
+const memberWithoutPubkey: CircleMember = {
+  circle_id: 'c1',
+  member_token: 'v1:tok_ccc',
+  alert_radius_km: 2,
+  alert_severity: 'MEDIUM',
+  joined_at: '2026-05-03T00:00:00Z',
+  // no pubkey — legacy/unlabeled member
 }
 
 describe('circlesSlice', () => {
   it('loads circle and members', () => {
-    const state = reducer(undefined, circleLoaded({ circle: mockCircle, members: [mockMember] }))
+    const state = reducer(undefined, circleLoaded({ circle: mockCircle, members: [memberWithPubkey] }))
     expect(state.activeCircleId).toBe('c1')
     expect(state.circles).toHaveLength(1)
     expect(state.members['c1']).toHaveLength(1)
   })
 
-  it('does not seed memberStatuses from roster (tokens are opaque)', () => {
-    const state = reducer(undefined, circleLoaded({ circle: mockCircle, members: [mockMember] }))
-    // memberStatuses must remain empty after loading; presence is keyed by
-    // sender_pubkey from the circle WS, not from roster member_tokens.
+  it('seeds OFFLINE in memberStatuses for a labeled member (has pubkey)', () => {
+    const state = reducer(undefined, circleLoaded({ circle: mockCircle, members: [memberWithPubkey] }))
+    expect(state.memberStatuses['pubkey_bbb']).toBe('OFFLINE')
+  })
+
+  it('does not seed memberStatuses for an unlabeled member (no pubkey)', () => {
+    const state = reducer(undefined, circleLoaded({ circle: mockCircle, members: [memberWithoutPubkey] }))
     expect(Object.keys(state.memberStatuses)).toHaveLength(0)
   })
 
+  it('does not overwrite an existing status when loading roster', () => {
+    // Pre-seed ONLINE status, then load the roster
+    let state = reducer(undefined, locationReceived({ pubkey: 'pubkey_bbb', lat: -1.29, lng: 36.82, ts: '2026-05-03T00:00:00Z' }))
+    expect(state.memberStatuses['pubkey_bbb']).toBe('ONLINE')
+    state = reducer(state, circleLoaded({ circle: mockCircle, members: [memberWithPubkey] }))
+    // ONLINE must not be downgraded to OFFLINE
+    expect(state.memberStatuses['pubkey_bbb']).toBe('ONLINE')
+  })
+
   it('updates member status by pubkey when WS presence arrives', () => {
-    let state = reducer(undefined, circleLoaded({ circle: mockCircle, members: [mockMember] }))
-    state = reducer(state, memberStatusUpdated({ pubkey: 'sender_bbb', status: 'GHOST' }))
-    expect(state.memberStatuses['sender_bbb']).toBe('GHOST')
+    let state = reducer(undefined, circleLoaded({ circle: mockCircle, members: [memberWithPubkey] }))
+    state = reducer(state, memberStatusUpdated({ pubkey: 'pubkey_bbb', status: 'GHOST' }))
+    expect(state.memberStatuses['pubkey_bbb']).toBe('GHOST')
   })
 
   it('stores decrypted location', () => {
@@ -65,7 +88,7 @@ describe('circlesSlice', () => {
   })
 
   it('clears all circle state on circleLeft', () => {
-    let state = reducer(undefined, circleLoaded({ circle: mockCircle, members: [mockMember] }))
+    let state = reducer(undefined, circleLoaded({ circle: mockCircle, members: [memberWithPubkey] }))
     state = reducer(state, circleLeft())
     expect(state.activeCircleId).toBeNull()
     expect(state.circles).toHaveLength(0)
