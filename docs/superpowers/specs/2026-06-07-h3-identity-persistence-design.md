@@ -66,17 +66,29 @@ Two records:
 - `identity-wrap-key`: a **non-extractable** `AES-GCM` `CryptoKey` (`generateKey(..., extractable:
   false, ['encrypt','decrypt'])`), generated once and stored via the structured-clone-able CryptoKey
   path (IndexedDB stores `CryptoKey` objects directly, as the circle-key store already does).
-- `nostr-sk`: the base64 `IV || AES-GCM(wrap-key, rawSecretKey)` ciphertext.
+- `nostr-sk`: a **versioned vault envelope** `{ version: 1, blob }` where `blob = IV || AES-GCM(wrap-key,
+  rawSecretKey)`. The `version` field is the forward seam for Layer 2 (NIP-49 passphrase wrapping,
+  passkeys, encrypted exports, consolidating circle IDs) — `loadSecretKey` rejects any version it does
+  not understand, so those become clean v1→vN migrations rather than a redesign. (Circle IDs are NOT
+  moved into the vault in Layer 1 — they already persist reliably in `circleIdStore`; consolidation is
+  a Layer-2 migration.)
 
 API (all async):
 - `saveSecretKey(sk: Uint8Array): Promise<void>` — load-or-create the wrap key, AES-GCM-encrypt `sk`,
-  store the ciphertext.
-- `loadSecretKey(): Promise<Uint8Array | null>` — load the wrap key + ciphertext; decrypt; return the
-  raw bytes, or `null` if either record is absent (or decryption fails).
+  store the versioned envelope.
+- `loadSecretKey(): Promise<Uint8Array | null>` — load the wrap key + envelope; check the version;
+  decrypt; return the raw bytes, or `null` if absent / unknown version / decryption fails.
+- `loadOrCreateSecretKey(generate): Promise<Uint8Array>` — **concurrency-safe** get-or-create:
+  serialized across tabs via the Web Locks API (with a graceful fallback when unavailable) plus a
+  post-create re-read, so two tabs booting with an empty vault converge on a single identity instead
+  of racing to generate different keys. (Crypto cannot run inside an IndexedDB transaction without
+  auto-committing it, so a Web Lock — not a single IDB transaction — is the cross-tab guard.)
 - `clearSecretKey(): Promise<void>` — delete the `nostr-sk` record (used by the explicit reset).
 
 The wrap key is created lazily inside `saveSecretKey` and reused; `loadSecretKey` returns `null` if no
-key has ever been saved.
+key has ever been saved. `nostrService.loadIdentity` additionally holds an **in-process init promise**
+so concurrent callers within one tab (e.g. React StrictMode's double-invoke) share a single
+initialization.
 
 ## Part B — `nostrService` refactor (the core fix)
 
