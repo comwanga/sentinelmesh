@@ -3,7 +3,7 @@ import { useAppSelector, useAppDispatch } from '../store'
 import { activeAlertDismissed, circleLeft, circleLoaded } from '../store/circlesSlice'
 import { getCachedKeypair, signAuthEvent, toNpub, hexFromNpubOrHex } from '../services/nostrService'
 import { addCircleId } from '../services/circleIdStore'
-import { generateCircleKey, saveCircleKey, loadCircleKey, encryptString } from '../services/e2eeService'
+import { generateCircleKey, saveCircleKeyWithBackup, loadCircleKey, encryptString } from '../services/e2eeService'
 import { CircleSidebar } from './CircleSidebar'
 import { CircleMapLayer } from './CircleMapLayer'
 import { AlertBanner } from './AlertBanner'
@@ -109,7 +109,8 @@ function EmptyState() {
       })
       if (!res.ok) { setCreateError(`Server error (${res.status})`); return }
       const raw = await res.json() as RawCircle
-      await saveCircleKey(raw.id, circleKey)
+      const rawCircleKey = new Uint8Array(await crypto.subtle.exportKey('raw', circleKey))
+      await saveCircleKeyWithBackup(raw.id, rawCircleKey)
       addCircleId(raw.id)
       const circle = toCircle(raw)
       let members: CircleMember[] = []

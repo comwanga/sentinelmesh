@@ -1,6 +1,6 @@
 // @vitest-environment node
 import 'fake-indexeddb/auto'
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import {
   generateCircleKey,
   saveCircleKey,
@@ -14,7 +14,13 @@ import {
   unwrapCircleKey,
   encryptString,
   decryptString,
+  saveCircleKeyWithBackup,
 } from '../e2eeService'
+import { loadVault, saveSecretKey } from '../identityStore'
+
+function rawKey(n: number): Uint8Array {
+  const k = new Uint8Array(32); for (let i = 0; i < 32; i++) k[i] = (i + n) & 0xff; return k
+}
 
 beforeAll(() => {
   // Provide localStorage mock for Node environment
@@ -134,5 +140,36 @@ describe('encryptString/decryptString', () => {
   it('returns null on malformed ciphertext', async () => {
     const key = await generateCircleKey()
     expect(await decryptString(key, 'not-base64-$$')).toBeNull()
+  })
+})
+
+describe('saveCircleKeyWithBackup (vault capture)', () => {
+  beforeEach(async () => { await saveSecretKey(rawKey(99)) }) // a vault/identity must exist
+
+  it('imports a non-extractable live key AND records raw bytes in the vault', async () => {
+    await saveCircleKeyWithBackup('circle-A', rawKey(1))
+    const live = await loadCircleKey('circle-A')
+    expect(live).not.toBeNull()
+    expect(live!.extractable).toBe(false)
+    const v = await loadVault()
+    const entry = v!.circles.find(c => c.id === 'circle-A')
+    expect(entry).toBeTruthy()
+    expect(Array.from(entry!.key)).toEqual(Array.from(rawKey(1)))
+  })
+
+  it('clearCircleKey removes the vault entry too', async () => {
+    await saveCircleKeyWithBackup('circle-B', rawKey(2))
+    await clearCircleKey('circle-B')
+    expect(await loadCircleKey('circle-B')).toBeNull()
+    expect((await loadVault())!.circles.find(c => c.id === 'circle-B')).toBeUndefined()
+  })
+
+  it('rotateCircleKey updates the vault to the new key', async () => {
+    await saveCircleKeyWithBackup('circle-C', rawKey(3))
+    const before = (await loadVault())!.circles.find(c => c.id === 'circle-C')!.key
+    const fresh = await rotateCircleKey('circle-C')
+    expect(fresh.extractable).toBe(true) // returned for re-wrapping
+    const after = (await loadVault())!.circles.find(c => c.id === 'circle-C')!.key
+    expect(Array.from(after)).not.toEqual(Array.from(before))
   })
 })
