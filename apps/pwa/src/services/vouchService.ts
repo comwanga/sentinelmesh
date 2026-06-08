@@ -8,9 +8,9 @@ const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
 export async function issueVouch(voucheePubkey: string): Promise<boolean> {
   const kp = getCachedKeypair()
   const binding = vouchBindingContent(voucheePubkey)
-  // Override content to make the binding explicit and the mock-based test deterministic.
-  // In production signReport already sets content=binding, so this is a no-op there and
-  // the id/sig remain valid (they were computed over the same binding string).
+  // signReport already signs an event whose content IS `binding`; the explicit
+  // `content: binding` is a no-op in production (same string the id/sig cover) and
+  // only makes the mock-based test deterministic. Never set content to anything else.
   const event = { ...signReport(binding, kp.secretKey), content: binding }
   const res = await fetch(`${API_BASE}/api/vouches`, {
     method: 'POST',

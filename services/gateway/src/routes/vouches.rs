@@ -57,6 +57,11 @@ async fn post_vouch(
     if body.voucher_pubkey == body.vouchee_pubkey {
         return Err(AppError::BadRequest("cannot vouch for yourself".into()));
     }
+    if !is_hex64(&body.vouchee_pubkey) {
+        return Err(AppError::BadRequest(
+            "vouchee_pubkey must be a 64-char hex Nostr pubkey".into(),
+        ));
+    }
 
     verify_nostr_event(&body.nostr_event, &body.voucher_pubkey, 300)?;
     let expected = vouch_binding_content(&body.vouchee_pubkey);
@@ -80,30 +85,34 @@ async fn post_vouch(
     }
     let basis = if is_root { "ROOT" } else { "EARNED" };
 
-    let count = crate::vouches::active_vouch_count(&state.db, &body.voucher_pubkey)
-        .await
-        .map_err(AppError::Internal)?;
-    if count >= state.config.vouch_budget as i64 {
-        return Err(AppError::Conflict("vouch budget exhausted".into()));
-    }
-
-    let inserted = crate::vouches::insert_vouch(
+    // Atomic budget-check + insert (serialized per voucher) — no TOCTOU overrun.
+    match crate::vouches::issue_vouch(
         &state.db,
         &body.voucher_pubkey,
         &body.vouchee_pubkey,
         basis,
         &event_id,
+        state.config.vouch_budget as i64,
     )
     .await
-    .map_err(AppError::Internal)?;
-    if !inserted {
-        return Err(AppError::Conflict("already vouching for this key".into()));
+    .map_err(AppError::Internal)?
+    {
+        crate::vouches::IssueOutcome::Inserted => Ok((
+            StatusCode::CREATED,
+            Json(serde_json::json!({ "vouchee_pubkey": body.vouchee_pubkey, "issuance_basis": basis })),
+        )),
+        crate::vouches::IssueOutcome::BudgetExhausted => {
+            Err(AppError::Conflict("vouch budget exhausted".into()))
+        }
+        crate::vouches::IssueOutcome::Duplicate => {
+            Err(AppError::Conflict("already vouching for this key".into()))
+        }
     }
+}
 
-    Ok((
-        StatusCode::CREATED,
-        Json(serde_json::json!({ "vouchee_pubkey": body.vouchee_pubkey, "issuance_basis": basis })),
-    ))
+/// A 64-char lowercase/uppercase hex Nostr pubkey.
+fn is_hex64(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// DELETE /api/vouches/:vouchee
