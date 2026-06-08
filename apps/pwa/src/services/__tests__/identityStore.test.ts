@@ -1,7 +1,7 @@
 // @vitest-environment node
 import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
-import { saveSecretKey, loadSecretKey, clearSecretKey, loadOrCreateSecretKey } from '../identityStore'
+import { saveSecretKey, loadSecretKey, clearSecretKey, loadOrCreateSecretKey, loadVault, saveVault, encodeVaultPayload, decodeVaultPayload, type VaultPayload, __writeLegacyV1ForTests } from '../identityStore'
 
 // Distinct 32-byte key for assertions.
 function sampleKey(): Uint8Array {
@@ -51,8 +51,8 @@ describe('identityStore', () => {
 
     const rec = await readRawVault()
     expect(rec).not.toBeNull()
-    expect(rec!.version).toBe(1)
-    // Blob is IV (12) + GCM ciphertext (32) + GCM tag (16) = 60 bytes minimum.
+    expect(rec!.version).toBe(2)
+    // Blob is IV (12) + AES-GCM ciphertext + GCM tag (16) — always > 32 bytes.
     expect(rec!.blob.byteLength).toBeGreaterThan(32)
 
     // The raw 32 key bytes must NOT appear as a contiguous subsequence of the blob.
@@ -88,5 +88,60 @@ describe('identityStore', () => {
     const got = await loadOrCreateSecretKey(() => sk)
     expect(Array.from(got)).toEqual(Array.from(sk))
     expect(Array.from((await loadSecretKey())!)).toEqual(Array.from(sk))
+  })
+})
+
+function sk(n: number): Uint8Array {
+  const k = new Uint8Array(32)
+  for (let i = 0; i < 32; i++) k[i] = (i * 13 + n) & 0xff
+  return k
+}
+
+describe('identityStore v2 vault', () => {
+  beforeEach(async () => { await clearSecretKey() })
+
+  it('encode/decode round-trips a payload with circles', () => {
+    const payload: VaultPayload = { identitySk: sk(1), circles: [{ id: 'c-1', key: sk(2) }, { id: 'c-2', key: sk(3) }] }
+    const decoded = decodeVaultPayload(encodeVaultPayload(payload))
+    expect(Array.from(decoded.identitySk)).toEqual(Array.from(sk(1)))
+    expect(decoded.circles.map(c => c.id)).toEqual(['c-1', 'c-2'])
+    expect(Array.from(decoded.circles[1]!.key)).toEqual(Array.from(sk(3)))
+  })
+
+  it('saveVault then loadVault round-trips identity + circles', async () => {
+    await saveVault({ identitySk: sk(5), circles: [{ id: 'c-9', key: sk(6) }] })
+    const v = await loadVault()
+    expect(v).not.toBeNull()
+    expect(Array.from(v!.identitySk)).toEqual(Array.from(sk(5)))
+    expect(v!.circles).toHaveLength(1)
+    expect(v!.circles[0]!.id).toBe('c-9')
+    expect(Array.from(v!.circles[0]!.key)).toEqual(Array.from(sk(6)))
+  })
+
+  it('loadVault returns null when nothing is stored', async () => {
+    expect(await loadVault()).toBeNull()
+  })
+
+  it('Layer 1 saveSecretKey writes a v2 vault; loadSecretKey reads it back', async () => {
+    await saveSecretKey(sk(7))
+    expect(Array.from((await loadSecretKey())!)).toEqual(Array.from(sk(7)))
+    const v = await loadVault()
+    expect(v!.circles).toEqual([])
+  })
+
+  it('saveSecretKey preserves existing circles', async () => {
+    await saveVault({ identitySk: sk(1), circles: [{ id: 'keep', key: sk(2) }] })
+    await saveSecretKey(sk(8))
+    const v = await loadVault()
+    expect(Array.from(v!.identitySk)).toEqual(Array.from(sk(8)))
+    expect(v!.circles.map(c => c.id)).toEqual(['keep'])
+  })
+
+  it('migrates a legacy v1 record to a v2 vault with empty circles', async () => {
+    await __writeLegacyV1ForTests(sk(4))
+    const v = await loadVault()
+    expect(Array.from(v!.identitySk)).toEqual(Array.from(sk(4)))
+    expect(v!.circles).toEqual([])
+    expect(Array.from((await loadSecretKey())!)).toEqual(Array.from(sk(4)))
   })
 })

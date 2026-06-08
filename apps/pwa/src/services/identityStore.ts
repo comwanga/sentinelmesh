@@ -10,15 +10,15 @@ const STORE = 'keys'
 const WRAP_KEY_ID = 'identity-wrap-key'
 const SK_ID = 'nostr-sk'
 
-// Identity-vault envelope version. Bump in Layer 2 when the at-rest format gains
-// a passphrase layer / passkey / exportable format / consolidated circle IDs;
-// `loadSecretKey` rejects any version it does not understand.
-const VAULT_VERSION = 1
+// v1 stored only the raw secret key. v2 stores a structured vault payload so a
+// backup can carry the identity AND the circle keys + ids. loadVault migrates a
+// v1 record to v2 on first read.
+const VAULT_VERSION = 2
 
-interface VaultRecord {
-  version: number
-  blob: Uint8Array // IV || AES-GCM(wrapKey, secretKey)
-}
+export interface VaultCircle { id: string; key: Uint8Array }      // raw 32-byte AES key
+export interface VaultPayload { identitySk: Uint8Array; circles: VaultCircle[] }
+
+interface VaultRecord { version: number; blob: Uint8Array } // blob = IV || AES-GCM(wrapKey, serialized payload)
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -82,50 +82,81 @@ async function getOrCreateWrapKey(): Promise<CryptoKey> {
   return key
 }
 
-// Lock-free internal: encrypt sk with the wrap key and write the vault record.
-// Must only be called from within an already-held init lock so that wrap-key
-// creation and ciphertext write are serialized cross-tab.
-async function saveSecretKeyUnlocked(sk: Uint8Array): Promise<void> {
-  const wrapKey = await getOrCreateWrapKey()
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv }, wrapKey, sk as unknown as BufferSource,
-  )
-  const blob = new Uint8Array(iv.byteLength + ciphertext.byteLength)
-  blob.set(iv)
-  blob.set(new Uint8Array(ciphertext), iv.byteLength)
-  const record: VaultRecord = { version: VAULT_VERSION, blob }
-  await idbPut(SK_ID, record)
+// ── Payload serialization (JSON with base64 byte arrays, version-stable) ──────
+function b64encode(bytes: Uint8Array): string { return btoa(String.fromCharCode(...bytes)) }
+function b64decode(s: string): Uint8Array { return Uint8Array.from(atob(s), c => c.charCodeAt(0)) }
+
+export function encodeVaultPayload(p: VaultPayload): string {
+  return JSON.stringify({
+    identitySk: b64encode(p.identitySk),
+    circles: p.circles.map(c => ({ id: c.id, key: b64encode(c.key) })),
+  })
 }
 
-/** Encrypt and store the raw 32-byte Nostr secret key as a versioned envelope.
- *  Serialized under the init lock so concurrent tab calls can't clobber the
- *  wrap key and make earlier ciphertext undecryptable. */
+export function decodeVaultPayload(json: string): VaultPayload {
+  const o = JSON.parse(json) as { identitySk: string; circles: Array<{ id: string; key: string }> }
+  return {
+    identitySk: b64decode(o.identitySk),
+    circles: (o.circles ?? []).map(c => ({ id: c.id, key: b64decode(c.key) })),
+  }
+}
+
+// Lock-free: encrypt + store a full v2 payload. Call only under the init lock.
+async function saveVaultUnlocked(payload: VaultPayload): Promise<void> {
+  const wrapKey = await getOrCreateWrapKey()
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const plaintext = new TextEncoder().encode(encodeVaultPayload(payload))
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrapKey, plaintext as unknown as BufferSource)
+  const blob = new Uint8Array(iv.byteLength + ciphertext.byteLength)
+  blob.set(iv); blob.set(new Uint8Array(ciphertext), iv.byteLength)
+  await idbPut(SK_ID, { version: VAULT_VERSION, blob } as VaultRecord)
+}
+
+/** Decrypt + parse the vault. Migrates a legacy v1 record (raw secret key) to a
+ *  v2 payload with empty circles, rewriting it as v2. Returns null if absent or
+ *  undecryptable. */
+export async function loadVault(): Promise<VaultPayload | null> {
+  try {
+    const wrapKey = await idbGet<CryptoKey>(WRAP_KEY_ID)
+    const rec = await idbGet<VaultRecord>(SK_ID)
+    if (!wrapKey || !rec || !rec.blob || rec.blob.byteLength < 28) return null
+    const iv = rec.blob.slice(0, 12)
+    const data = rec.blob.slice(12)
+    const plain = new Uint8Array(await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv as unknown as BufferSource }, wrapKey, data as unknown as BufferSource,
+    ))
+    if (rec.version === 1) {
+      const payload: VaultPayload = { identitySk: plain, circles: [] }
+      await withInitLock(() => saveVaultUnlocked(payload)) // rewrite as v2
+      return payload
+    }
+    if (rec.version !== VAULT_VERSION) return null
+    return decodeVaultPayload(new TextDecoder().decode(plain))
+  } catch {
+    return null
+  }
+}
+
+/** Encrypt + store a full vault payload (serialized cross-tab under the lock). */
+export async function saveVault(payload: VaultPayload): Promise<void> {
+  return withInitLock(() => saveVaultUnlocked(payload))
+}
+
+// Lock-free: set identitySk preserving existing circles. Call only under the lock.
+async function saveSecretKeyUnlocked(sk: Uint8Array): Promise<void> {
+  const current = await loadVault()
+  await saveVaultUnlocked({ identitySk: sk, circles: current?.circles ?? [] })
+}
+
+/** Persist the Nostr secret key into the vault, preserving any circle entries. */
 export async function saveSecretKey(sk: Uint8Array): Promise<void> {
   return withInitLock(() => saveSecretKeyUnlocked(sk))
 }
 
-/** Load and decrypt the stored secret key, or null if none / unknown version /
- *  undecryptable. */
+/** Return the stored Nostr secret key, or null. (Reads vault.identitySk.) */
 export async function loadSecretKey(): Promise<Uint8Array | null> {
-  try {
-    const wrapKey = await idbGet<CryptoKey>(WRAP_KEY_ID)
-    const rec = await idbGet<VaultRecord>(SK_ID)
-    // A valid record is IV(12) + AES-GCM(32-byte secret key)(32) + tag(16) = 60 bytes.
-    if (!wrapKey || !rec || rec.version !== VAULT_VERSION || !rec.blob || rec.blob.byteLength < 60) {
-      return null
-    }
-    const iv = rec.blob.slice(0, 12)
-    const data = rec.blob.slice(12)
-    const plain = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: iv as unknown as BufferSource },
-      wrapKey,
-      data as unknown as BufferSource,
-    )
-    return new Uint8Array(plain)
-  } catch {
-    return null
-  }
+  const v = await loadVault()
+  return v ? v.identitySk : null
 }
 
 /**
@@ -143,15 +174,27 @@ export async function loadSecretKey(): Promise<Uint8Array | null> {
  */
 export async function loadOrCreateSecretKey(generate: () => Uint8Array): Promise<Uint8Array> {
   return withInitLock(async () => {
-    const existing = await loadSecretKey()
-    if (existing) return existing
+    const existing = await loadVault()
+    if (existing) return existing.identitySk
     const sk = generate()
     await saveSecretKeyUnlocked(sk)
-    return (await loadSecretKey()) ?? sk
+    return (await loadVault())?.identitySk ?? sk
   })
 }
 
-/** Delete the stored secret key (used by the explicit identity reset). */
+/** Delete the whole vault record (explicit identity reset). */
 export async function clearSecretKey(): Promise<void> {
   await idbDelete(SK_ID)
+}
+
+/** Test-only: write a legacy v1 record (raw secret key) to exercise migration. */
+export async function __writeLegacyV1ForTests(sk: Uint8Array): Promise<void> {
+  await withInitLock(async () => {
+    const wrapKey = await getOrCreateWrapKey()
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrapKey, sk as unknown as BufferSource)
+    const blob = new Uint8Array(iv.byteLength + ct.byteLength)
+    blob.set(iv); blob.set(new Uint8Array(ct), iv.byteLength)
+    await idbPut(SK_ID, { version: 1, blob } as VaultRecord)
+  })
 }
