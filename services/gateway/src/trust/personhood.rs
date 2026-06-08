@@ -96,7 +96,11 @@ pub async fn reputation_tier(pool: &PgPool, pubkey: &str) -> sqlx::Result<String
 /// Full personhood resolution: gather the three signals and classify.
 // used by Tasks 5–6
 #[allow(dead_code)]
-pub async fn resolve(pool: &PgPool, roots: &[String], pubkey: &str) -> sqlx::Result<PersonhoodSource> {
+pub async fn resolve(
+    pool: &PgPool,
+    roots: &[String],
+    pubkey: &str,
+) -> sqlx::Result<PersonhoodSource> {
     let root = is_root(roots, pubkey);
     let tier_est = tier_is_established(&reputation_tier(pool, pubkey).await?);
     let vouched = has_active_vouch(pool, roots, pubkey).await?;
@@ -106,7 +110,11 @@ pub async fn resolve(pool: &PgPool, roots: &[String], pubkey: &str) -> sqlx::Res
 /// Eligible to issue a vouch (ROOT or REPUTATION).
 // used by Tasks 5–6
 #[allow(dead_code)]
-pub async fn eligible_to_vouch(pool: &PgPool, roots: &[String], pubkey: &str) -> sqlx::Result<bool> {
+pub async fn eligible_to_vouch(
+    pool: &PgPool,
+    roots: &[String],
+    pubkey: &str,
+) -> sqlx::Result<bool> {
     let root = is_root(roots, pubkey);
     let tier_est = tier_is_established(&reputation_tier(pool, pubkey).await?);
     Ok(eligible_from(root, tier_est))
@@ -136,7 +144,12 @@ mod tests {
     }
     #[test]
     fn is_established_true_for_any_non_none() {
-        for s in [PersonhoodSource::Root, PersonhoodSource::Reputation, PersonhoodSource::Vouch, PersonhoodSource::Multiple] {
+        for s in [
+            PersonhoodSource::Root,
+            PersonhoodSource::Reputation,
+            PersonhoodSource::Vouch,
+            PersonhoodSource::Multiple,
+        ] {
             assert!(is_established(s));
         }
     }

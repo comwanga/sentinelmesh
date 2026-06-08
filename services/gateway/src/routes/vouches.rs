@@ -99,7 +99,9 @@ async fn post_vouch(
     {
         crate::vouches::IssueOutcome::Inserted => Ok((
             StatusCode::CREATED,
-            Json(serde_json::json!({ "vouchee_pubkey": body.vouchee_pubkey, "issuance_basis": basis })),
+            Json(
+                serde_json::json!({ "vouchee_pubkey": body.vouchee_pubkey, "issuance_basis": basis }),
+            ),
         )),
         crate::vouches::IssueOutcome::BudgetExhausted => {
             Err(AppError::Conflict("vouch budget exhausted".into()))
@@ -163,6 +165,9 @@ mod tests {
     }
     #[test]
     fn vouch_revoke_binding_is_domain_separated() {
-        assert_eq!(vouch_revoke_binding_content("abc"), "sentinelmesh:vouch-revoke:v1:abc");
+        assert_eq!(
+            vouch_revoke_binding_content("abc"),
+            "sentinelmesh:vouch-revoke:v1:abc"
+        );
     }
 }
