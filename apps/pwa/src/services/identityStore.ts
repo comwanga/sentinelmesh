@@ -112,9 +112,13 @@ async function saveVaultUnlocked(payload: VaultPayload): Promise<void> {
   await idbPut(SK_ID, { version: VAULT_VERSION, blob } as VaultRecord)
 }
 
-/** Decrypt + parse the vault. Migrates a legacy v1 record (raw secret key) to a
- *  v2 payload with empty circles, rewriting it as v2. Returns null if absent or
- *  undecryptable. */
+/** Decrypt + parse the vault. A legacy v1 record (raw secret key) is migrated
+ *  IN MEMORY to a v2 payload with empty circles; the on-disk rewrite to v2 is
+ *  LAZY — it happens on the next saveVault/saveSecretKey (e.g. first circle add
+ *  or identity change). loadVault must NOT rewrite here: it is called from inside
+ *  the init lock (saveSecretKey/loadOrCreateSecretKey at boot), and re-acquiring
+ *  the non-reentrant init lock would deadlock an upgrading Layer 1 user at boot.
+ *  Returns null if absent or undecryptable. */
 export async function loadVault(): Promise<VaultPayload | null> {
   try {
     const wrapKey = await idbGet<CryptoKey>(WRAP_KEY_ID)
@@ -126,9 +130,8 @@ export async function loadVault(): Promise<VaultPayload | null> {
       { name: 'AES-GCM', iv: iv as unknown as BufferSource }, wrapKey, data as unknown as BufferSource,
     ))
     if (rec.version === 1) {
-      const payload: VaultPayload = { identitySk: plain, circles: [] }
-      await withInitLock(() => saveVaultUnlocked(payload)) // rewrite as v2
-      return payload
+      // v1 plaintext is the raw 32-byte secret key — present it as a v2 payload.
+      return { identitySk: plain, circles: [] }
     }
     if (rec.version !== VAULT_VERSION) return null
     return decodeVaultPayload(new TextDecoder().decode(plain))
