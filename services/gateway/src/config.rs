@@ -37,6 +37,20 @@ pub struct Config {
     pub vouch_genesis_roots: Vec<String>,
     /// Max active (non-revoked) vouches a single voucher may hold (C-1a).
     pub vouch_budget: u32,
+    /// Trust worker tick interval (snapshot + decay passes). Default 3600s.
+    pub trust_worker_tick_secs: u64,
+    /// Apply reputation decay (default false — dark-launch; snapshots still run).
+    pub reputation_decay_enabled: bool,
+    /// Days since last VERIFIED before decay begins. Default 90.
+    pub reputation_decay_grace_days: u32,
+    /// Days over which a past-grace score decays toward the floor (1x..2x by accuracy). Default 180.
+    pub reputation_decay_horizon_days: u32,
+    /// Lowest score decay can reach. Default 0.
+    pub reputation_decay_floor: i32,
+    /// Min vouchees before a voucher_quality ratio is shown without a low-confidence flag. Default 5.
+    pub quality_min_sample: u32,
+    /// Days of metrics snapshots to retain. Default 180.
+    pub observatory_snapshot_retention_days: u32,
 }
 
 impl Config {
@@ -64,6 +78,30 @@ impl Config {
                 &std::env::var("VOUCH_GENESIS_ROOTS").unwrap_or_default(),
             ),
             vouch_budget: parse_vouch_budget(std::env::var("VOUCH_BUDGET").ok()),
+            trust_worker_tick_secs: parse_u64_env_or(
+                std::env::var("TRUST_WORKER_TICK_SECS").ok(),
+                3600,
+            ),
+            reputation_decay_enabled: std::env::var("REPUTATION_DECAY_ENABLED")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
+            reputation_decay_grace_days: parse_u32_env_or(
+                std::env::var("REPUTATION_DECAY_GRACE_DAYS").ok(),
+                90,
+            ),
+            reputation_decay_horizon_days: parse_u32_env_or(
+                std::env::var("REPUTATION_DECAY_HORIZON_DAYS").ok(),
+                180,
+            ),
+            reputation_decay_floor: parse_i32_env_or(
+                std::env::var("REPUTATION_DECAY_FLOOR").ok(),
+                0,
+            ),
+            quality_min_sample: parse_u32_env_or(std::env::var("QUALITY_MIN_SAMPLE").ok(), 5),
+            observatory_snapshot_retention_days: parse_u32_env_or(
+                std::env::var("OBSERVATORY_SNAPSHOT_RETENTION_DAYS").ok(),
+                180,
+            ),
             blockchain_service_url: std::env::var("BLOCKCHAIN_SERVICE_URL").ok(),
             internal_service_secret,
             circle_token_secret,
@@ -192,6 +230,18 @@ fn parse_genesis_roots(raw: &str) -> Vec<String> {
 /// Parse the active-vouch budget, defaulting to 5 on absence or a bad value.
 fn parse_vouch_budget(raw: Option<String>) -> u32 {
     raw.and_then(|v| v.parse().ok()).unwrap_or(5)
+}
+
+fn parse_u32_env_or(raw: Option<String>, default: u32) -> u32 {
+    raw.and_then(|v| v.parse().ok()).unwrap_or(default)
+}
+
+fn parse_i32_env_or(raw: Option<String>, default: i32) -> i32 {
+    raw.and_then(|v| v.parse().ok()).unwrap_or(default)
+}
+
+fn parse_u64_env_or(raw: Option<String>, default: u64) -> u64 {
+    raw.and_then(|v| v.parse().ok()).unwrap_or(default)
 }
 
 fn load_public_base_url() -> anyhow::Result<Option<String>> {
@@ -516,5 +566,18 @@ mod tests {
         assert_eq!(parse_vouch_budget(None), 5);
         assert_eq!(parse_vouch_budget(Some("9".into())), 9);
         assert_eq!(parse_vouch_budget(Some("notanumber".into())), 5);
+    }
+
+    #[test]
+    fn decay_defaults_are_conservative() {
+        assert_eq!(parse_u32_env_or(None, 90), 90);
+        assert_eq!(parse_u32_env_or(Some("30".into()), 90), 30);
+        assert_eq!(parse_u32_env_or(Some("bad".into()), 90), 90);
+    }
+
+    #[test]
+    fn decay_floor_parses() {
+        assert_eq!(parse_i32_env_or(None, 0), 0);
+        assert_eq!(parse_i32_env_or(Some("5".into()), 0), 5);
     }
 }
