@@ -39,7 +39,9 @@ pub fn effective_score(
         return floor;
     }
     let frac = (over / effective_horizon).clamp(0.0, 1.0);
-    let decayed = (earned as f64) - frac * ((earned - floor) as f64);
+    // Cast to f64 BEFORE subtracting so `earned - floor` cannot overflow i32 (which
+    // would wrap in release and let `decayed` escape [floor, earned]).
+    let decayed = (earned as f64) - frac * ((earned as f64) - (floor as f64));
     decayed.round() as i32
 }
 
@@ -79,9 +81,28 @@ mod tests {
         assert_eq!(effective_score(3, 9999, 0.0, 90, 180, 5), 3); // earned below floor stays earned
     }
     #[test]
-    fn is_idempotent() {
-        let a = effective_score(40, 200, 0.5, 90, 180, 0);
-        let b = effective_score(40, 200, 0.5, 90, 180, 0);
+    fn recompute_from_earned_is_stable_and_bounded() {
+        // The worker always recomputes from EARNED (never from a prior effective),
+        // so repeated ticks at the same inputs give the same value (no compounding)
+        // and the result stays within [floor, earned].
+        let floor = 0;
+        let earned = 40;
+        let a = effective_score(earned, 200, 0.5, 90, 180, floor);
+        let b = effective_score(earned, 200, 0.5, 90, 180, floor);
         assert_eq!(a, b);
+        assert!(a >= floor && a <= earned);
+        assert!(a < earned); // 200 days inactive => actually decayed
+    }
+
+    #[test]
+    fn stays_bounded_when_earned_minus_floor_overflows_i32() {
+        // earned - floor = 4_000_000_000 > i32::MAX: subtracting as i32 first would
+        // wrap (release) and let effective escape [floor, earned]. With the f64-first
+        // cast, a fully-decayed score lands exactly on the floor.
+        let earned = 2_000_000_000;
+        let floor = -2_000_000_000;
+        let e = effective_score(earned, 9999, 0.0, 90, 180, floor);
+        assert!(e >= floor && e <= earned);
+        assert_eq!(e, floor); // full decay => floor, not wrapped garbage
     }
 }
