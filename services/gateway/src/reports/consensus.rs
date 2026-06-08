@@ -140,4 +140,18 @@ mod tests {
             Some("AUTHORITATIVE".into())
         );
     }
+
+    // C-1a default: gate ON, established_confirmations sourced from personhood query
+    #[test]
+    fn c1a_gate_on_blocks_unestablished_cohort() {
+        // require_established=true (C-1a default): 0 established confirmers -> no VERIFIED.
+        assert_eq!(compute_new_status("UNVERIFIED", 9, 4, 0, 0, true), None);
+    }
+    #[test]
+    fn c1a_gate_on_allows_established_cohort() {
+        assert_eq!(
+            compute_new_status("UNVERIFIED", 9, 4, 0, 2, true),
+            Some("VERIFIED".into())
+        );
+    }
 }

@@ -328,6 +328,7 @@ async fn vote(
             voter_lat: body.voter_lat,
             voter_lng: body.voter_lng,
         },
+        &state.config.vouch_genesis_roots,
     )
     .await
     .map_err(|e| {
