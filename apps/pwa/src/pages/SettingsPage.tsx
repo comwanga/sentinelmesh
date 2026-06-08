@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
-import { loadIdentity, generateNewIdentity, toNpub, toNsec, importFromNsec, type NostrKeypair } from '../services/nostrService'
+import { loadIdentity, generateNewIdentity, toNpub, toNsec, importFromNsec, hexFromNpubOrHex, type NostrKeypair } from '../services/nostrService'
+import { issueVouch } from '../services/vouchService'
 import { exportBackup, decryptBackup, applyRestore, currentVaultId, type RestoreResult } from '../services/backupService'
 import { vaultFingerprint, loadVaultMeta } from '../services/identityStore'
 import type { VaultPayload } from '../services/identityStore'
@@ -65,6 +66,20 @@ export function SettingsPage() {
     setImportMsg({ text: 'New key generated and saved.', ok: true })
     setTimeout(() => setImportMsg(null), 3000)
   }, [])
+
+  const [vouchInput, setVouchInput] = useState('')
+  const [vouchMsg, setVouchMsg] = useState<string | null>(null)
+
+  const handleVouch = useCallback(async () => {
+    const hex = hexFromNpubOrHex(vouchInput.trim())
+    if (!hex) {
+      setVouchMsg('Enter a valid npub or hex pubkey')
+      return
+    }
+    const ok = await issueVouch(hex)
+    setVouchMsg(ok ? 'Vouch submitted.' : 'Vouch failed (you may not be eligible to vouch, or already vouched).')
+    setTimeout(() => setVouchMsg(null), 4000)
+  }, [vouchInput])
 
   const handleExport = useCallback(async () => {
     if (exportPass.length < 12) { setBackupMsg({ text: 'Passphrase must be at least 12 characters.', ok: false }); return }
@@ -314,6 +329,50 @@ export function SettingsPage() {
         >
           Generate new key (resets identity)
         </button>
+      </section>
+
+      {/* ── Vouch for a key ──────────────────────── */}
+      <section style={{ padding: '20px', borderBottom: '1px solid #1a2035' }}>
+        <h2 style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#00E5FF', letterSpacing: '0.1em', margin: '0 0 8px' }}>
+          VOUCH FOR A KEY
+        </h2>
+        <p style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', margin: '0 0 12px', lineHeight: 1.5 }}>
+          Vouch for someone you know to be a real person. This is a public attestation.
+        </p>
+        <div style={{ display: 'flex', gap: 8, marginBottom: vouchMsg ? 6 : 0 }}>
+          <input
+            type="text"
+            value={vouchInput}
+            onChange={e => setVouchInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleVouch() }}
+            placeholder="npub1… or hex pubkey"
+            style={{
+              flex: 1, background: '#0d1118', border: '1px solid #1a2035', borderRadius: 4,
+              color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 11,
+              padding: '7px 10px', outline: 'none',
+            }}
+          />
+          <button
+            onClick={handleVouch}
+            disabled={!vouchInput.trim()}
+            style={{
+              background: '#1a2035', border: '1px solid #1a2035', borderRadius: 4,
+              color: '#94a3b8', fontFamily: "'Courier New', monospace", fontSize: 11,
+              padding: '7px 14px', cursor: vouchInput.trim() ? 'pointer' : 'not-allowed',
+              opacity: vouchInput.trim() ? 1 : 0.5, flexShrink: 0,
+            }}
+          >
+            Vouch
+          </button>
+        </div>
+        {vouchMsg && (
+          <div style={{
+            fontFamily: "'Courier New', monospace", fontSize: 10,
+            color: vouchMsg.startsWith('Vouch submitted') ? '#4CAF50' : '#FF8C00',
+          }}>
+            {vouchMsg}
+          </div>
+        )}
       </section>
 
       {/* ── Privacy First ─────────────────────────── */}

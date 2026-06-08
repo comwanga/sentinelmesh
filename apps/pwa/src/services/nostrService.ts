@@ -230,6 +230,16 @@ export function voteBindingContent(vote: string, reportId: string): string {
   return `v1|${vote}|${reportId}`
 }
 
+/** Canonical binding for a vouch — must byte-match the gateway `vouch_binding_content`. */
+export function vouchBindingContent(voucheePubkey: string): string {
+  return `sentinelmesh:vouch:v1:${voucheePubkey}`
+}
+
+/** Canonical binding for a vouch revocation — must byte-match `vouch_revoke_binding_content`. */
+export function vouchRevokeBindingContent(voucheePubkey: string): string {
+  return `sentinelmesh:vouch-revoke:v1:${voucheePubkey}`
+}
+
 /**
  * Sign a report/vote binding string as a kind-30078 event. The content is the
  * canonical binding (see reportBindingContent / voteBindingContent), so the

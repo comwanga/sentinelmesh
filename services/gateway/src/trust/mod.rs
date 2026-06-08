@@ -2,3 +2,4 @@
 //! evidence to a trust tier. The NLP synthesis worker (Phase 2B-ii) is built
 //! against this; acoustic converges onto it in a later migration.
 pub mod contract;
+pub mod personhood;

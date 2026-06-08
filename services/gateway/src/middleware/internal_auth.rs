@@ -119,6 +119,8 @@ mod tests {
                 emergency_mode_enabled: false,
                 acoustic_confirm_enabled: false,
                 consensus_require_established: false,
+                vouch_genesis_roots: vec![],
+                vouch_budget: 5,
             }),
             http_client,
             hub: Arc::new(WsHub::new()),

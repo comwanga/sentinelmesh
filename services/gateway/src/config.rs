@@ -28,12 +28,15 @@ pub struct Config {
     /// Default false: without explicit opt-in the synthesis worker corroborates
     /// (telemetry only) but never auto-publishes acoustic events to the map.
     pub acoustic_confirm_enabled: bool,
-    /// Gates the established-voter requirement for report consensus escalation.
-    /// Default false (usable at cold-start with no trusted accounts). When true,
-    /// VERIFIED/AUTHORITATIVE additionally require distinct non-NEWCOMER voters,
-    /// blocking pure-Sybil escalation. The reputation framework is always active;
-    /// this flag only toggles the gate, so it can be enabled with no code changes.
+    /// Default **true** (C-1a): the gate is on; personhood (genesis/earned/vouched)
+    /// seeds the established cohort. Set `CONSENSUS_REQUIRE_ESTABLISHED=false` to disable.
     pub consensus_require_established: bool,
+    /// Operator-designated web-of-trust roots (C-1a). Hex Nostr pubkeys that can
+    /// issue the first vouches; trust propagates outward from them. Empty by
+    /// default (dev); seed in production before enabling the consensus gate.
+    pub vouch_genesis_roots: Vec<String>,
+    /// Max active (non-revoked) vouches a single voucher may hold (C-1a).
+    pub vouch_budget: u32,
 }
 
 impl Config {
@@ -56,7 +59,11 @@ impl Config {
                 .unwrap_or(false),
             consensus_require_established: std::env::var("CONSENSUS_REQUIRE_ESTABLISHED")
                 .map(|v| v == "true" || v == "1")
-                .unwrap_or(false),
+                .unwrap_or(true),
+            vouch_genesis_roots: parse_genesis_roots(
+                &std::env::var("VOUCH_GENESIS_ROOTS").unwrap_or_default(),
+            ),
+            vouch_budget: parse_vouch_budget(std::env::var("VOUCH_BUDGET").ok()),
             blockchain_service_url: std::env::var("BLOCKCHAIN_SERVICE_URL").ok(),
             internal_service_secret,
             circle_token_secret,
@@ -172,6 +179,19 @@ fn reject_weak_secret(name: &str, value: &str) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Parse a comma-separated genesis-roots list, trimming whitespace and dropping empties.
+fn parse_genesis_roots(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Parse the active-vouch budget, defaulting to 5 on absence or a bad value.
+fn parse_vouch_budget(raw: Option<String>) -> u32 {
+    raw.and_then(|v| v.parse().ok()).unwrap_or(5)
 }
 
 fn load_public_base_url() -> anyhow::Result<Option<String>> {
@@ -475,5 +495,26 @@ mod tests {
         let r = resolve_circle_token_secret(true).unwrap();
         std::env::remove_var("CIRCLE_TOKEN_SECRET");
         assert_eq!(r, "a-strong-32-byte-circle-secret-x");
+    }
+
+    #[test]
+    fn vouch_genesis_roots_parses_comma_separated() {
+        assert_eq!(
+            parse_genesis_roots("aa, bb ,cc"),
+            vec!["aa".to_string(), "bb".to_string(), "cc".to_string()]
+        );
+    }
+
+    #[test]
+    fn vouch_genesis_roots_empty_is_empty_vec() {
+        assert!(parse_genesis_roots("").is_empty());
+        assert!(parse_genesis_roots("  ,  ").is_empty());
+    }
+
+    #[test]
+    fn vouch_budget_defaults_to_five() {
+        assert_eq!(parse_vouch_budget(None), 5);
+        assert_eq!(parse_vouch_budget(Some("9".into())), 9);
+        assert_eq!(parse_vouch_budget(Some("notanumber".into())), 5);
     }
 }

@@ -7,6 +7,7 @@ pub mod photos;
 pub mod push;
 pub mod reports;
 pub mod tiles;
+pub mod vouches;
 
 use crate::AppState;
 use axum::Router;
@@ -24,4 +25,5 @@ pub fn build_router() -> Router<AppState> {
         .nest("/api/photos", photos::router())
         .nest("/api/maps", maps::router())
         .nest("/api/acoustic", acoustic::router())
+        .nest("/api/vouches", vouches::router())
 }

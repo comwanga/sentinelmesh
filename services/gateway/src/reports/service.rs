@@ -171,6 +171,7 @@ pub async fn cast_vote(
     pool: &PgPool,
     report_id: Uuid,
     input: CastVoteInput,
+    genesis_roots: &[String],
 ) -> Result<(Report, i32, i32)> {
     let mut tx = pool.begin().await?;
 
@@ -264,14 +265,31 @@ pub async fn cast_vote(
     .fetch_one(&mut *tx)
     .await?;
 
-    // Count distinct established (non-NEWCOMER) confirmers — input to the gate.
+    // Count distinct personhood-established confirmers: genesis root, earned tier,
+    // or active vouch from an eligible voucher. This is the C-1a gate input.
     let established_confirmations: i64 = sqlx::query_scalar(
         "SELECT COUNT(DISTINCT rv.voter_pubkey)
          FROM report_votes rv
-         JOIN users u ON u.nostr_pubkey = rv.voter_pubkey
-         WHERE rv.report_id = $1 AND rv.vote = 'CONFIRM' AND u.reputation_tier <> 'NEWCOMER'",
+         WHERE rv.report_id = $1 AND rv.vote = 'CONFIRM'
+           AND (
+             rv.voter_pubkey = ANY($2)
+             OR EXISTS (SELECT 1 FROM users u
+                        WHERE u.nostr_pubkey = rv.voter_pubkey
+                          AND u.reputation_tier IN ('TRUSTED','VETERAN','SENTINEL'))
+             OR EXISTS (SELECT 1 FROM vouches v
+                        WHERE v.vouchee_pubkey = rv.voter_pubkey
+                          AND v.revoked_at IS NULL
+                          AND (v.expires_at IS NULL OR v.expires_at > now())
+                          AND (
+                            v.voucher_pubkey = ANY($2)
+                            OR EXISTS (SELECT 1 FROM users u2
+                                       WHERE u2.nostr_pubkey = v.voucher_pubkey
+                                         AND u2.reputation_tier IN ('TRUSTED','VETERAN','SENTINEL'))
+                          ))
+           )",
     )
     .bind(report_id)
+    .bind(genesis_roots)
     .fetch_one(&mut *tx)
     .await?;
 
