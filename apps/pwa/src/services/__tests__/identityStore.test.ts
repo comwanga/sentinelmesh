@@ -2,6 +2,10 @@
 import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { saveSecretKey, loadSecretKey, clearSecretKey, loadOrCreateSecretKey, loadVault, saveVault, encodeVaultPayload, decodeVaultPayload, type VaultPayload, __writeLegacyV1ForTests } from '../identityStore'
+import {
+  upsertCircleKey, removeVaultCircle, loadVaultMeta, saveVaultMeta,
+  fingerprintPayload, vaultFingerprint, formatVaultId,
+} from '../identityStore'
 
 // Distinct 32-byte key for assertions.
 function sampleKey(): Uint8Array {
@@ -154,5 +158,56 @@ describe('identityStore v2 vault', () => {
     await __writeLegacyV1ForTests(sk(4))
     const got = await loadOrCreateSecretKey(() => sk(99)) // generator must NOT run
     expect(Array.from(got)).toEqual(Array.from(sk(4)))
+  })
+})
+
+describe('identityStore circle helpers + fingerprint', () => {
+  beforeEach(async () => { await clearSecretKey() })
+
+  it('upsertCircleKey adds, then replaces by id', async () => {
+    await saveSecretKey(sk(1))
+    await upsertCircleKey('c-1', sk(2))
+    await upsertCircleKey('c-2', sk(3))
+    await upsertCircleKey('c-1', sk(9))
+    const v = await loadVault()
+    expect(v!.circles.map(c => c.id).sort()).toEqual(['c-1', 'c-2'])
+    const c1 = v!.circles.find(c => c.id === 'c-1')!
+    expect(Array.from(c1.key)).toEqual(Array.from(sk(9)))
+    expect(Array.from(v!.identitySk)).toEqual(Array.from(sk(1)))
+  })
+
+  it('removeVaultCircle drops the entry', async () => {
+    await saveSecretKey(sk(1))
+    await upsertCircleKey('c-1', sk(2))
+    await removeVaultCircle('c-1')
+    expect((await loadVault())!.circles).toEqual([])
+  })
+
+  it('vaultFingerprint changes when a circle is added and is stable otherwise', async () => {
+    await saveSecretKey(sk(1))
+    const f0 = await vaultFingerprint()
+    await upsertCircleKey('c-1', sk(2))
+    const f1 = await vaultFingerprint()
+    expect(f1).not.toBe(f0)
+    expect(await vaultFingerprint()).toBe(f1)
+  })
+
+  it('fingerprint is order-independent across circles', async () => {
+    const a: VaultPayload = { identitySk: sk(1), circles: [{ id: 'a', key: sk(2) }, { id: 'b', key: sk(3) }] }
+    const b: VaultPayload = { identitySk: sk(1), circles: [{ id: 'b', key: sk(3) }, { id: 'a', key: sk(2) }] }
+    expect(await fingerprintPayload(a)).toBe(await fingerprintPayload(b))
+  })
+
+  it('formatVaultId returns XXXX-XXXX-XXXX uppercase hex from a fingerprint', async () => {
+    const id = formatVaultId(await fingerprintPayload({ identitySk: sk(1), circles: [] }))
+    expect(id).toMatch(/^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/)
+  })
+
+  it('saveVaultMeta / loadVaultMeta round-trip and survive vault writes', async () => {
+    await saveSecretKey(sk(1))
+    await saveVaultMeta({ lastExportedFingerprint: 'abc123' })
+    expect((await loadVaultMeta())?.lastExportedFingerprint).toBe('abc123')
+    await upsertCircleKey('c-1', sk(2))
+    expect((await loadVaultMeta())?.lastExportedFingerprint).toBe('abc123')
   })
 })

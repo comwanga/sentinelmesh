@@ -3,12 +3,15 @@
 // wrapping key can never be exported, and a stolen DB file yields only
 // ciphertext. Uses its own IndexedDB database so it never has to coordinate a
 // schema-version bump with the circle-key store. (H-3 Layer 1.)
+import { getPublicKey } from 'nostr-tools'
 
 const DB_NAME = 'sentinelmesh-identity'
 const DB_VERSION = 1
 const STORE = 'keys'
 const WRAP_KEY_ID = 'identity-wrap-key'
 const SK_ID = 'nostr-sk'
+const META_ID = 'vault-meta'
+export interface VaultMeta { lastExportedFingerprint: string }
 
 // v1 stored only the raw secret key. v2 stores a structured vault payload so a
 // backup can carry the identity AND the circle keys + ids. loadVault migrates a
@@ -204,4 +207,56 @@ export async function __writeLegacyV1ForTests(sk: Uint8Array): Promise<void> {
     blob.set(iv); blob.set(new Uint8Array(ct), iv.byteLength)
     await idbPut(SK_ID, { version: 1, blob } as VaultRecord)
   })
+}
+
+/** Add or replace a circle's raw key in the vault, preserving identity + others. */
+export async function upsertCircleKey(circleId: string, rawKey: Uint8Array): Promise<void> {
+  return withInitLock(async () => {
+    const v = await loadVault()
+    if (!v) return // no identity yet — nothing to attach a circle to
+    const circles = v.circles.filter(c => c.id !== circleId)
+    circles.push({ id: circleId, key: new Uint8Array(rawKey) })
+    await saveVaultUnlocked({ identitySk: v.identitySk, circles })
+  })
+}
+
+/** Remove a circle entry from the vault. */
+export async function removeVaultCircle(circleId: string): Promise<void> {
+  return withInitLock(async () => {
+    const v = await loadVault()
+    if (!v) return
+    await saveVaultUnlocked({ identitySk: v.identitySk, circles: v.circles.filter(c => c.id !== circleId) })
+  })
+}
+
+/** Read/write the separate, non-secret export-metadata record. */
+export async function loadVaultMeta(): Promise<VaultMeta | null> { return idbGet<VaultMeta>(META_ID) }
+export async function saveVaultMeta(meta: VaultMeta): Promise<void> { await idbPut(META_ID, meta) }
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const d = await crypto.subtle.digest('SHA-256', bytes as unknown as BufferSource)
+  return Array.from(new Uint8Array(d)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** Deterministic, order-independent fingerprint of a vault payload: SHA-256 of
+ *  the public pubkey plus the sorted (circleId : sha256(key)) lines. Pure — used
+ *  for both the live vault and a just-decrypted import. */
+export async function fingerprintPayload(p: VaultPayload): Promise<string> {
+  const pubkey = getPublicKey(p.identitySk)
+  const lines = await Promise.all(p.circles.map(async c => `${c.id}:${await sha256Hex(c.key)}`))
+  lines.sort()
+  const material = new TextEncoder().encode(pubkey + '\n' + lines.join('\n'))
+  return sha256Hex(material)
+}
+
+/** Fingerprint of the currently-stored vault (empty string if no vault). */
+export async function vaultFingerprint(): Promise<string> {
+  const v = await loadVault()
+  return v ? fingerprintPayload(v) : ''
+}
+
+/** Short human-checkable Vault ID: first 48 bits of a fingerprint as XXXX-XXXX-XXXX. */
+export function formatVaultId(fingerprint: string): string {
+  const h = fingerprint.slice(0, 12).toUpperCase()
+  return `${h.slice(0, 4)}-${h.slice(4, 8)}-${h.slice(8, 12)}`
 }
