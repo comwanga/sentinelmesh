@@ -7,6 +7,7 @@ pub mod photos;
 pub mod push;
 pub mod reports;
 pub mod tiles;
+pub mod vouches;
 
 use crate::AppState;
 use axum::Router;

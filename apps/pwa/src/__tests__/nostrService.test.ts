@@ -27,6 +27,8 @@ import {
   signReport,
   reportBindingContent,
   voteBindingContent,
+  vouchBindingContent,
+  vouchRevokeBindingContent,
   hasNip07,
   signAuthEvent,
   signNip98AuthEvent,
@@ -198,5 +200,14 @@ describe('binding content', () => {
 
   test('voteBindingContent binds vote to report id', () => {
     expect(voteBindingContent('CONFIRM', 'abc-123')).toBe('v1|CONFIRM|abc-123')
+  })
+})
+
+describe('vouch binding strings (must byte-match the gateway)', () => {
+  it('vouchBindingContent is domain-separated', () => {
+    expect(vouchBindingContent('abc')).toBe('sentinelmesh:vouch:v1:abc')
+  })
+  it('vouchRevokeBindingContent is domain-separated', () => {
+    expect(vouchRevokeBindingContent('abc')).toBe('sentinelmesh:vouch-revoke:v1:abc')
   })
 })
