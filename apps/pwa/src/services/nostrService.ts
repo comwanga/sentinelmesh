@@ -43,6 +43,9 @@ export async function loadIdentity(): Promise<NostrKeypair> {
         const sk = await loadOrCreateSecretKey(generateSecretKey)
         _keypair = { publicKey: getPublicKey(sk), secretKey: sk }
       } catch {
+        // Degrade: storage unavailable (e.g. private browsing / quota). The key
+        // is NOT persisted, so every reload mints a fresh one — the identity is
+        // not stable in this mode, but the app stays usable.
         const sk = generateSecretKey()
         _keypair = { publicKey: getPublicKey(sk), secretKey: sk }
       }
@@ -71,6 +74,9 @@ export async function generateNewIdentity(): Promise<NostrKeypair> {
   const sk = generateSecretKey()
   await saveSecretKey(sk)
   _keypair = { publicKey: getPublicKey(sk), secretKey: sk }
+  // Drop any in-flight boot init so a concurrent loadIdentity() cannot resolve
+  // and overwrite the cache with the pre-reset key.
+  _initPromise = null
   return _keypair
 }
 
@@ -95,6 +101,8 @@ export async function importFromNsec(nsecStr: string): Promise<NostrKeypair | nu
     const sk = decoded.data as Uint8Array
     await saveSecretKey(sk)
     _keypair = { publicKey: getPublicKey(sk), secretKey: sk }
+    // Drop any in-flight boot init so it cannot overwrite the imported key.
+    _initPromise = null
     return _keypair
   } catch {
     return null
