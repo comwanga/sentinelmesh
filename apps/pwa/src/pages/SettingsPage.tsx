@@ -1,18 +1,19 @@
-import { useState, useCallback } from 'react'
-import { loadOrCreateKeypair, toNpub, toNsec, importFromNsec } from '../services/nostrService'
-
-let _keypair = loadOrCreateKeypair()
+import { useState, useCallback, useEffect } from 'react'
+import { loadIdentity, generateNewIdentity, toNpub, toNsec, importFromNsec, type NostrKeypair } from '../services/nostrService'
 
 export function SettingsPage() {
-  const [keypair, setKeypair] = useState(_keypair)
+  const [keypair, setKeypair] = useState<NostrKeypair | null>(null)
   const [copiedNpub, setCopiedNpub] = useState(false)
   const [showNsec, setShowNsec] = useState(false)
   const [copiedNsec, setCopiedNsec] = useState(false)
   const [nsecInput, setNsecInput] = useState('')
   const [importMsg, setImportMsg] = useState<{ text: string; ok: boolean } | null>(null)
 
-  const npub = toNpub(keypair.publicKey)
-  const nsec = toNsec(keypair.secretKey)
+  // The persisted identity loads asynchronously from the encrypted vault.
+  useEffect(() => { loadIdentity().then(setKeypair) }, [])
+
+  const npub = keypair ? toNpub(keypair.publicKey) : ''
+  const nsec = keypair ? toNsec(keypair.secretKey) : ''
 
   const copyNpub = useCallback(() => {
     navigator.clipboard.writeText(npub).then(() => {
@@ -26,28 +27,25 @@ export function SettingsPage() {
     })
   }, [nsec])
 
-  const handleImport = useCallback(() => {
+  const handleImport = useCallback(async () => {
     const trimmed = nsecInput.trim()
     if (!trimmed) return
-    const imported = importFromNsec(trimmed)
+    const imported = await importFromNsec(trimmed)
     if (imported) {
-      _keypair = imported
       setKeypair(imported)
       setNsecInput('')
-      setImportMsg({ text: 'Key imported successfully. Your identity has been updated.', ok: true })
+      setImportMsg({ text: 'Key imported and saved on this device.', ok: true })
     } else {
       setImportMsg({ text: 'Invalid nsec — make sure you paste a valid nsec1… key.', ok: false })
     }
     setTimeout(() => setImportMsg(null), 4000)
   }, [nsecInput])
 
-  const handleGenerate = useCallback(() => {
-    if (!window.confirm('Generate a new Nostr key? Your current key will be replaced.')) return
-    localStorage.removeItem('sentinel_nostr_sk')
-    const fresh = loadOrCreateKeypair()
-    _keypair = fresh
+  const handleGenerate = useCallback(async () => {
+    if (!window.confirm('Generate a new Nostr key? Your current identity (and any circles tied to it) will be replaced. Make sure you have backed up your current key first.')) return
+    const fresh = await generateNewIdentity()
     setKeypair(fresh)
-    setImportMsg({ text: 'New key generated.', ok: true })
+    setImportMsg({ text: 'New key generated and saved.', ok: true })
     setTimeout(() => setImportMsg(null), 3000)
   }, [])
 
@@ -65,7 +63,8 @@ export function SettingsPage() {
           Nostr Identity
         </h2>
         <p style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', margin: '0 0 12px' }}>
-          Your identity is a Nostr key pair generated and stored locally on this device. It is used to sign reports and authenticate with circles.
+          Your identity is a Nostr key pair stored encrypted on this device. It persists across reloads
+          and is used to sign reports and authenticate with circles.
         </p>
 
         {/* npub */}
@@ -132,6 +131,17 @@ export function SettingsPage() {
           </div>
         </div>
 
+        {/* No-recovery warning */}
+        <div style={{
+          fontFamily: "'Courier New', monospace", fontSize: 10, color: '#FF8C00',
+          background: '#1a1200', border: '1px solid #2d1b00', borderRadius: 6,
+          padding: '8px 10px', margin: '0 0 14px', lineHeight: 1.5,
+        }}>
+          ⚠ This key is stored only on this device. There is no recovery yet — if you lose this
+          device, you lose this identity and your circles. Save your secret key (nsec) somewhere
+          safe as a backup.
+        </div>
+
         {/* Import nsec */}
         <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', marginBottom: 6, letterSpacing: '0.06em' }}>
           IMPORT EXISTING KEY
@@ -151,10 +161,12 @@ export function SettingsPage() {
           />
           <button
             onClick={handleImport}
+            disabled={!keypair}
             style={{
               background: '#1a2035', border: '1px solid #1a2035', borderRadius: 4,
               color: '#94a3b8', fontFamily: "'Courier New', monospace", fontSize: 11,
-              padding: '7px 14px', cursor: 'pointer', flexShrink: 0,
+              padding: '7px 14px', cursor: keypair ? 'pointer' : 'not-allowed',
+              opacity: keypair ? 1 : 0.5, flexShrink: 0,
             }}
           >
             Import
@@ -172,10 +184,12 @@ export function SettingsPage() {
         {/* Generate new key */}
         <button
           onClick={handleGenerate}
+          disabled={!keypair}
           style={{
             background: 'none', border: '1px solid #1a2035', borderRadius: 4,
             color: '#4a5568', fontFamily: "'Courier New', monospace", fontSize: 10,
-            padding: '6px 14px', cursor: 'pointer', letterSpacing: '0.05em',
+            padding: '6px 14px', cursor: keypair ? 'pointer' : 'not-allowed',
+            opacity: keypair ? 1 : 0.5, letterSpacing: '0.05em',
           }}
         >
           Generate new key (resets identity)
