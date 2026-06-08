@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useAppSelector, useAppDispatch } from '../store'
 import { activeAlertDismissed, circleLeft, circleLoaded } from '../store/circlesSlice'
-import { loadOrCreateKeypair, signAuthEvent, toNpub, hexFromNpubOrHex } from '../services/nostrService'
+import { getCachedKeypair, signAuthEvent, toNpub, hexFromNpubOrHex } from '../services/nostrService'
 import { addCircleId } from '../services/circleIdStore'
 import { generateCircleKey, saveCircleKey, loadCircleKey, encryptString } from '../services/e2eeService'
 import { CircleSidebar } from './CircleSidebar'
@@ -88,7 +88,7 @@ function EmptyState() {
   const [parsedInvite, setParsedInvite] = useState<ParsedInvite | null>(null)
   const [joinError, setJoinError] = useState<string | null>(null)
 
-  const myNpub = toNpub(loadOrCreateKeypair().publicKey)
+  const myNpub = toNpub(getCachedKeypair().publicKey)
 
   const effectiveCircleName = selectedPreset !== null
     ? CIRCLE_PRESETS[selectedPreset]!.name
@@ -353,7 +353,7 @@ export function FamilyCircleDashboard() {
 
   const handleInvite = useCallback(() => {
     if (!activeCircleId || !activeCircle) return
-    const keypair = loadOrCreateKeypair()
+    const keypair = getCachedKeypair()
     const str = buildInviteString(activeCircleId, keypair.publicKey, activeCircle.name ?? '(circle)')
     setInviteString(str)
     setInviteOpen(true)

@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 // Mock services before import
 vi.mock('../services/nostrService', () => ({
-  loadOrCreateKeypair: vi.fn().mockReturnValue({
+  getCachedKeypair: vi.fn().mockReturnValue({
     publicKey: 'pk1',
     secretKey: new Uint8Array(32),
   }),

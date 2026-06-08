@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import { loadOrCreateKeypair, signReport, reportBindingContent } from '../services/nostrService'
+import { getCachedKeypair, signReport, reportBindingContent } from '../services/nostrService'
 import { compressAndStrip, blurFaces, uploadToIPFS } from '../services/photoService'
 
 const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
@@ -64,7 +64,7 @@ export function ReportSubmit({ onClose, linkedEventId }: Props) {
       }
     }
 
-    const keypair = loadOrCreateKeypair()
+    const keypair = getCachedKeypair()
     const postBody = {
       report_type: reportType,
       description: description || null,

@@ -25,7 +25,7 @@ vi.mock('../../hooks/useProximityAlerts', () => ({
   useProximityAlerts: () => {},
 }))
 vi.mock('../../services/nostrService', () => ({
-  loadOrCreateKeypair: () => ({ publicKey: 'a'.repeat(64), secretKey: new Uint8Array(32) }),
+  getCachedKeypair: () => ({ publicKey: 'a'.repeat(64), secretKey: new Uint8Array(32) }),
   signAuthEvent: () => ({}),
   toNpub: (pk: string) => `npub1test${pk.slice(0, 8)}`,
   hexFromNpubOrHex: (s: string) => s,

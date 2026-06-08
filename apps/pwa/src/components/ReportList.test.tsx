@@ -16,7 +16,7 @@ vi.stubGlobal('navigator', {
 })
 
 vi.mock('../services/nostrService', () => ({
-  loadOrCreateKeypair: vi.fn().mockReturnValue({
+  getCachedKeypair: vi.fn().mockReturnValue({
     publicKey: 'pk1', secretKey: new Uint8Array(32),
   }),
   signReport: vi.fn().mockReturnValue({

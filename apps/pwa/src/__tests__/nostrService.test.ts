@@ -1,4 +1,9 @@
-import { vi, describe, test, expect, beforeEach, afterEach } from 'vitest'
+import { vi, describe, it, test, expect, beforeEach, afterEach } from 'vitest'
+import { IDBFactory } from 'fake-indexeddb'
+
+// Provide a fresh fake IndexedDB for each test file run so identityStore
+// can call indexedDB.open() without needing a real browser environment.
+vi.stubGlobal('indexedDB', new IDBFactory())
 
 // Minimal localStorage stub — used to verify we do NOT call it
 const lsStore: Record<string, string> = {}
@@ -14,40 +19,81 @@ beforeEach(() => localStorageMock.clear())
 afterEach(() => { delete (window as unknown as Record<string, unknown>).nostr })
 
 import {
-  loadOrCreateKeypair,
+  loadIdentity,
+  getCachedKeypair,
+  generateNewIdentity,
+  __resetIdentityCacheForTests,
+  importFromNsec,
   signReport,
   reportBindingContent,
   voteBindingContent,
-  getOrCreateEphemeralKeypair,
   hasNip07,
   signAuthEvent,
   signNip98AuthEvent,
   clearStoredKey,
 } from '../services/nostrService'
 
-describe('loadOrCreateKeypair', () => {
-  test('returns a valid hex pubkey', () => {
-    const kp = loadOrCreateKeypair()
+import { loadSecretKey, clearSecretKey } from '../services/identityStore'
+
+describe('loadIdentity (persistent)', () => {
+  beforeEach(async () => { await clearSecretKey(); __resetIdentityCacheForTests() })
+
+  it('returns a valid 32-byte keypair', async () => {
+    const kp = await loadIdentity()
+    expect(kp.secretKey.length).toBe(32)
     expect(kp.publicKey).toMatch(/^[0-9a-f]{64}$/)
   })
 
-  test('does NOT persist raw key to localStorage', () => {
-    loadOrCreateKeypair()
-    expect(localStorageMock.getItem('sentinel_nostr_sk')).toBeNull()
+  it('persists and returns the SAME pubkey across reloads', async () => {
+    const first = await loadIdentity()
+    __resetIdentityCacheForTests()
+    const second = await loadIdentity()
+    expect(second.publicKey).toBe(first.publicKey)
   })
 
-  test('returns the same in-memory keypair on subsequent calls', () => {
-    const kp1 = loadOrCreateKeypair()
-    const kp2 = loadOrCreateKeypair()
-    expect(kp1.publicKey).toBe(kp2.publicKey)
+  it('never regenerates when a key already exists', async () => {
+    const first = await loadIdentity()
+    const stored = await loadSecretKey()
+    expect(stored).not.toBeNull()
+    const again = await loadIdentity()
+    expect(again.publicKey).toBe(first.publicKey)
+  })
+
+  it('does not generate twice under concurrent boot (shared init promise)', async () => {
+    await clearSecretKey()
+    __resetIdentityCacheForTests()
+    const [a, b] = await Promise.all([loadIdentity(), loadIdentity()])
+    expect(a.publicKey).toBe(b.publicKey)
+    expect(await loadSecretKey()).not.toBeNull()
   })
 })
 
-describe('getOrCreateEphemeralKeypair', () => {
-  test('consistent across calls within the same module lifetime', () => {
-    const k1 = getOrCreateEphemeralKeypair()
-    const k2 = getOrCreateEphemeralKeypair()
-    expect(k1.publicKey).toBe(k2.publicKey)
+describe('importFromNsec (persists)', () => {
+  beforeEach(async () => { await clearSecretKey(); __resetIdentityCacheForTests() })
+
+  it('imports and persists the key (survives a reload)', async () => {
+    const seed = await loadIdentity()
+    const nsec = (await import('../services/nostrService')).toNsec(seed.secretKey)
+    __resetIdentityCacheForTests()
+    const imported = await importFromNsec(nsec)
+    expect(imported).not.toBeNull()
+    expect(imported!.publicKey).toBe(seed.publicKey)
+    __resetIdentityCacheForTests()
+    const reloaded = await loadIdentity()
+    expect(reloaded.publicKey).toBe(seed.publicKey)
+  })
+})
+
+describe('generateNewIdentity (explicit reset)', () => {
+  beforeEach(async () => { await clearSecretKey(); __resetIdentityCacheForTests() })
+
+  it('replaces the identity with a new persisted pubkey', async () => {
+    const before = await loadIdentity()
+    const after = await generateNewIdentity()
+    expect(after.publicKey).not.toBe(before.publicKey)
+    __resetIdentityCacheForTests()
+    const reloaded = await loadIdentity()
+    expect(reloaded.publicKey).toBe(after.publicKey)
   })
 })
 
@@ -127,8 +173,8 @@ describe('clearStoredKey', () => {
 })
 
 describe('signReport', () => {
-  test('returns a Nostr event with id, pubkey, sig fields', () => {
-    const kp = loadOrCreateKeypair()
+  test('returns a Nostr event with id, pubkey, sig fields', async () => {
+    const kp = await loadIdentity()
     const event = signReport(reportBindingContent('FLOODING', -1.29, 36.82, null), kp.secretKey)
     expect(event.id).toMatch(/^[0-9a-f]{64}$/)
     expect(event.sig).toMatch(/^[0-9a-f]{128}$/)
@@ -136,8 +182,8 @@ describe('signReport', () => {
     expect(event.kind).toBe(30078)
   })
 
-  test('event content is the canonical binding string', () => {
-    const kp = loadOrCreateKeypair()
+  test('event content is the canonical binding string', async () => {
+    const kp = await loadIdentity()
     const content = reportBindingContent('FIRE', -1.29, 36.82, 'smoke')
     const event = signReport(content, kp.secretKey)
     expect(event.content).toBe(content)

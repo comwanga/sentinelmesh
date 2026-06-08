@@ -1,5 +1,6 @@
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools'
 import { nip19 } from 'nostr-tools'
+import { saveSecretKey, loadOrCreateSecretKey } from './identityStore'
 
 const SK_STORAGE_KEY = 'sentinel_nostr_sk'
 
@@ -18,38 +19,91 @@ export interface SignedReportEvent {
   sig: string
 }
 
-// In-memory ephemeral key — never persisted. Lost on page refresh.
-// Users with NIP-07 extensions bypass this entirely.
-let _ephemeralKeypair: NostrKeypair | null = null
+// Session cache of the local identity. Decrypted once at boot (loadIdentity) and
+// held in memory for the session — an in-session XSS could read it on the next
+// sign either way, so per-sign decrypt-and-zero is deferred to later hardening.
+let _keypair: NostrKeypair | null = null
+// In-flight init, shared by concurrent callers (e.g. React StrictMode double
+// invoke, or several views booting at once) so the identity is created ONCE.
+let _initPromise: Promise<NostrKeypair> | null = null
+
+/**
+ * Load (or create + persist) the local Nostr identity. Idempotent and
+ * concurrency-safe: never regenerates when a key already exists, and concurrent
+ * callers share one init (and `loadOrCreateSecretKey` serializes across tabs via
+ * the Web Locks API). Awaited once at app boot so the cache is ready before
+ * anything signs. Falls back to an in-memory key if storage is unavailable
+ * (e.g. private browsing) so the app still runs (degraded).
+ */
+export async function loadIdentity(): Promise<NostrKeypair> {
+  if (_keypair) return _keypair
+  if (!_initPromise) {
+    _initPromise = (async () => {
+      try {
+        const sk = await loadOrCreateSecretKey(generateSecretKey)
+        _keypair = { publicKey: getPublicKey(sk), secretKey: sk }
+      } catch {
+        // Degrade: storage unavailable (e.g. private browsing / quota). The key
+        // is NOT persisted, so every reload mints a fresh one — the identity is
+        // not stable in this mode, but the app stays usable.
+        const sk = generateSecretKey()
+        _keypair = { publicKey: getPublicKey(sk), secretKey: sk }
+      }
+      return _keypair!
+    })()
+  }
+  return _initPromise
+}
+
+/**
+ * Synchronous accessor for the loaded identity, for the existing sync call sites.
+ * `loadIdentity()` is awaited at boot, so the cache is populated. Last-resort:
+ * mints a transient in-memory key if somehow called before init, so a render
+ * never crashes.
+ */
+export function getCachedKeypair(): NostrKeypair {
+  if (!_keypair) {
+    const sk = generateSecretKey()
+    _keypair = { publicKey: getPublicKey(sk), secretKey: sk }
+  }
+  return _keypair
+}
+
+/** Explicit, user-confirmed identity reset: generate + persist a NEW key. */
+export async function generateNewIdentity(): Promise<NostrKeypair> {
+  const sk = generateSecretKey()
+  await saveSecretKey(sk)
+  _keypair = { publicKey: getPublicKey(sk), secretKey: sk }
+  // Drop any in-flight boot init so a concurrent loadIdentity() cannot resolve
+  // and overwrite the cache with the pre-reset key.
+  _initPromise = null
+  return _keypair
+}
+
+/** Test-only: drop the in-memory cache + in-flight init to simulate a page reload. */
+export function __resetIdentityCacheForTests(): void {
+  _keypair = null
+  _initPromise = null
+}
 
 export function hasNip07(): boolean {
   return typeof window !== 'undefined' && 'nostr' in window
 }
 
-export function getOrCreateEphemeralKeypair(): NostrKeypair {
-  if (!_ephemeralKeypair) {
-    const sk = generateSecretKey()
-    _ephemeralKeypair = { publicKey: getPublicKey(sk), secretKey: sk }
-  }
-  return _ephemeralKeypair
-}
-
-/** Returns ephemeral keypair. No longer persists to localStorage. */
-export function loadOrCreateKeypair(): NostrKeypair {
-  return getOrCreateEphemeralKeypair()
-}
-
 /**
- * Import a keypair from nsec. Stored in-memory only (lost on page refresh).
- * Users with NIP-07 extensions should use the extension instead.
+ * Import a keypair from nsec and PERSIST it (survives reload). Returns null on an
+ * invalid nsec.
  */
-export function importFromNsec(nsecStr: string): NostrKeypair | null {
+export async function importFromNsec(nsecStr: string): Promise<NostrKeypair | null> {
   try {
     const decoded = nip19.decode(nsecStr.trim())
     if (decoded.type !== 'nsec') return null
     const sk = decoded.data as Uint8Array
-    _ephemeralKeypair = { publicKey: getPublicKey(sk), secretKey: sk }
-    return _ephemeralKeypair
+    await saveSecretKey(sk)
+    _keypair = { publicKey: getPublicKey(sk), secretKey: sk }
+    // Drop any in-flight boot init so it cannot overwrite the imported key.
+    _initPromise = null
+    return _keypair
   } catch {
     return null
   }
@@ -82,7 +136,7 @@ export function hexFromNpubOrHex(input: string): string | null {
 
 /**
  * Sign an arbitrary Nostr event template.
- * Uses NIP-07 extension if available, falls back to in-memory ephemeral key.
+ * Uses NIP-07 extension if available, falls back to session-cached key.
  */
 export async function signEventAsync(template: {
   kind: number
@@ -94,7 +148,7 @@ export async function signEventAsync(template: {
     const ext = (window as unknown as { nostr: { signEvent: (e: unknown) => Promise<SignedReportEvent> } }).nostr
     return ext.signEvent(template)
   }
-  const keypair = getOrCreateEphemeralKeypair()
+  const keypair = getCachedKeypair()
   return finalizeEvent(template, keypair.secretKey) as SignedReportEvent
 }
 
@@ -138,14 +192,14 @@ export async function sha256Hex(input: string): Promise<string> {
 }
 
 /**
- * Get the current user's public key (from NIP-07 or in-memory fallback).
+ * Get the current user's public key (from NIP-07 or session-cached fallback).
  */
 export async function getPublicKeyAsync(): Promise<string> {
   if (hasNip07()) {
     const ext = (window as unknown as { nostr: { getPublicKey: () => Promise<string> } }).nostr
     return ext.getPublicKey()
   }
-  return getOrCreateEphemeralKeypair().publicKey
+  return getCachedKeypair().publicKey
 }
 
 /**

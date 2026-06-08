@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useAppSelector } from '../store'
-import { loadOrCreateKeypair, signReport, voteBindingContent } from '../services/nostrService'
+import { getCachedKeypair, signReport, voteBindingContent } from '../services/nostrService'
 import { VerificationBadges } from './VerificationBadges'
 import type { CommunityReport } from '../../../../shared/types'
 
@@ -19,7 +19,7 @@ export function ReportList() {
   const reports = useAppSelector(s => s.reports.items)
 
   const castVote = useCallback(async (report: CommunityReport, vote: 'CONFIRM' | 'DENY') => {
-    const keypair = loadOrCreateKeypair()
+    const keypair = getCachedKeypair()
     const voteEvent = signReport(voteBindingContent(vote, report.report_id), keypair.secretKey)
 
     let lat: number | null = null
