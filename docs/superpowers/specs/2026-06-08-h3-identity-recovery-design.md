@@ -160,7 +160,8 @@ in the envelope is the forward seam to swap algorithms later.)
    `PBKDF2(passphrase, salt, 600000, SHA-256)`.
 3. AES-GCM-encrypt the serialized payload; assemble the `BackupFile`; return it as a
    `application/json` Blob. `SettingsPage` triggers the download via an object URL.
-4. Record `lastExportedFingerprint` (Part D) in the vault.
+4. Record `lastExportedFingerprint` (Part D) via `saveVaultMeta`, and return the Vault ID
+   (`formatVaultId` of that fingerprint) alongside the Blob so the export screen can display it.
 
 **`importBackup(file: string | object, passphrase): Promise<RestoreResult>`**
 1. Parse + validate `format === "sentinelmesh-vault-backup"` and a known `version`; reject otherwise with a
@@ -174,9 +175,16 @@ in the envelope is the forward seam to swap algorithms later.)
      `_keypair` so the running app immediately uses the restored identity.
    - circles: for each `{id, key}`, `e2eeService.saveCircleKeyWithBackup(id, key)` (live non-extractable
      import + vault upsert) and `circleIdStore.addCircleId(id)`.
-4. Return `{ identityRestored: true, circlesRestored: n, circlesFailed: string[] }` — restore is
-   identity-first (atomic; if identity restore throws, abort before touching circles) then best-effort
-   per-circle, reporting any individual circle that failed so the UI can tell the user precisely.
+4. Return `{ vaultId: string, identityRestored: true, circlesRestored: n, circlesFailed: string[] }` —
+   `vaultId` is `formatVaultId(fingerprintPayload(decryptedPayload))`, computed from the decrypted payload so
+   the UI can show it before the user confirms the restore. Restore is identity-first (atomic; if identity
+   restore throws, abort before touching circles) then best-effort per-circle, reporting any individual
+   circle that failed so the UI can tell the user precisely.
+
+To support showing the Vault ID **before** the destructive write, `importBackup` is split: a pure
+`decryptBackup(file, passphrase): Promise<{ payload, vaultId }>` (parse + decrypt + fingerprint, no writes)
+and `applyRestore(payload): Promise<RestoreResult>` (the fan-out write). `SettingsPage` calls `decryptBackup`,
+shows the Vault ID in the confirm step, then calls `applyRestore` on confirm.
 
 Import is a **full restore that replaces** the device's current identity (e.g., the auto-generated
 first-boot key from Layer 1). `SettingsPage` confirms this destructive replacement before importing.
@@ -186,8 +194,27 @@ first-boot key from Layer 1). `SettingsPage` confirms this destructive replaceme
 A point-in-time backup goes stale when the vault changes (a circle is joined, a key rotates, the identity is
 reset). The vault tracks a **fingerprint** so the UI can nudge a re-export:
 
-- `vaultFingerprint(): Promise<string>` — `SHA-256` hex over `pubkey || "\n" || sorted(circleId + ":" +
-  sha256(key))` for every circle in the vault. Deterministic and order-independent.
+- `fingerprintPayload(payload): Promise<string>` — `SHA-256` hex over `pubkey || "\n" || sorted(circleId +
+  ":" + sha256(key))` for every circle in the `VaultPayload`. Deterministic and order-independent. Pure over
+  a payload so the same function fingerprints the live vault **and** a just-decrypted import.
+- `vaultFingerprint(): Promise<string>` — `fingerprintPayload(loadVault())`.
+
+### Vault ID (human verification)
+
+`formatVaultId(fingerprint): string` renders the first 48 bits (12 hex chars) of a fingerprint as an
+uppercase, hyphen-grouped **Vault ID**, e.g. `8A4C-12F7-9D21`. It is a short checksum of the vault contents,
+**not** a secret: it is a truncated one-way SHA-256 of the *public* pubkey plus per-circle key *hashes*, so
+it exposes no key material and cannot be reversed. Because it is deterministic over the vault contents, the
+same backup always shows the same Vault ID.
+
+Display:
+- **Export screen:** show the current vault's Vault ID (`formatVaultId(vaultFingerprint())`) so the user can
+  note which backup they just made.
+- **Import screen:** after a successful decrypt, compute `formatVaultId(fingerprintPayload(importedPayload))`
+  and show it, so the user can confirm it matches the Vault ID they expected before committing the
+  destructive restore.
+
+This lets a user verify they imported the correct backup file without ever revealing a secret.
 - On `exportBackup`, store `lastExportedFingerprint = vaultFingerprint()` via
   `saveVaultMeta(...)` — the separate `vault-meta` record from Part A.
 - `SettingsPage` computes the current fingerprint and compares against `loadVaultMeta()`:
@@ -205,9 +232,12 @@ no-recovery warning). Layer 2:
 
 - **Replaces** the Layer 1 "there is no recovery yet" warning with a **Backup & Recovery** subsection.
 - **Export backup:** a button → passphrase prompt (enter + confirm, min 12 chars, with a clear "there is no
-  way to recover this passphrase; store it safely" warning) → downloads `sentinelmesh-backup.json`.
-- **Import backup:** a file picker → passphrase prompt → confirm "this will replace your current identity on
-  this device" → restore → success/partial/failure message (including any circles that failed).
+  way to recover this passphrase; store it safely" warning) → downloads `sentinelmesh-backup.json` → shows
+  the **Vault ID** (`8A4C-12F7-9D21`) of the exported vault with a "note this to verify your backup later"
+  hint.
+- **Import backup:** a file picker → passphrase prompt → `decryptBackup` → a confirm step that shows the
+  imported file's **Vault ID** and warns "this will replace your current identity on this device" → on
+  confirm, `applyRestore` → success/partial/failure message (including any circles that failed).
 - **Staleness badge** by the Export button per Part D.
 - Buttons disabled until the Layer 1 async identity load has resolved (same gating pattern as Layer 1).
 
@@ -243,6 +273,10 @@ do:
 - **fingerprint / staleness:** `vaultFingerprint` changes when a circle is added or a key rotated, and
   matches again after re-export; `lastExportedFingerprint` is set by `exportBackup` and lives only in the
   vault (absent from the exported file).
+- **Vault ID:** `formatVaultId` returns the `XXXX-XXXX-XXXX` form (12 uppercase hex, two hyphens); the Vault
+  ID from `exportBackup` equals the `vaultId` from `decryptBackup` of that same file (stable across
+  round-trip); it changes when the vault contents change; and it contains no raw key bytes (assert it is
+  derived only from the fingerprint).
 
 ## Rollout
 
