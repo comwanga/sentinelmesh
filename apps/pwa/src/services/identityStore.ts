@@ -189,9 +189,13 @@ export async function loadOrCreateSecretKey(generate: () => Uint8Array): Promise
   })
 }
 
-/** Delete the whole vault record (explicit identity reset). */
+/** Delete the whole vault record + export metadata (explicit identity reset).
+ *  Dropping vault-meta too means the staleness badge starts from "no backup yet"
+ *  for the new identity rather than comparing against a different identity's
+ *  last-export fingerprint. */
 export async function clearSecretKey(): Promise<void> {
   await idbDelete(SK_ID)
+  await idbDelete(META_ID)
 }
 
 /** Test-only: write a legacy v1 record (raw secret key) to exercise migration.
