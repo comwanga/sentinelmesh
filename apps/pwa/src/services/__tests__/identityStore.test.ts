@@ -145,10 +145,12 @@ describe('identityStore v2 vault', () => {
     expect(Array.from((await loadSecretKey())!)).toEqual(Array.from(sk(4)))
   })
 
-  it('reads a v1 record through the lock-holding boot path without deadlocking', async () => {
-    // loadOrCreateSecretKey runs loadVault INSIDE the init lock. A v1 record's
-    // migration branch must not re-acquire the (non-reentrant) lock, or an
-    // upgrading Layer 1 user hangs at boot. A deadlock would hit the test timeout.
+  it('reads a v1 record through the boot path and returns the existing key', async () => {
+    // loadOrCreateSecretKey runs loadVault INSIDE the init lock. The real-browser
+    // no-deadlock guarantee is a code-structure invariant (loadVault never calls
+    // withInitLock); this env has no Web Locks shim, so the test asserts the
+    // functional outcome: an upgrading Layer 1 user's v1 key is returned and the
+    // generator is NOT run.
     await __writeLegacyV1ForTests(sk(4))
     const got = await loadOrCreateSecretKey(() => sk(99)) // generator must NOT run
     expect(Array.from(got)).toEqual(Array.from(sk(4)))

@@ -61,7 +61,8 @@ function idbDelete(id: string): Promise<void> {
 }
 
 // Run fn under the 'sentinelmesh-identity-init' Web Lock when available.
-// All public mutating entry points acquire this lock at their top level.
+// Every public entry point that WRITES the vault record acquires this lock at
+// its top level (clearSecretKey only deletes and is intentionally lock-free).
 // NEVER call withInitLock inside a function that is itself called under the
 // same lock — the Web Locks API is not reentrant and nesting would deadlock.
 function withInitLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -190,8 +191,11 @@ export async function clearSecretKey(): Promise<void> {
   await idbDelete(SK_ID)
 }
 
-/** Test-only: write a legacy v1 record (raw secret key) to exercise migration. */
+/** Test-only: write a legacy v1 record (raw secret key) to exercise migration.
+ *  Guarded so it can never run in a production build (tree-shaking removes it
+ *  when unused; this throws if somehow reached). */
 export async function __writeLegacyV1ForTests(sk: Uint8Array): Promise<void> {
+  if (import.meta.env.PROD) throw new Error('__writeLegacyV1ForTests is test-only')
   await withInitLock(async () => {
     const wrapKey = await getOrCreateWrapKey()
     const iv = crypto.getRandomValues(new Uint8Array(12))
