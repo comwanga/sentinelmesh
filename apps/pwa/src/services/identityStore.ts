@@ -111,7 +111,8 @@ export async function loadSecretKey(): Promise<Uint8Array | null> {
   try {
     const wrapKey = await idbGet<CryptoKey>(WRAP_KEY_ID)
     const rec = await idbGet<VaultRecord>(SK_ID)
-    if (!wrapKey || !rec || rec.version !== VAULT_VERSION || !rec.blob || rec.blob.byteLength < 28) {
+    // A valid record is IV(12) + AES-GCM(32-byte secret key)(32) + tag(16) = 60 bytes.
+    if (!wrapKey || !rec || rec.version !== VAULT_VERSION || !rec.blob || rec.blob.byteLength < 60) {
       return null
     }
     const iv = rec.blob.slice(0, 12)
