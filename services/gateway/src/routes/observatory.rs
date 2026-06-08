@@ -67,13 +67,17 @@ async fn vouchers(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let rows: Vec<(String, i64, i64, i64, bool, Option<i32>)> = sqlx::query_as(
+        // Dedupe (voucher, vouchee) pairs FIRST: vouches is append-only, so a
+        // revoke-then-re-vouch leaves duplicate rows for the same vouchee. Summing
+        // the join directly would double-count that vouchee's accurate/rejected
+        // reports. The DISTINCT inner query collapses each pair to one row.
         "SELECT v.voucher_pubkey,
                 COUNT(DISTINCT v.vouchee_pubkey)                AS vouchee_count,
                 COALESCE(SUM(u.accurate_reports), 0)            AS accurate,
                 COALESCE(SUM(u.rejected_reports), 0)            AS rejected,
                 COALESCE(BOOL_OR(vu.vouching_suspended), false) AS suspended,
                 MAX(vu.vouch_budget_override)                   AS budget_override
-           FROM vouches v
+           FROM (SELECT DISTINCT voucher_pubkey, vouchee_pubkey FROM vouches) v
            LEFT JOIN users u  ON u.nostr_pubkey  = v.vouchee_pubkey
            LEFT JOIN users vu ON vu.nostr_pubkey = v.voucher_pubkey
           GROUP BY v.voucher_pubkey
