@@ -56,9 +56,23 @@ function idbDelete(id: string): Promise<void> {
     tx.objectStore(STORE).delete(id)
     tx.oncomplete = () => { db.close(); resolve() }
     tx.onerror = () => { db.close(); reject(tx.error) }
+    tx.onabort = () => { db.close(); reject(tx.error) }
   }))
 }
 
+// Run fn under the 'sentinelmesh-identity-init' Web Lock when available.
+// All public mutating entry points acquire this lock at their top level.
+// NEVER call withInitLock inside a function that is itself called under the
+// same lock — the Web Locks API is not reentrant and nesting would deadlock.
+function withInitLock<T>(fn: () => Promise<T>): Promise<T> {
+  if (typeof navigator !== 'undefined' && 'locks' in navigator && navigator.locks) {
+    return navigator.locks.request('sentinelmesh-identity-init', fn) as unknown as Promise<T>
+  }
+  return fn()
+}
+
+// Lock-free internal: read existing wrap key or generate + persist a new one.
+// Called only from within an already-held init lock.
 async function getOrCreateWrapKey(): Promise<CryptoKey> {
   const existing = await idbGet<CryptoKey>(WRAP_KEY_ID)
   if (existing) return existing
@@ -68,8 +82,10 @@ async function getOrCreateWrapKey(): Promise<CryptoKey> {
   return key
 }
 
-/** Encrypt and store the raw 32-byte Nostr secret key as a versioned envelope. */
-export async function saveSecretKey(sk: Uint8Array): Promise<void> {
+// Lock-free internal: encrypt sk with the wrap key and write the vault record.
+// Must only be called from within an already-held init lock so that wrap-key
+// creation and ciphertext write are serialized cross-tab.
+async function saveSecretKeyUnlocked(sk: Uint8Array): Promise<void> {
   const wrapKey = await getOrCreateWrapKey()
   const iv = crypto.getRandomValues(new Uint8Array(12))
   const ciphertext = await crypto.subtle.encrypt(
@@ -80,6 +96,13 @@ export async function saveSecretKey(sk: Uint8Array): Promise<void> {
   blob.set(new Uint8Array(ciphertext), iv.byteLength)
   const record: VaultRecord = { version: VAULT_VERSION, blob }
   await idbPut(SK_ID, record)
+}
+
+/** Encrypt and store the raw 32-byte Nostr secret key as a versioned envelope.
+ *  Serialized under the init lock so concurrent tab calls can't clobber the
+ *  wrap key and make earlier ciphertext undecryptable. */
+export async function saveSecretKey(sk: Uint8Array): Promise<void> {
+  return withInitLock(() => saveSecretKeyUnlocked(sk))
 }
 
 /** Load and decrypt the stored secret key, or null if none / unknown version /
@@ -112,19 +135,19 @@ export async function loadSecretKey(): Promise<Uint8Array | null> {
  * was actually persisted if another context wrote first. (Crypto cannot run
  * inside an IndexedDB transaction — its async await would auto-commit the tx — so
  * a Web Lock, not a single IDB transaction, is the cross-tab guard.)
+ *
+ * Lock design: withInitLock is acquired once at the top of this function.
+ * The body calls the lock-free saveSecretKeyUnlocked so there is no nested
+ * same-lock acquisition and no deadlock risk.
  */
 export async function loadOrCreateSecretKey(generate: () => Uint8Array): Promise<Uint8Array> {
-  const run = async (): Promise<Uint8Array> => {
+  return withInitLock(async () => {
     const existing = await loadSecretKey()
     if (existing) return existing
     const sk = generate()
-    await saveSecretKey(sk)
+    await saveSecretKeyUnlocked(sk)
     return (await loadSecretKey()) ?? sk
-  }
-  if (typeof navigator !== 'undefined' && 'locks' in navigator && navigator.locks) {
-    return navigator.locks.request('sentinelmesh-identity-init', run) as unknown as Promise<Uint8Array>
-  }
-  return run()
+  })
 }
 
 /** Delete the stored secret key (used by the explicit identity reset). */

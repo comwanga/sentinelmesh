@@ -10,6 +10,24 @@ function sampleKey(): Uint8Array {
   return k
 }
 
+// Open the raw IDB vault record without going through identityStore helpers.
+function readRawVault(): Promise<{ version: number; blob: Uint8Array } | null> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('sentinelmesh-identity', 1)
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains('keys')) req.result.createObjectStore('keys')
+    }
+    req.onsuccess = () => {
+      const db = req.result
+      const tx = db.transaction('keys', 'readonly')
+      const r = tx.objectStore('keys').get('nostr-sk')
+      r.onsuccess = () => { db.close(); resolve((r.result as any) ?? null) }
+      r.onerror = () => { db.close(); reject(r.error) }
+    }
+    req.onerror = () => reject(req.error)
+  })
+}
+
 describe('identityStore', () => {
   beforeEach(async () => {
     await clearSecretKey()
@@ -30,8 +48,24 @@ describe('identityStore', () => {
   it('does not store the secret key in plaintext (ciphertext differs from the key)', async () => {
     const sk = sampleKey()
     await saveSecretKey(sk)
-    const loaded = await loadSecretKey()
-    expect(Array.from(loaded!)).toEqual(Array.from(sk))
+
+    const rec = await readRawVault()
+    expect(rec).not.toBeNull()
+    expect(rec!.version).toBe(1)
+    // Blob is IV (12) + GCM ciphertext (32) + GCM tag (16) = 60 bytes minimum.
+    expect(rec!.blob.byteLength).toBeGreaterThan(32)
+
+    // The raw 32 key bytes must NOT appear as a contiguous subsequence of the blob.
+    const blob = rec!.blob
+    let found = false
+    outer: for (let i = 0; i <= blob.byteLength - sk.byteLength; i++) {
+      for (let j = 0; j < sk.byteLength; j++) {
+        if (blob[i + j] !== sk[j]) continue outer
+      }
+      found = true
+      break
+    }
+    expect(found).toBe(false)
   })
 
   it('clearSecretKey removes the stored key', async () => {
