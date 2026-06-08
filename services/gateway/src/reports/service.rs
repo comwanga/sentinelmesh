@@ -317,6 +317,10 @@ pub async fn apply_status_transition(
         .await?;
 
     if new_status == "VERIFIED" {
+        // Postgres evaluates every SET RHS against the PRE-update row, so both
+        // reputation_score and effective_reputation_score read the OLD earned score
+        // and land on old+10 = the new earned score. That resets effective to earned
+        // (decay reset) regardless of SET-clause order.
         let new_score: i64 = sqlx::query_scalar(
             "UPDATE users
              SET accurate_reports = accurate_reports + 1,
