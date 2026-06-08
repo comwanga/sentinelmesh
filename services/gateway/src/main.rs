@@ -9,6 +9,7 @@ mod reports;
 mod routes;
 mod subscribers;
 mod trust;
+mod vouches;
 mod ws;
 
 use axum::http::{HeaderName, Method};

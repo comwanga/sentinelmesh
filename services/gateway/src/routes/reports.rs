@@ -31,14 +31,14 @@ use crate::{
 // ---------------------------------------------------------------------------
 
 #[derive(Clone)]
-struct RateLimiter(Arc<DashMap<String, (u32, Instant)>>, u32, Duration);
+pub(crate) struct RateLimiter(Arc<DashMap<String, (u32, Instant)>>, u32, Duration);
 
 impl RateLimiter {
-    fn new(max: u32, window: Duration) -> Self {
+    pub(crate) fn new(max: u32, window: Duration) -> Self {
         Self(Arc::new(DashMap::new()), max, window)
     }
 
-    fn check(&self, key: &str) -> bool {
+    pub(crate) fn check(&self, key: &str) -> bool {
         let now = Instant::now();
         let mut entry = self.0.entry(key.to_string()).or_insert((0, now));
         if now.duration_since(entry.1) >= self.2 {
@@ -107,7 +107,7 @@ struct CastVoteBody {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn extract_ip(headers: &HeaderMap, trust_proxy: bool) -> String {
+pub(crate) fn extract_ip(headers: &HeaderMap, trust_proxy: bool) -> String {
     if !trust_proxy {
         return "direct".to_string(); // disables IP-based RL when not behind a trusted proxy
     }
@@ -121,7 +121,7 @@ fn extract_ip(headers: &HeaderMap, trust_proxy: bool) -> String {
 
 /// Deserialise a raw JSON value as a nostr Event, verify pubkey and signature,
 /// and reject events older than max_age_secs seconds.
-fn verify_nostr_event(
+pub(crate) fn verify_nostr_event(
     raw: &serde_json::Value,
     expected_pubkey: &str,
     max_age_secs: i64,
@@ -169,7 +169,7 @@ fn vote_binding_content(vote: &str, report_id: &Uuid) -> String {
 
 /// Per-event replay guard: SET NX with a TTL covering the freshness window.
 /// Returns BadRequest on replay, Internal if Redis is unavailable (fail closed).
-async fn replay_guard(
+pub(crate) async fn replay_guard(
     redis: &redis::aio::ConnectionManager,
     event_id: &str,
 ) -> Result<(), AppError> {

@@ -19,6 +19,8 @@ pub enum AppError {
     Forbidden,
     #[error("rate limited")]
     RateLimited,
+    #[error("{0}")]
+    Conflict(String),
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -31,6 +33,7 @@ impl IntoResponse for AppError {
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", false),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "FORBIDDEN", false),
             AppError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED", true),
+            AppError::Conflict(_) => (StatusCode::CONFLICT, "CONFLICT", false),
             AppError::Internal(e) => {
                 tracing::error!("internal error: {e:#}");
                 (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", true)
