@@ -1,6 +1,8 @@
 // Circle keys are stored as non-extractable CryptoKey objects in IndexedDB.
 // localStorage can only hold strings (forcing an extractable, exfiltratable key),
 // so it is no longer used for keys — XSS cannot export a non-extractable key.
+import { upsertCircleKey, removeVaultCircle } from './identityStore'
+
 const LEGACY_KEY_PREFIX = 'sentinelmesh:circle_key:'
 const DB_NAME = 'sentinelmesh'
 const DB_VERSION = 1
@@ -75,6 +77,22 @@ export async function saveCircleKey(circleId: string, key: CryptoKey): Promise<v
   if (typeof localStorage !== 'undefined') localStorage.removeItem(LEGACY_KEY_PREFIX + circleId)
 }
 
+/**
+ * Persist a circle key from its RAW bytes: import it non-extractably into the
+ * live store (XSS cannot export it) AND record the raw bytes in the device vault
+ * so the backup can carry it (H-3 Layer 2). The caller's rawKey buffer is zeroed.
+ * Use this at every site that originates a circle key (create, rotate, restore).
+ */
+export async function saveCircleKeyWithBackup(circleId: string, rawKey: Uint8Array): Promise<void> {
+  const liveKey = await crypto.subtle.importKey(
+    'raw', rawKey as unknown as BufferSource, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'],
+  )
+  await idbPut(circleId, liveKey)
+  if (typeof localStorage !== 'undefined') localStorage.removeItem(LEGACY_KEY_PREFIX + circleId)
+  await upsertCircleKey(circleId, rawKey)
+  new Uint8Array(rawKey.buffer, rawKey.byteOffset, rawKey.byteLength).fill(0)
+}
+
 /** Load a circle key (non-extractable). Migrates a legacy localStorage key once. */
 export async function loadCircleKey(circleId: string): Promise<CryptoKey | null> {
   const existing = await idbGet(circleId)
@@ -95,22 +113,24 @@ export async function loadCircleKey(circleId: string): Promise<CryptoKey | null>
   return null
 }
 
-/** Delete a circle key from storage. */
+/** Delete a circle key from storage (live IDB store + vault backup). */
 export async function clearCircleKey(circleId: string): Promise<void> {
   await idbDelete(circleId)
   if (typeof localStorage !== 'undefined') localStorage.removeItem(LEGACY_KEY_PREFIX + circleId)
+  await removeVaultCircle(circleId)
 }
 
 /**
  * Rotate the circle key after a membership change (e.g. removing a member):
- * generate a fresh key, persist it non-extractably, and return the fresh
- * EXTRACTABLE key so the caller can re-wrap it for the remaining members. A
- * removed member keeps only the old key, which no longer decrypts new location
- * blobs — forward secrecy across membership changes.
+ * generate a fresh key, persist it non-extractably (vault updated too), and
+ * return the fresh EXTRACTABLE key so the caller can re-wrap it for the
+ * remaining members. A removed member keeps only the old key, which no longer
+ * decrypts new location blobs — forward secrecy across membership changes.
  */
 export async function rotateCircleKey(circleId: string): Promise<CryptoKey> {
-  const fresh = await generateCircleKey()
-  await saveCircleKey(circleId, fresh)
+  const fresh = await generateCircleKey() // extractable
+  const raw = new Uint8Array(await crypto.subtle.exportKey('raw', fresh))
+  await saveCircleKeyWithBackup(circleId, raw) // zeroes the raw copy; vault updated
   return fresh
 }
 

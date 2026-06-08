@@ -80,6 +80,14 @@ export async function generateNewIdentity(): Promise<NostrKeypair> {
   return _keypair
 }
 
+/** Restore an identity from a raw secret key (backup restore): persist + cache. */
+export async function restoreIdentityFromSecretKey(sk: Uint8Array): Promise<NostrKeypair> {
+  await saveSecretKey(sk)
+  _keypair = { publicKey: getPublicKey(sk), secretKey: sk }
+  _initPromise = null
+  return _keypair
+}
+
 /** Test-only: drop the in-memory cache + in-flight init to simulate a page reload. */
 export function __resetIdentityCacheForTests(): void {
   _keypair = null
