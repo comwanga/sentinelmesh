@@ -131,6 +131,7 @@ mod tests {
     fn multiple_when_more_than_one() {
         assert_eq!(classify(true, true, false), PersonhoodSource::Multiple);
         assert_eq!(classify(true, false, true), PersonhoodSource::Multiple);
+        assert_eq!(classify(false, true, true), PersonhoodSource::Multiple);
         assert_eq!(classify(true, true, true), PersonhoodSource::Multiple);
     }
     #[test]
