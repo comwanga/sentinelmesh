@@ -88,6 +88,11 @@ fn compute_tier(score: i64) -> &'static str {
     }
 }
 
+/// Public wrapper so the trust worker can map an effective score to a tier.
+pub fn compute_tier_pub(score: i64) -> &'static str {
+    compute_tier(score)
+}
+
 /// Resolve a report's author pubkey via the reputation pool (the only pool that
 /// can read report_authors). `None` if the report does not exist.
 pub async fn report_author(reputation_pool: &PgPool, report_id: Uuid) -> Result<Option<String>> {
