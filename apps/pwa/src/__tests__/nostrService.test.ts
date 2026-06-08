@@ -24,6 +24,7 @@ import {
   generateNewIdentity,
   __resetIdentityCacheForTests,
   importFromNsec,
+  restoreIdentityFromSecretKey,
   signReport,
   reportBindingContent,
   voteBindingContent,
@@ -36,6 +37,7 @@ import {
 } from '../services/nostrService'
 
 import { loadSecretKey, clearSecretKey } from '../services/identityStore'
+import { generateSecretKey } from 'nostr-tools'
 
 describe('loadIdentity (persistent)', () => {
   beforeEach(async () => { await clearSecretKey(); __resetIdentityCacheForTests() })
@@ -209,5 +211,18 @@ describe('vouch binding strings (must byte-match the gateway)', () => {
   })
   it('vouchRevokeBindingContent is domain-separated', () => {
     expect(vouchRevokeBindingContent('abc')).toBe('sentinelmesh:vouch-revoke:v1:abc')
+  })
+})
+
+describe('restoreIdentityFromSecretKey', () => {
+  beforeEach(async () => { await clearSecretKey(); __resetIdentityCacheForTests() })
+
+  it('persists the given key and updates the cache (survives reload)', async () => {
+    const seed = generateSecretKey()
+    const kp = await restoreIdentityFromSecretKey(seed)
+    expect(kp.publicKey).toMatch(/^[0-9a-f]{64}$/)
+    expect(getCachedKeypair().publicKey).toBe(kp.publicKey)
+    __resetIdentityCacheForTests()
+    expect((await loadIdentity()).publicKey).toBe(kp.publicKey)
   })
 })
