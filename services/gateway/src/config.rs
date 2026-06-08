@@ -580,4 +580,10 @@ mod tests {
         assert_eq!(parse_i32_env_or(None, 0), 0);
         assert_eq!(parse_i32_env_or(Some("5".into()), 0), 5);
     }
+    #[test]
+    fn tick_secs_parses() {
+        assert_eq!(parse_u64_env_or(None, 3600), 3600);
+        assert_eq!(parse_u64_env_or(Some("60".into()), 3600), 60);
+        assert_eq!(parse_u64_env_or(Some("bad".into()), 3600), 3600);
+    }
 }
