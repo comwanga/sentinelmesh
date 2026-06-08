@@ -85,6 +85,24 @@ async fn post_vouch(
     }
     let basis = if is_root { "ROOT" } else { "EARNED" };
 
+    // Advisory accountability (C-1b-1): operators can suspend a voucher or set a
+    // per-voucher budget override. Genesis roots are never auto-acted-on, but an
+    // operator may still set these fields manually.
+    let (suspended, override_budget): (bool, Option<i32>) = sqlx::query_as(
+        "SELECT vouching_suspended, vouch_budget_override FROM users WHERE nostr_pubkey = $1",
+    )
+    .bind(&body.voucher_pubkey)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| AppError::Internal(e.into()))?
+    .unwrap_or((false, None));
+    if suspended {
+        return Err(AppError::Forbidden);
+    }
+    let effective_budget = override_budget
+        .map(|b| b as i64)
+        .unwrap_or(state.config.vouch_budget as i64);
+
     // Atomic budget-check + insert (serialized per voucher) — no TOCTOU overrun.
     match crate::vouches::issue_vouch(
         &state.db,
@@ -92,7 +110,7 @@ async fn post_vouch(
         &body.vouchee_pubkey,
         basis,
         &event_id,
-        state.config.vouch_budget as i64,
+        effective_budget,
     )
     .await
     .map_err(AppError::Internal)?

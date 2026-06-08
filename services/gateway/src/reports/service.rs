@@ -88,6 +88,11 @@ fn compute_tier(score: i64) -> &'static str {
     }
 }
 
+/// Public wrapper so the trust worker can map an effective score to a tier.
+pub fn compute_tier_pub(score: i64) -> &'static str {
+    compute_tier(score)
+}
+
 /// Resolve a report's author pubkey via the reputation pool (the only pool that
 /// can read report_authors). `None` if the report does not exist.
 pub async fn report_author(reputation_pool: &PgPool, report_id: Uuid) -> Result<Option<String>> {
@@ -312,10 +317,16 @@ pub async fn apply_status_transition(
         .await?;
 
     if new_status == "VERIFIED" {
+        // Postgres evaluates every SET RHS against the PRE-update row, so both
+        // reputation_score and effective_reputation_score read the OLD earned score
+        // and land on old+10 = the new earned score. That resets effective to earned
+        // (decay reset) regardless of SET-clause order.
         let new_score: i64 = sqlx::query_scalar(
             "UPDATE users
              SET accurate_reports = accurate_reports + 1,
-                 reputation_score = reputation_score + 10
+                 reputation_score = reputation_score + 10,
+                 effective_reputation_score = reputation_score + 10,
+                 last_verified_at = NOW()
              WHERE nostr_pubkey = $1
              RETURNING reputation_score",
         )
@@ -329,6 +340,16 @@ pub async fn apply_status_transition(
             .bind(new_tier)
             .execute(&mut *tx)
             .await?;
+    } else if new_status == "REJECTED" {
+        // Feeds advisory voucher_quality (C-1b-1). The report author keeps no
+        // reputation penalty here (consensus already rejected the report); only
+        // the rejected counter is bumped for accountability analytics.
+        sqlx::query(
+            "UPDATE users SET rejected_reports = rejected_reports + 1 WHERE nostr_pubkey = $1",
+        )
+        .bind(reporter_pubkey)
+        .execute(&mut *tx)
+        .await?;
     }
 
     tx.commit().await?;

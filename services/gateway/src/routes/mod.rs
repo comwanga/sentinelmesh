@@ -3,6 +3,7 @@ pub mod circles;
 pub mod events;
 pub mod location_blobs;
 pub mod maps;
+pub mod observatory;
 pub mod photos;
 pub mod push;
 pub mod reports;
@@ -26,4 +27,5 @@ pub fn build_router() -> Router<AppState> {
         .nest("/api/maps", maps::router())
         .nest("/api/acoustic", acoustic::router())
         .nest("/api/vouches", vouches::router())
+        .nest("/api/admin/observatory", observatory::router())
 }

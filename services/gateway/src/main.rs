@@ -142,6 +142,23 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Spawn trust-hygiene worker (C-1b-1): periodic metrics snapshot (always) +
+    // gated reputation decay. Snapshots run even when decay is dark-launched.
+    {
+        let pool_trust = db.clone();
+        let tick = config.trust_worker_tick_secs;
+        let cfg = subscribers::trust_worker::DecayConfig {
+            enabled: config.reputation_decay_enabled,
+            grace_days: config.reputation_decay_grace_days,
+            horizon_days: config.reputation_decay_horizon_days,
+            floor: config.reputation_decay_floor,
+            retention_days: config.observatory_snapshot_retention_days,
+        };
+        tokio::spawn(async move {
+            subscribers::trust_worker::run(pool_trust, tick, cfg).await;
+        });
+    }
+
     // Spawn retention worker (acoustic coordinate degradation + event expiry).
     // Always on — it is a privacy/safety hygiene control (audit AC-5, AC-7).
     {
