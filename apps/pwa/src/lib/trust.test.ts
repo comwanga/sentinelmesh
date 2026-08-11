@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { trustStateOf, isUnverified, trustStyle } from './trust'
 
 describe('trust presentation helpers', () => {
-  it('defaults a missing trust_state to confirmed', () => {
-    expect(trustStateOf({ trust_state: undefined })).toBe('confirmed')
-    expect(trustStateOf({})).toBe('confirmed')
+  it('defaults a missing trust_state to heuristic', () => {
+    expect(trustStateOf({ trust_state: undefined })).toBe('heuristic')
+    expect(trustStateOf({})).toBe('heuristic')
   })
 
   it('passes through an explicit trust_state', () => {
@@ -16,7 +16,7 @@ describe('trust presentation helpers', () => {
     expect(isUnverified({ trust_state: 'heuristic' })).toBe(true)
     expect(isUnverified({ trust_state: 'corroborating' })).toBe(true)
     expect(isUnverified({ trust_state: 'confirmed' })).toBe(false)
-    expect(isUnverified({})).toBe(false) // missing == confirmed
+    expect(isUnverified({})).toBe(true)
   })
 
   it('mutes unverified markers and labels heuristic as an automated detection', () => {

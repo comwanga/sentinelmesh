@@ -91,8 +91,7 @@ export function AlertsSheet() {
             events.map(event => (
               <AlertCard
                 key={event.id}
-                // TODO: wire to bookmarks slice when implemented
-                {...safetyEventToCardProps(event, () => {})}
+                {...safetyEventToCardProps(event)}
               />
             ))
           )}

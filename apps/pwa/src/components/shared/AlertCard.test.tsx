@@ -1,20 +1,14 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import type { AlertCardProps } from './AlertCard'
 import { AlertCard } from './AlertCard'
 
 const base: AlertCardProps = {
-  eventId: 'e1',
   eventType: 'SECURITY_INCIDENT',
   title: 'Gunshots reported',
   location: 'Pangani, Nairobi',
   timestamp: Date.now() - 120_000,
-  confidence: 0.86,
-  rating: 4.0,
-  status: 'VERIFIED',
+  status: 'CONFIRMED',
   trustState: 'confirmed',
-  sources: ['NLP', 'Community'],
-  voteCount: 12,
-  onBookmark: vi.fn(),
 }
 
 describe('AlertCard', () => {
@@ -24,40 +18,23 @@ describe('AlertCard', () => {
     expect(screen.getByText('Pangani, Nairobi')).toBeInTheDocument()
   })
 
-  it('renders VERIFIED status badge', () => {
-    render(<AlertCard {...base} status="VERIFIED" />)
-    expect(screen.getByText('VERIFIED')).toBeInTheDocument()
+  it('renders CONFIRMED status badge', () => {
+    render(<AlertCard {...base} status="CONFIRMED" />)
+    expect(screen.getByText('CONFIRMED')).toBeInTheDocument()
   })
 
-  it('renders PENDING status badge', () => {
-    render(<AlertCard {...base} status="PENDING" />)
-    expect(screen.getByText('PENDING')).toBeInTheDocument()
-  })
-
-  it('renders confidence percentage', () => {
-    render(<AlertCard {...base} confidence={0.86} />)
-    expect(screen.getByText(/86% confidence/)).toBeInTheDocument()
-  })
-
-  it('renders all source tags', () => {
-    render(<AlertCard {...base} sources={['NLP', 'Radio', 'Community']} />)
-    expect(screen.getByText('NLP')).toBeInTheDocument()
-    expect(screen.getByText('Radio')).toBeInTheDocument()
-    expect(screen.getByText('Community')).toBeInTheDocument()
-  })
-
-  it('calls onBookmark with eventId when bookmark clicked', () => {
-    const onBookmark = vi.fn()
-    render(<AlertCard {...base} onBookmark={onBookmark} />)
-    fireEvent.click(screen.getByLabelText('bookmark'))
-    expect(onBookmark).toHaveBeenCalledWith('e1')
+  it('does not invent confidence, ratings, or sources', () => {
+    render(<AlertCard {...base} />)
+    expect(screen.queryByText(/confidence/)).not.toBeInTheDocument()
+    expect(screen.queryByText('NLP')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('bookmark')).not.toBeInTheDocument()
   })
 
   it('shows the Automated Detection badge for heuristic events instead of a status', () => {
-    render(<AlertCard {...base} status="VERIFIED" trustState="heuristic" />)
+    render(<AlertCard {...base} status="UNVERIFIED" trustState="heuristic" />)
     expect(screen.getByText('Automated Detection')).toBeInTheDocument()
     // the heuristic badge replaces the trust status pill
-    expect(screen.queryByText('VERIFIED')).not.toBeInTheDocument()
+    expect(screen.queryByText('CONFIRMED')).not.toBeInTheDocument()
   })
 
   it('flags corroborating events as still automated', () => {
@@ -66,8 +43,8 @@ describe('AlertCard', () => {
   })
 
   it('shows the normal status badge for confirmed events', () => {
-    render(<AlertCard {...base} status="VERIFIED" trustState="confirmed" />)
-    expect(screen.getByText('VERIFIED')).toBeInTheDocument()
+    render(<AlertCard {...base} status="CONFIRMED" trustState="confirmed" />)
+    expect(screen.getByText('CONFIRMED')).toBeInTheDocument()
     expect(screen.queryByText('Automated Detection')).not.toBeInTheDocument()
   })
 })

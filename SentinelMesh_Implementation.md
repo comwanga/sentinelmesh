@@ -1,6 +1,8 @@
 # SentinelMesh
 ## Complete Implementation Specification
 
+> **Historical design document:** this file is not the current release specification. Several described capabilities are incomplete or disabled. Use [`docs/V2_SCOPE.md`](docs/V2_SCOPE.md) and the root README for the active V2 product boundary.
+
 > *A privacy-first, blockchain-verified public safety intelligence layer for Kenya.*
 > *Aggregates open signals and opt-in community data to give ordinary people the situational awareness that only governments and corporations currently have.*
 

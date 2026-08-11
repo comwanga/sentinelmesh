@@ -3,27 +3,20 @@ import { MapFeatureStrip } from './MapFeatureStrip'
 import { vi } from 'vitest'
 
 describe('MapFeatureStrip', () => {
-  it('renders 5 feature cards', () => {
+  it('renders only the core report action by default', () => {
     const noop = vi.fn()
     render(<MapFeatureStrip onReport={noop} onAcoustic={noop} onCircles={noop} onRoutes={noop} onHomeRoute={noop} />)
     expect(screen.getByText('Report Incident')).toBeInTheDocument()
-    expect(screen.getByText('Acoustic Detect')).toBeInTheDocument()
-    expect(screen.getByText('Family Circles')).toBeInTheDocument()
-    expect(screen.getByText('Escape Routes')).toBeInTheDocument()
-    expect(screen.getByText('Navigate Home')).toBeInTheDocument()
+    expect(screen.queryByText('Acoustic Detect')).not.toBeInTheDocument()
+    expect(screen.queryByText('Family Circles')).not.toBeInTheDocument()
+    expect(screen.queryByText('Route Preview')).not.toBeInTheDocument()
+    expect(screen.queryByText('Navigate Home')).not.toBeInTheDocument()
   })
-  it('calls onAcoustic when Acoustic Detect clicked', () => {
-    const onAcoustic = vi.fn()
+  it('calls onReport when Report Incident is clicked', () => {
+    const onReport = vi.fn()
     const noop = vi.fn()
-    render(<MapFeatureStrip onReport={noop} onAcoustic={onAcoustic} onCircles={noop} onRoutes={noop} onHomeRoute={noop} />)
-    fireEvent.click(screen.getByText('Acoustic Detect'))
-    expect(onAcoustic).toHaveBeenCalledOnce()
-  })
-  it('calls onHomeRoute when Navigate Home clicked', () => {
-    const onHomeRoute = vi.fn()
-    const noop = vi.fn()
-    render(<MapFeatureStrip onReport={noop} onAcoustic={noop} onCircles={noop} onRoutes={noop} onHomeRoute={onHomeRoute} />)
-    fireEvent.click(screen.getByText('Navigate Home'))
-    expect(onHomeRoute).toHaveBeenCalledOnce()
+    render(<MapFeatureStrip onReport={onReport} onAcoustic={noop} onCircles={noop} onRoutes={noop} onHomeRoute={noop} />)
+    fireEvent.click(screen.getByText('Report Incident'))
+    expect(onReport).toHaveBeenCalledOnce()
   })
 })

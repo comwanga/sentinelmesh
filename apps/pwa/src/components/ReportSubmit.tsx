@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { getCachedKeypair, signReport, reportBindingContent } from '../services/nostrService'
 import { compressAndStrip, blurFaces, uploadToIPFS } from '../services/photoService'
+import { experimentalFeatures } from '../config/features'
 
 const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
 
@@ -44,7 +45,7 @@ export function ReportSubmit({ onClose, linkedEventId }: Props) {
     setSubmitState('submitting')
 
     let photoCid: string | null = null
-    const file = fileRef.current?.files?.[0]
+    const file = experimentalFeatures.photos ? fileRef.current?.files?.[0] : undefined
     if (file) {
       try {
         const compressed = await compressAndStrip(file)
@@ -124,11 +125,15 @@ export function ReportSubmit({ onClose, linkedEventId }: Props) {
         placeholder="Describe what you see…"
       />
 
-      <label style={labelStyle}>Photo (optional)</label>
-      <input ref={fileRef} type="file" accept="image/*" style={{ marginBottom: 4, fontSize: 11, color: '#94a3b8', width: '100%' }} />
-      <p style={{ margin: '0 0 12px', fontSize: 10, color: '#4a5568', fontFamily: "'Courier New', monospace" }}>
-        EXIF data and faces removed in browser before upload.
-      </p>
+      {experimentalFeatures.photos && (
+        <>
+          <label style={labelStyle}>Photo (experimental)</label>
+          <input ref={fileRef} type="file" accept="image/*" style={{ marginBottom: 4, fontSize: 11, color: '#94a3b8', width: '100%' }} />
+          <p style={{ margin: '0 0 12px', fontSize: 10, color: '#4a5568', fontFamily: "'Courier New', monospace" }}>
+            EXIF removal and face blurring are best effort. Review the image before upload.
+          </p>
+        </>
+      )}
 
       {errorMsg && (
         <p style={{ margin: '0 0 8px', color: '#FF2D2D', fontSize: 11, fontFamily: "'Courier New', monospace" }}>

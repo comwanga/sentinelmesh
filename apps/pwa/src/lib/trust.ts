@@ -4,11 +4,11 @@ import type { TrustState, SafetyEvent } from '../../../../shared/types'
 // on the map immediately as `heuristic` (clearly labeled "Automated Detection"),
 // becomes `corroborating` once a second independent source agrees, and only
 // reaches `confirmed` — standard verified styling — after cross-channel
-// agreement. Anything without a trust_state is treated as confirmed (legacy
-// human/community events and acoustic confirmations).
+// agreement. Missing trust data fails safe as heuristic rather than implying
+// that an event has been confirmed.
 
 export function trustStateOf(e: Pick<SafetyEvent, 'trust_state'>): TrustState {
-  return e.trust_state ?? 'confirmed'
+  return e.trust_state ?? 'heuristic'
 }
 
 /** True while a detection has not yet earned CONFIRMED — i.e. it is automated and unverified. */

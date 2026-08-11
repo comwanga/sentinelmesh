@@ -1,11 +1,12 @@
 import { NavLink } from 'react-router-dom'
 import { Map, Bell, FileText, Users, Settings, type LucideIcon } from 'lucide-react'
+import { experimentalFeatures } from '../../config/features'
 
 const tabs: Array<{ path: string; label: string; Icon: LucideIcon }> = [
   { path: '/map',      label: 'Map',     Icon: Map },
   { path: '/alerts',   label: 'Alerts',  Icon: Bell },
   { path: '/reports',  label: 'Report',  Icon: FileText },
-  { path: '/circles',  label: 'Family',  Icon: Users },
+  ...(experimentalFeatures.circles ? [{ path: '/circles', label: 'Family', Icon: Users }] : []),
   { path: '/settings', label: 'Profile', Icon: Settings },
 ]
 

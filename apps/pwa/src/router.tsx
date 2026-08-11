@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppShell } from './components/shell/AppShell'
 import { LiveMapPage } from './pages/LiveMapPage'
 import { CirclesPage } from './pages/CirclesPage'
@@ -6,6 +6,7 @@ import { AlertsPage } from './pages/AlertsPage'
 import { InsightsPage } from './pages/InsightsPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { experimentalFeatures } from './config/features'
 
 function RouteError() {
   return (
@@ -25,10 +26,11 @@ export const router = createBrowserRouter([
       { path: '/', element: <LiveMapPage /> },
       { path: '/map', element: <LiveMapPage /> },
       { path: '/alerts', element: <AlertsPage /> },
-      { path: '/circles', element: <CirclesPage /> },
-      { path: '/insights', element: <InsightsPage /> },
       { path: '/reports', element: <ReportsPage /> },
       { path: '/settings', element: <SettingsPage /> },
+      ...(experimentalFeatures.circles ? [{ path: '/circles', element: <CirclesPage /> }] : []),
+      ...(experimentalFeatures.insights ? [{ path: '/insights', element: <InsightsPage /> }] : []),
+      { path: '*', element: <Navigate to="/map" replace /> },
     ],
   },
 ])

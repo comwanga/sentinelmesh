@@ -61,7 +61,7 @@ export function AlertsDock() {
           events.map(event => (
             <AlertCard
               key={event.id}
-              {...safetyEventToCardProps(event, () => {})}
+              {...safetyEventToCardProps(event)}
             />
           ))
         )}

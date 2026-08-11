@@ -80,17 +80,17 @@ describe('AlertsPage', () => {
     }
   })
 
-  it('shows only VERIFIED events when status filter = VERIFIED', () => {
+  it('shows only confirmed events when status filter is confirmed', () => {
     const events = [
-      makeEvent({ id: 'v1', title: 'Verified alert', severity: 'HIGH' }),
-      makeEvent({ id: 'p1', title: 'Pending alert', severity: 'LOW' }),
+      makeEvent({ id: 'v1', title: 'Confirmed alert', severity: 'LOW', trust_state: 'confirmed' }),
+      makeEvent({ id: 'p1', title: 'Unverified alert', severity: 'CRITICAL', trust_state: 'heuristic' }),
     ]
     renderPage(events)
 
-    fireEvent.click(screen.getByTestId('status-filter-VERIFIED'))
+    fireEvent.click(screen.getByTestId('status-filter-CONFIRMED'))
 
-    expect(screen.getByText('Verified alert')).toBeInTheDocument()
-    expect(screen.queryByText('Pending alert')).not.toBeInTheDocument()
+    expect(screen.getByText('Confirmed alert')).toBeInTheDocument()
+    expect(screen.queryByText('Unverified alert')).not.toBeInTheDocument()
   })
 
   it('shows only events in last 1 hour when timeRange = "1h"', () => {

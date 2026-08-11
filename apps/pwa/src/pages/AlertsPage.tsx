@@ -3,6 +3,7 @@ import type { EventType } from '../../../../shared/types'
 import { useAppSelector } from '../store'
 import { selectEventItems } from '../store/eventsSlice'
 import { AlertCard, safetyEventToCardProps } from '../components/shared/AlertCard'
+import { trustStateOf } from '../lib/trust'
 
 const ALL_EVENT_TYPES: EventType[] = [
   'SECURITY_INCIDENT',
@@ -15,7 +16,7 @@ const ALL_EVENT_TYPES: EventType[] = [
   'FALSE_ALARM',
 ]
 
-type StatusFilter = 'ALL' | 'VERIFIED' | 'PENDING'
+type StatusFilter = 'ALL' | 'CONFIRMED' | 'UNVERIFIED'
 type TimeRange = '1h' | '6h' | '24h' | 'ALL'
 
 const TYPE_LABELS: Record<EventType, string> = {
@@ -48,9 +49,9 @@ export function AlertsPage() {
     return items.filter(e => {
       if (selectedTypes.size > 0 && !selectedTypes.has(e.event_type)) return false
 
-      const isVerified = e.severity === 'CRITICAL' || e.severity === 'HIGH'
-      if (statusFilter === 'VERIFIED' && !isVerified) return false
-      if (statusFilter === 'PENDING' && isVerified) return false
+      const isConfirmed = trustStateOf(e) === 'confirmed'
+      if (statusFilter === 'CONFIRMED' && !isConfirmed) return false
+      if (statusFilter === 'UNVERIFIED' && isConfirmed) return false
 
       const rangeMs = TIME_RANGE_MS[timeRange]
       if (rangeMs !== null) {
@@ -75,10 +76,6 @@ export function AlertsPage() {
   }
 
   const filtersActive = selectedTypes.size > 0 || statusFilter !== 'ALL' || timeRange !== 'ALL'
-
-  function handleBookmark(_eventId: string) {
-    // TODO: wire to bookmarks slice when implemented
-  }
 
   return (
     <div style={{
@@ -135,7 +132,7 @@ export function AlertsPage() {
 
         <div style={{ width: 1, background: '#1a2035', flexShrink: 0, margin: '0 4px' }} />
 
-        {(['ALL', 'VERIFIED', 'PENDING'] as StatusFilter[]).map(s => (
+        {(['ALL', 'CONFIRMED', 'UNVERIFIED'] as StatusFilter[]).map(s => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
@@ -186,7 +183,7 @@ export function AlertsPage() {
           filtered.map(e => (
             <AlertCard
               key={e.id}
-              {...safetyEventToCardProps(e, handleBookmark)}
+              {...safetyEventToCardProps(e)}
             />
           ))
         )}

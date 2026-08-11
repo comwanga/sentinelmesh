@@ -22,6 +22,7 @@ import { HomeRouteLayer } from '../components/map/HomeRouteLayer'
 import { SafeRouteOverlay } from '../components/SafeRouteOverlay'
 import { RadiusZoneLayer } from '../components/map/RadiusZoneLayer'
 import type { EventType } from '../../../../shared/types'
+import { experimentalFeatures } from '../config/features'
 
 type FilterId = 'gunshots' | 'violence' | 'protests' | 'accidents' | 'other'
 
@@ -47,7 +48,7 @@ export function LiveMapPage() {
   const { location: currentLocation } = useCurrentLocation()
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
-  const { activeAlerts, verified, verifiedPct, communityScore, sources } = useAppSelector(selectMapStats)
+  const { activeAlerts } = useAppSelector(selectMapStats)
   const events = useAppSelector(selectViewportEventItems)
   useViewportWs(viewport?.bounds ?? null, viewport?.zoom ?? 12)
 
@@ -77,13 +78,7 @@ export function LiveMapPage() {
 
   return (
     <div data-testid="live-map-page" style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <MapStatsBar
-        activeAlerts={activeAlerts}
-        verified={verified}
-        verifiedPct={verifiedPct}
-        communityScore={communityScore}
-        sources={sources}
-      />
+      <MapStatsBar activeAlerts={activeAlerts} />
 
       {/* Main row: map area + alerts dock */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -107,8 +102,8 @@ export function LiveMapPage() {
             <RadiusZoneLayer events={visibleEvents} />
             <EventClusterLayer />
             {currentLocation && <LocationMarker location={currentLocation} />}
-            <SafeRouteOverlay />
-            <HomeRouteLayer />
+            {experimentalFeatures.routing && <SafeRouteOverlay />}
+            {experimentalFeatures.routing && <HomeRouteLayer />}
           </MapCanvas>
 
           {/* Filter chips — overlaid on map top-left */}
@@ -189,7 +184,7 @@ export function LiveMapPage() {
             </div>
           )}
 
-          <MapOverlayHost />
+          {(experimentalFeatures.routing || experimentalFeatures.acoustic) && <MapOverlayHost />}
 
           {/* Mobile quick-actions: Routes + Acoustic + Home */}
           {layout === 'mobile' && (
@@ -197,7 +192,7 @@ export function LiveMapPage() {
               position: 'absolute', bottom: 108, left: 12, zIndex: 10,
               display: 'flex', flexDirection: 'column', gap: 8,
             }}>
-              <button
+              {experimentalFeatures.routing && <button
                 onClick={() => dispatch(setOverlayIntent({ name: 'home-route' }))}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
@@ -208,8 +203,8 @@ export function LiveMapPage() {
                 }}
               >
                 🏠 Home
-              </button>
-              <button
+              </button>}
+              {experimentalFeatures.routing && <button
                 onClick={() => dispatch(setOverlayIntent({ name: 'routes' }))}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
@@ -220,8 +215,8 @@ export function LiveMapPage() {
                 }}
               >
                 🛣 Routes
-              </button>
-              <button
+              </button>}
+              {experimentalFeatures.acoustic && <button
                 onClick={() => dispatch(setOverlayIntent({ name: 'acoustic' }))}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
@@ -232,7 +227,7 @@ export function LiveMapPage() {
                 }}
               >
                 🎙 Listen
-              </button>
+              </button>}
             </div>
           )}
 
