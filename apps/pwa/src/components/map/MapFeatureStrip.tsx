@@ -1,3 +1,5 @@
+import { experimentalFeatures } from '../../config/features'
+
 interface Props {
   onReport: () => void
   onAcoustic: () => void
@@ -8,10 +10,12 @@ interface Props {
 
 const cards: { label: string; desc: string; icon: string; key: keyof Props }[] = [
   { label: 'Report Incident',  desc: 'Share what you see. Keep others safe.',          icon: '📢', key: 'onReport' },
-  { label: 'Acoustic Detect',  desc: 'Listen for gunshots, explosions, screams.',       icon: '🎙', key: 'onAcoustic' },
-  { label: 'Family Circles',   desc: 'Share location with trusted family.',             icon: '👥', key: 'onCircles' },
-  { label: 'Escape Routes',    desc: 'Get 2–3 safe routes away from danger.',           icon: '🛣', key: 'onRoutes' },
-  { label: 'Navigate Home',    desc: 'Safest walking route to your home address.',      icon: '🏠', key: 'onHomeRoute' },
+  ...(experimentalFeatures.acoustic ? [{ label: 'Acoustic Detect', desc: 'Experimental on-device sound classification.', icon: '🎙', key: 'onAcoustic' as const }] : []),
+  ...(experimentalFeatures.circles ? [{ label: 'Family Circles', desc: 'Experimental encrypted location sharing.', icon: '👥', key: 'onCircles' as const }] : []),
+  ...(experimentalFeatures.routing ? [
+    { label: 'Route Preview', desc: 'Experimental routes around a selected incident.', icon: '🛣', key: 'onRoutes' as const },
+    { label: 'Navigate Home', desc: 'Experimental walking directions to a saved location.', icon: '🏠', key: 'onHomeRoute' as const },
+  ] : []),
 ]
 
 export function MapFeatureStrip(props: Props) {

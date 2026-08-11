@@ -44,10 +44,6 @@ export const selectMapStats = createSelector(
   (state: RootState) => state.events.items,
   items => {
     const activeAlerts = items.filter(e => e.is_active).length
-    const verified = activeAlerts
-    const verifiedPct = 0
-    const communityScore = 0
-    const sources = 0
-    return { activeAlerts, verified, verifiedPct, communityScore, sources }
+    return { activeAlerts }
   }
 )

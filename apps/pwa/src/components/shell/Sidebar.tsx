@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAppDispatch } from '../../store'
 import { setOverlayIntent } from '../../store/uiSlice'
+import { experimentalFeatures } from '../../config/features'
 
 type OverlayName = 'routes' | 'acoustic'
 
@@ -9,14 +10,14 @@ const routeItems = [
   { path: '/map',      label: 'Live Map',       icon: '◉' },
   { path: '/alerts',   label: 'Alerts',         icon: '🔔' },
   { path: '/reports',  label: 'Reports',        icon: '📋' },
-  { path: '/circles',  label: 'Family Circles', icon: '👥' },
-  { path: '/insights', label: 'Insights',       icon: '📊', badge: 'NEW' },
+  ...(experimentalFeatures.circles ? [{ path: '/circles', label: 'Family Circles', icon: '👥' }] : []),
+  ...(experimentalFeatures.insights ? [{ path: '/insights', label: 'Insights', icon: '📊' }] : []),
   { path: '/settings', label: 'Settings',       icon: '⚙️' },
-] as const
+]
 
 const overlayItems: { overlay: OverlayName; label: string; icon: string }[] = [
-  { overlay: 'routes',   label: 'Routes',         icon: '🛣' },
-  { overlay: 'acoustic', label: 'Acoustic Detect', icon: '🎙' },
+  ...(experimentalFeatures.routing ? [{ overlay: 'routes' as const, label: 'Routes', icon: '🛣' }] : []),
+  ...(experimentalFeatures.acoustic ? [{ overlay: 'acoustic' as const, label: 'Acoustic Detect', icon: '🎙' }] : []),
 ]
 
 const itemBase: React.CSSProperties = {
@@ -62,13 +63,6 @@ export function Sidebar() {
           <span style={{ opacity: expanded ? 1 : 0, transition: 'opacity 150ms', pointerEvents: 'none' }}>
             {item.label}
           </span>
-          {'badge' in item && item.badge && (
-            <span style={{
-              opacity: expanded ? 1 : 0, marginLeft: 4,
-              background: '#BB86FC', color: '#0B0E14', borderRadius: 4,
-              padding: '1px 4px', fontSize: 9, fontFamily: "'Courier New', monospace",
-            }}>{item.badge}</span>
-          )}
         </NavLink>
       ))}
 
@@ -82,7 +76,7 @@ export function Sidebar() {
         </button>
       ))}
 
-      {/* Privacy First section */}
+      {/* Current release guarantees */}
       <div style={{
         marginTop: 'auto',
         opacity: expanded ? 1 : 0, transition: 'opacity 150ms',
@@ -95,10 +89,10 @@ export function Sidebar() {
             fontFamily: "'Courier New', monospace", fontSize: 10,
             fontWeight: 700, color: '#00E5FF', letterSpacing: '0.06em',
           }}>
-            Privacy First
+            Current release
           </span>
         </div>
-        {['No personal data.', 'No readable locations.', 'All reports signed.', 'Audio stays on device.'].map(line => (
+        {['No account required.', 'Reports are signed.', 'Trust state is explicit.'].map(line => (
           <div key={line} style={{
             fontFamily: "'Courier New', monospace", fontSize: 9,
             color: '#4a5568', lineHeight: 1.6, paddingLeft: 4,
@@ -108,7 +102,7 @@ export function Sidebar() {
         ))}
       </div>
 
-      {/* Built on open protocols */}
+      {/* Active open protocol */}
       <div style={{
         opacity: expanded ? 1 : 0, transition: 'opacity 150ms',
         padding: '10px 20px 14px',
@@ -118,12 +112,11 @@ export function Sidebar() {
           fontFamily: "'Courier New', monospace", fontSize: 9,
           color: '#4a5568', letterSpacing: '0.06em', marginBottom: 6,
         }}>
-          Built on open protocols
+          Identity protocol
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
           {[
             { label: 'Nostr', color: '#9C27B0' },
-            { label: 'Bitcoin', color: '#FF9800' },
           ].map(p => (
             <span key={p.label} style={{
               fontFamily: "'Courier New', monospace", fontSize: 9,
@@ -135,18 +128,6 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* System status (icon-only when collapsed) */}
-      <div style={{
-        padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8,
-        borderTop: '1px solid #1a2035',
-      }}>
-        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4CAF50', flexShrink: 0 }} />
-        <span style={{
-          opacity: expanded ? 1 : 0, transition: 'opacity 150ms',
-          fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4CAF50',
-          letterSpacing: '0.05em', whiteSpace: 'nowrap',
-        }}>All systems operational</span>
-      </div>
     </div>
   )
 }

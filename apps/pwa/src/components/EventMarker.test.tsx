@@ -9,6 +9,7 @@ const base: SafetyEvent = {
   place_name: null, county: null, is_active: true, state: 'ACTIVE',
   started_at: '2026-05-18T00:00:00Z', created_at: '2026-05-18T00:00:00Z',
   nostr_event_id: null, bitcoin_txid: null,
+  trust_state: 'confirmed',
 }
 
 describe('EventMarker', () => {

@@ -36,7 +36,9 @@ describe('backupService', () => {
 
   it('tampered ciphertext throws', async () => {
     const file = JSON.parse(await (await exportBackup(PASS)).text())
-    file.ciphertext = file.ciphertext.slice(0, -4) + (file.ciphertext.endsWith('A') ? 'B' : 'A') + file.ciphertext.slice(-3)
+    const index = Math.floor(file.ciphertext.length / 2)
+    const replacement = file.ciphertext[index] === 'A' ? 'B' : 'A'
+    file.ciphertext = file.ciphertext.slice(0, index) + replacement + file.ciphertext.slice(index + 1)
     await expect(decryptBackup(JSON.stringify(file), PASS)).rejects.toThrow(/passphrase or corrupted/i)
   })
 

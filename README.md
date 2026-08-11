@@ -1,22 +1,26 @@
 # SentinelMesh
 
-A public-safety app for communities. It shows live threats on a map, lets people report incidents, and helps families keep track of each other — with **no accounts and no personal details**. Your identity is just a cryptographic key (a [Nostr](https://nostr.com) keypair) created on your device.
+A community incident-awareness prototype. It shows incidents on a map and lets people submit signed reports without creating a conventional account. Identity is a cryptographic [Nostr](https://nostr.com) keypair created on the device; location and pseudonymous identity data are still processed as described below.
 
 The hard part of an app like this isn't drawing dots on a map — it's deciding **which dots to trust**. SentinelMesh's design is built around that question: automated signals start out untrusted and earn trust only through independent corroboration, and the server is built to hold as little readable personal data as possible.
+
+> **V2 scope freeze:** SentinelMesh is being simplified around the incident map, alert list, signed community reports, and local identity. Family Circles, acoustic detection, routing, photos, Insights, and blockchain presentation remain experimental and are hidden by default. See [`docs/V2_SCOPE.md`](docs/V2_SCOPE.md) for the supported boundary and trust terminology.
 
 ---
 
 ## What it does
 
-| Feature | Description |
-|---|---|
-| **Live threat map** | Pulls public signals from news feeds, Twitter/X, and radio, and classifies them with rule-based NLP. New automated detections appear on the map **labeled and unverified**, and are promoted to confirmed events only through independent corroboration (see [How events become trusted](#how-events-become-trusted)). |
-| **Community reports** | Anyone can submit a ground report, signed with their Nostr key. Reports are scored by **reputation-weighted** community voting (not raw vote counts), which blunts sock-puppet manipulation. Locations are **coarsened to a ~100 m grid cell** and stored **separately from the reporter's identity**, so a database leak can't reconstruct a precise, person-linked location trail. Photos are EXIF-stripped and face-blurred on-device (best-effort, frontal faces) before upload. |
-| **Family circles** | Share your live location with trusted people. Coordinates are **encrypted on your device** (AES-256-GCM) — the server stores a blob it can't read. Circle **membership, names, and member labels are tokenized/encrypted** too, so a database leak can't reveal who is in which circle. Only the *timing* of shares stays visible to the server. |
-| **Acoustic detection** | The browser can classify sounds (gunshots, explosions, screaming) on-device with a YAMNet model — **no audio ever leaves your device**, only a label, confidence, and location. These detections are **client-asserted and treated as untrusted**: they follow the same corroboration ladder, and auto-publishing is off by default (`ACOUSTIC_CONFIRM_ENABLED`). |
-| **Push notifications** | Browser push (Web Push / VAPID) for HIGH/CRITICAL events. Only fires for **confirmed** events; payloads carry a place name, never precise coordinates. *(Today these are broadcast to all subscribers — proximity/circle targeting is planned.)* |
-| **Escape routes** | When a confirmed threat is near, the app computes 2–3 walking routes that avoid the danger zone (Mapbox Directions). |
-| **Blockchain anchoring** | Confirmed events can be published to Nostr relays and a digest written to Bitcoin (OP_RETURN). The anchor commits an **identifier digest** (event id + nostr id + severity), **not** the location or text — it proves a record existed, not that its content is unaltered. Off by default (`ANCHORING_ENABLED`), testnet until maintainers switch to mainnet. |
+| Capability | V2 status | Description |
+|---|---|---|
+| **Incident map and alerts** | Core | Displays loaded incidents and their explicit stored trust state. Missing trust data is treated as unverified. |
+| **Community reports** | Core | Submits location-based reports signed by the user's local Nostr key and supports community confirmation or denial. |
+| **Local identity** | Core | Generates and stores a cryptographic identity in the browser with backup and restore controls. |
+| **Push notifications** | Reworking | Not a release promise until permission UX and durable, targeted delivery are complete. |
+| **Family Circles** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_CIRCLES`; the current client/server journey is not release-ready. |
+| **Acoustic detection** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ACOUSTIC`; detections are client assertions and cannot independently confirm an event. |
+| **Routing** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ROUTING`; routes are not described as safe or authoritative. |
+| **Photos** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_PHOTOS`; privacy processing is best effort. |
+| **Blockchain anchoring** | Experimental | Off by default. Current anchors commit an identifier digest, not the complete incident record. |
 
 ---
 
@@ -271,33 +275,25 @@ sentinelmesh/
 ├── docs/
 │   ├── audit/                  # Security/privacy audit + remediation plan
 │   └── superpowers/            # Design specs and implementation plans
-├── docker-compose.yml          # Production
+├── docker-compose.yml          # Current multi-service stack; not production-ready
 └── docker-compose.dev.yml      # Local development overrides
 ```
 
 ---
 
-## What's been built
+## Current implementation status
 
-- [x] Signal ingestion — RSS, Twitter/X, radio transcription → async NLP → events via Redis Streams
-- [x] **Trust ladder for automated detections** — heuristic → corroborating → confirmed by independent-source corroboration; push/anchor gated to confirmed; stale detections expire
-- [x] **Negation-aware NLP classifier** with capped, honest confidence
-- [x] Community reports — Nostr signing, server verification, **reputation-weighted (Sybil-resistant) consensus**, IPFS photos
-- [x] **Report location privacy** — ~100 m coordinate coarsening + reporter identity separated behind a restricted DB role
-- [x] Family circles — E2EE location sharing, proximity alerts, WebSocket presence
-- [x] **Family-circle social-graph privacy** — per-circle tokenized membership, encrypted circle names + member labels
-- [x] Acoustic detection — YAMNet browser inference feeding the same trust ladder
-- [x] Escape routes — Mapbox Directions avoiding threat zones
-- [x] Push notifications — Web Push (VAPID), service worker, gateway subscription store
-- [x] Reliability hardening — Redis Streams (no message loss on disconnect), Mapbox tile proxy, fetch timeouts, WebSocket exponential backoff, Postgres connection pooling
+- [x] Local Nostr identity, signing, backup, and restore primitives
+- [x] Community report submission and voting paths
+- [x] Viewport-scoped map event transport
+- [x] Report coordinate coarsening and separated author storage
+- [ ] Initial event and report synchronization
+- [ ] One canonical event contract and frontend store
+- [ ] Transactionally atomic report transitions and side effects
+- [ ] Production-ready deployment, migrations, readiness, backups, and monitoring
+- [ ] Durable and targeted push delivery
 
-## What's coming next
-
-- [ ] Recoverable, multi-device identity (so a lost key doesn't lose your circles)
-- [ ] Targeted push (by proximity/circle) instead of broadcast-to-all
-- [ ] Android app — React Native, offline maps, Android Keystore
-- [ ] Testnet → Mainnet switch
-- [ ] Structured logging and metrics (Prometheus / Grafana)
+Signal ingestion, Family Circles, acoustic detection, routing, photos, Insights, and blockchain code is retained as experimental work. Presence in the repository is not an end-to-end completion claim.
 
 ---
 

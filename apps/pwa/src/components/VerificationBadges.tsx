@@ -1,3 +1,5 @@
+import { experimentalFeatures } from '../config/features'
+
 interface Props {
   nostrEventId?: string | null
   bitcoinTxid?: string | null
@@ -21,7 +23,8 @@ export function VerificationBadges({ nostrEventId, bitcoinTxid }: Props) {
     ? 'https://mempool.space/tx'
     : 'https://mempool.space/testnet/tx'
 
-  if (!nostrEventId && !bitcoinTxid) return null
+  const visibleBitcoinTxid = experimentalFeatures.blockchain ? bitcoinTxid : null
+  if (!nostrEventId && !visibleBitcoinTxid) return null
 
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
@@ -35,9 +38,9 @@ export function VerificationBadges({ nostrEventId, bitcoinTxid }: Props) {
           ⚡ Nostr
         </a>
       )}
-      {bitcoinTxid && (
+      {visibleBitcoinTxid && (
         <a
-          href={`${explorerBase}/${bitcoinTxid}`}
+          href={`${explorerBase}/${visibleBitcoinTxid}`}
           target="_blank"
           rel="noopener noreferrer"
           style={badgeStyle('#D97706')}

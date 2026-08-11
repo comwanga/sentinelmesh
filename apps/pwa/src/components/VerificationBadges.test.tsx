@@ -17,19 +17,14 @@ describe('VerificationBadges', () => {
     expect(link.closest('a')).toHaveAttribute('target', '_blank')
   })
 
-  it('renders Bitcoin badge with testnet mempool.space link by default', () => {
-    render(<VerificationBadges nostrEventId={null} bitcoinTxid="txid456" />)
-    const link = screen.getByText('₿ Anchored')
-    expect(link).toBeInTheDocument()
-    expect(link.closest('a')).toHaveAttribute(
-      'href',
-      'https://mempool.space/testnet/tx/txid456'
-    )
+  it('hides experimental Bitcoin presentation by default', () => {
+    const { container } = render(<VerificationBadges nostrEventId={null} bitcoinTxid="txid456" />)
+    expect(container.querySelectorAll('a')).toHaveLength(0)
   })
 
-  it('renders both badges when both IDs are set', () => {
+  it('still renders a factual Nostr badge when a Bitcoin ID is also present', () => {
     render(<VerificationBadges nostrEventId="abc" bitcoinTxid="def" />)
     expect(screen.getByText('⚡ Nostr')).toBeInTheDocument()
-    expect(screen.getByText('₿ Anchored')).toBeInTheDocument()
+    expect(screen.queryByText('₿ Anchored')).not.toBeInTheDocument()
   })
 })

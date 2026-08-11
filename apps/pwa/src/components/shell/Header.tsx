@@ -30,7 +30,7 @@ export function Header() {
             <span style={{
               fontFamily: "'Courier New', monospace", fontSize: 10,
               color: '#4a5568', letterSpacing: '0.04em',
-            }}>Safer communities. Zero compromise.</span>
+            }}>Community incident awareness</span>
           )}
         </div>
       </div>

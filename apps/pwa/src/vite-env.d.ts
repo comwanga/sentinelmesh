@@ -1,5 +1,18 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+  readonly VITE_ENABLE_EXPERIMENTAL_ACOUSTIC?: string
+  readonly VITE_ENABLE_EXPERIMENTAL_BLOCKCHAIN?: string
+  readonly VITE_ENABLE_EXPERIMENTAL_CIRCLES?: string
+  readonly VITE_ENABLE_EXPERIMENTAL_INSIGHTS?: string
+  readonly VITE_ENABLE_EXPERIMENTAL_PHOTOS?: string
+  readonly VITE_ENABLE_EXPERIMENTAL_ROUTING?: string
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
+
 declare module 'react-map-gl' {
   import type { ReactNode, CSSProperties } from 'react'
 

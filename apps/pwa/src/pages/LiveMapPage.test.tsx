@@ -67,7 +67,7 @@ beforeEach(() => {
 describe('LiveMapPage', () => {
   it('renders MapStatsBar', () => {
     renderPage()
-    expect(screen.getByText('Active Alerts')).toBeInTheDocument()
+    expect(screen.getByText('Loaded active alerts')).toBeInTheDocument()
   })
 
   it('desktop: renders AlertsDock, not AlertsSheet', () => {
