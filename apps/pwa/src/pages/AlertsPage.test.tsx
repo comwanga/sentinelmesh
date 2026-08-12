@@ -39,7 +39,6 @@ function makeEvent(overrides: Partial<SafetyEvent> & { id: string }): SafetyEven
     started_at: new Date().toISOString(),
     created_at: new Date().toISOString(),
     nostr_event_id: null,
-    bitcoin_txid: null,
     ...overrides,
   }
 }

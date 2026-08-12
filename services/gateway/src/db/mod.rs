@@ -11,22 +11,19 @@ pub async fn create_pool(database_url: &str, max_connections: u32) -> Result<PgP
 }
 
 pub async fn assert_schema_version(pool: &PgPool) -> Result<()> {
-    const REQUIRED_SCHEMA_VERSION: i32 = 3;
-    const REQUIRED_MIGRATION_NAME: &str = "003_protect_migration_history.sql";
-    const REQUIRED_MIGRATION_CHECKSUM: &str =
-        "d7c41d110fdbb68f38586a2f57804c4567444946be29c988eba1c467cacfdce9";
+    const REQUIRED_SCHEMA_VERSION: i32 = 4;
     let compatible: bool = sqlx::query_scalar(
         "SELECT
-           (SELECT array_agg(version ORDER BY version) FROM schema_versions) = ARRAY[2, 3]
-           AND (SELECT count(*) FROM schema_migrations) = 1
-           AND EXISTS (
-             SELECT 1 FROM schema_migrations
-             WHERE version = $1 AND name = $2 AND checksum = $3
-           )",
+           (SELECT array_agg(version ORDER BY version) FROM schema_versions) = ARRAY[2, 3, 4]
+           AND (SELECT array_agg(version ORDER BY version) FROM schema_migrations) = ARRAY[3, 4]
+           AND (SELECT array_agg(name ORDER BY version) FROM schema_migrations) =
+                 ARRAY['003_protect_migration_history.sql', '004_simplify_runtime_schema.sql']
+           AND (SELECT array_agg(checksum ORDER BY version) FROM schema_migrations) =
+                 ARRAY[
+                   'd7c41d110fdbb68f38586a2f57804c4567444946be29c988eba1c467cacfdce9',
+                   'e7e3b94079424215c60b88675e045eeebaf3bd1b4d21256b926858945270c1a0'
+                 ]",
     )
-    .bind(REQUIRED_SCHEMA_VERSION)
-    .bind(REQUIRED_MIGRATION_NAME)
-    .bind(REQUIRED_MIGRATION_CHECKSUM)
     .fetch_one(pool)
     .await?;
     if !compatible {

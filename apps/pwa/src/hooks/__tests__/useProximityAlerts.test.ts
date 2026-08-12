@@ -20,7 +20,6 @@ const nearbyEvent: SafetyEvent = {
   started_at: '',
   created_at: '',
   nostr_event_id: null,
-  bitcoin_txid: null,
 }
 
 function makeMember(pubkey: string, radiusKm = 5, severity: CircleMember['alert_severity'] = 'MEDIUM'): CircleMember {

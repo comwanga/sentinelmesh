@@ -8,7 +8,7 @@ const base: SafetyEvent = {
   title: 'Test', summary: null, lat: -1.28, lng: 36.82,
   place_name: null, county: null, is_active: true, state: 'ACTIVE',
   started_at: '2026-05-18T00:00:00Z', created_at: '2026-05-18T00:00:00Z',
-  nostr_event_id: null, bitcoin_txid: null,
+  nostr_event_id: null,
   trust_state: 'confirmed',
 }
 

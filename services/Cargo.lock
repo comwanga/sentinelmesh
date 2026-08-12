@@ -371,31 +371,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "blockchain"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "bitcoin",
- "chrono",
- "futures",
- "hex",
- "nostr-sdk",
- "reqwest",
- "secp256k1",
- "sentinel-core",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "borrow-or-share"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3041,11 +3016,9 @@ name = "sentinel-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "hex",
  "schemars",
  "serde",
  "serde_json",
- "sha2",
  "thiserror 2.0.18",
  "uuid",
 ]

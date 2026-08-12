@@ -180,8 +180,7 @@ pub async fn cast_vote(
     genesis_roots: &[String],
     require_established: bool,
     reporter_pubkey: &str,
-    anchoring_enabled: bool,
-) -> Result<(Report, bool)> {
+) -> Result<Report> {
     let mut tx = pool.begin().await?;
 
     let report = sqlx::query_as::<_, Report>(
@@ -325,8 +324,6 @@ pub async fn cast_vote(
         established_confirmations as i32,
         require_established,
     );
-    let mut publish_job_created = false;
-
     if let Some(new_status) = new_status {
         updated = sqlx::query_as::<_, Report>(
             "UPDATE community_reports
@@ -378,23 +375,10 @@ pub async fn cast_vote(
             .execute(&mut *tx)
             .await?;
         }
-
-        if anchoring_enabled && updated.consensus_score >= 3 {
-            publish_job_created = sqlx::query(
-                "INSERT INTO publish_jobs (source_type, source_id, status, next_retry_at)
-                 VALUES ('COMMUNITY_REPORT', $1, 'PENDING', NOW())
-                 ON CONFLICT DO NOTHING",
-            )
-            .bind(report_id)
-            .execute(&mut *tx)
-            .await?
-            .rows_affected()
-                > 0;
-        }
     }
 
     tx.commit().await?;
-    Ok((updated, publish_job_created))
+    Ok(updated)
 }
 
 pub async fn list_reports(pool: &PgPool, params: ListReportsParams) -> Result<Vec<Report>> {

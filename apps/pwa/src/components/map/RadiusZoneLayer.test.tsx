@@ -19,7 +19,7 @@ const critical: SafetyEvent = {
   title: 'Critical event', summary: null, lat: -1.28, lng: 36.82,
   place_name: null, county: null, is_active: true, state: 'ACTIVE',
   started_at: '2026-05-18T00:00:00Z', created_at: '2026-05-18T00:00:00Z',
-  nostr_event_id: null, bitcoin_txid: null,
+  nostr_event_id: null,
 }
 const low: SafetyEvent = { ...critical, id: 'l1', severity: 'LOW' }
 const inactive: SafetyEvent = { ...critical, id: 'i1', severity: 'HIGH', is_active: false }

@@ -335,7 +335,7 @@ async fn vote(
         ));
     }
 
-    let (updated, publish_job_created) = cast_vote(
+    let updated = cast_vote(
         &state.db,
         report_id,
         CastVoteInput {
@@ -348,7 +348,6 @@ async fn vote(
         &state.config.vouch_genesis_roots,
         state.config.consensus_require_established,
         &author,
-        state.config.anchoring_enabled,
     )
     .await
     .map_err(|e| {
@@ -361,13 +360,6 @@ async fn vote(
             AppError::Internal(e)
         }
     })?;
-
-    // Polling is durable; this nudge only reduces pickup latency after commit.
-    if publish_job_created {
-        if let Some(url) = state.config.blockchain_service_url.clone() {
-            crate::nudge::nudge_blockchain(state.http_client.clone(), url);
-        }
-    }
 
     let msg = serde_json::json!({ "type": "REPORT_UPDATED", "payload": updated });
     state

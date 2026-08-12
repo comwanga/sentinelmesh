@@ -110,7 +110,6 @@ describe('LiveMapPage', () => {
       started_at: '',
       created_at: '',
       nostr_event_id: null,
-      bitcoin_txid: null,
     }
     mockUseNearestThreat.mockReturnValue({ nearest: threat, distanceKm: 1.4, geoError: null })
     renderPage()

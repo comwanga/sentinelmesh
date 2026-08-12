@@ -26,7 +26,6 @@ function makeEvent(overrides: Partial<SafetyEvent> = {}): SafetyEvent {
     started_at: '2026-05-11T00:00:00Z',
     created_at: '2026-05-11T00:00:00Z',
     nostr_event_id: null,
-    bitcoin_txid: null,
     ...overrides,
   }
 }

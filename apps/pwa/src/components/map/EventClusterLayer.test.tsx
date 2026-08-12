@@ -39,7 +39,7 @@ const event1: SafetyEvent = {
   title: 'Event 1', summary: null, lat: -1.28, lng: 36.82,
   place_name: null, county: null, is_active: true, state: 'ACTIVE',
   started_at: '2026-05-18T00:00:00Z', created_at: '2026-05-18T00:00:00Z',
-  nostr_event_id: null, bitcoin_txid: null,
+  nostr_event_id: null,
 }
 const event2: SafetyEvent = {
   ...event1, id: 'e2', severity: 'HIGH', lat: -1.29, lng: 36.83,
