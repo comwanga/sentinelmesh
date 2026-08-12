@@ -11,12 +11,28 @@ pub async fn create_pool(database_url: &str, max_connections: u32) -> Result<PgP
 }
 
 pub async fn assert_schema_version(pool: &PgPool) -> Result<()> {
-    let installed: bool =
-        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM schema_versions WHERE version = 2)")
-            .fetch_one(pool)
-            .await?;
-    if !installed {
-        anyhow::bail!("database is missing the required SentinelMesh V2 schema");
+    const REQUIRED_SCHEMA_VERSION: i32 = 3;
+    const REQUIRED_MIGRATION_NAME: &str = "003_protect_migration_history.sql";
+    const REQUIRED_MIGRATION_CHECKSUM: &str =
+        "d7c41d110fdbb68f38586a2f57804c4567444946be29c988eba1c467cacfdce9";
+    let compatible: bool = sqlx::query_scalar(
+        "SELECT
+           (SELECT array_agg(version ORDER BY version) FROM schema_versions) = ARRAY[2, 3]
+           AND (SELECT count(*) FROM schema_migrations) = 1
+           AND EXISTS (
+             SELECT 1 FROM schema_migrations
+             WHERE version = $1 AND name = $2 AND checksum = $3
+           )",
+    )
+    .bind(REQUIRED_SCHEMA_VERSION)
+    .bind(REQUIRED_MIGRATION_NAME)
+    .bind(REQUIRED_MIGRATION_CHECKSUM)
+    .fetch_one(pool)
+    .await?;
+    if !compatible {
+        anyhow::bail!(
+            "database schema version mismatch: expected migration {REQUIRED_SCHEMA_VERSION} with complete history"
+        );
     }
     Ok(())
 }

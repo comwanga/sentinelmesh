@@ -9,6 +9,7 @@ __pycache__/
 *.gguf
 *.bin
 pgdata/
+backups/
 
 # TypeScript incremental build
 *.tsbuildinfo

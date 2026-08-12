@@ -1,0 +1,68 @@
+services:
+  postgres:
+    stop_grace_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+          pids: 200
+    logging: &bounded-logs
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  migrate:
+    logging: *bounded-logs
+
+  redis:
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 768M
+          pids: 100
+    logging: *bounded-logs
+
+  gateway-rs:
+    environment:
+      NODE_ENV: production
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL to the external HTTPS origin}
+      RUST_LOG: ${RUST_LOG:-gateway=info,tower_http=info}
+      MAX_DB_CONNECTIONS: ${MAX_DB_CONNECTIONS:-20}
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    cap_drop: [ALL]
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+          pids: 256
+    logging: *bounded-logs
+
+  nginx:
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /var/cache/nginx:size=32m,mode=0755
+      - /var/run:size=4m,mode=0755
+    cap_drop: [ALL]
+    stop_grace_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+          pids: 100
+    logging: *bounded-logs
+
+volumes:
+  pgdata:
+    name: ${POSTGRES_VOLUME_NAME:-sentinelmesh-production-pgdata}
+  redisdata:
+    name: ${REDIS_VOLUME_NAME:-sentinelmesh-production-redisdata}

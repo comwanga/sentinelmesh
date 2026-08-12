@@ -1,4 +1,4 @@
-.PHONY: up dev up-signal up-ml up-blockchain down down-clean logs install fmt lint test test-rust test-gateway test-blockchain test-pwa test-signal build-pwa config smoke seed
+.PHONY: up dev up-signal up-ml up-blockchain down down-clean logs install fmt lint test test-rust test-gateway test-blockchain test-pwa test-signal build-pwa config smoke seed migrate prod-config prod-up backup restore-verify watchdog test-operations
 
 up:
 	docker compose up --build
@@ -19,6 +19,7 @@ down:
 	docker compose down
 
 down-clean:
+	@echo "WARNING: deleting all local SentinelMesh volumes and data" >&2
 	docker compose down -v --remove-orphans
 
 logs:
@@ -59,6 +60,28 @@ test: test-rust test-pwa test-signal
 config:
 	docker compose --env-file .env.example config --quiet
 	docker compose --env-file .env.example --profile signal --profile ml --profile blockchain config --quiet
+
+migrate:
+	./ops/compose.sh run --rm migrate
+
+prod-config:
+	./ops/production-preflight.sh
+
+prod-up: prod-config
+	./ops/compose.sh -f docker-compose.yml -f docker-compose.production.yml up -d --build --wait
+
+backup:
+	./ops/postgres-backup.sh
+
+restore-verify:
+	@test -n "$(BACKUP)" || (echo "usage: make restore-verify BACKUP=backups/file.dump" >&2; exit 1)
+	./ops/postgres-restore-verify.sh "$(BACKUP)"
+
+watchdog:
+	./ops/watchdog.sh
+
+test-operations:
+	./tests/operations-smoke.sh
 
 smoke:
 	curl -fsS http://localhost/live

@@ -108,7 +108,7 @@ Two things flow through the gateway continuously and are worth calling out, beca
 | Blockchain Worker | Rust | `services/blockchain/` | Nostr publish (parallel, 4 relays), Bitcoin OP_RETURN anchoring, UTXO management |
 | Shared types | Rust | `services/sentinel-core/` | Domain types and crypto shared across Rust services |
 | PWA | React + Vite | `apps/pwa/` | Map, acoustic detection, reports, family circles, push notifications |
-| Database | PostgreSQL 16 | `infra/postgres/` | All persistent data (numbered migrations under `infra/postgres/migrations/`) |
+| Database | PostgreSQL 16 | `infra/postgres/` | All persistent data (active V2 migrations under `infra/postgres/migrations-v2/`) |
 | Cache / Streams | Redis 7 | Docker service | Real-time event delivery via Redis Streams (XADD/XREADGROUP) |
 
 ---
@@ -151,6 +151,12 @@ The first V2 bootstrap requires a fresh database volume. During pre-production d
 
 ```bash
 docker compose down -v --remove-orphans
+```
+
+Populated V2 databases are upgraded by the one-shot migrator; do not replay files under the historical `infra/postgres/migrations/` directory:
+
+```bash
+make migrate
 ```
 
 ### Optional profiles
@@ -295,7 +301,7 @@ sentinelmesh/
 - [x] Initial event and report synchronization
 - [x] One canonical event contract and frontend store
 - [x] Transactionally atomic report transitions and side effects
-- [ ] Production-ready deployment, migrations, readiness, backups, and monitoring
+- [x] Single-host core production deployment, migrations, readiness, backup drills, and monitoring
 - [ ] Durable and targeted push delivery
 
 Signal ingestion, Family Circles, acoustic detection, routing, photos, Insights, and blockchain code is retained as experimental work. Presence in the repository is not an end-to-end completion claim.
