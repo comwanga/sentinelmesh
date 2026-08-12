@@ -8,19 +8,24 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: false,
       manifest: {
         name: 'SentinelMesh',
         short_name: 'SentinelMesh',
         description: 'Privacy-first community safety network',
+        id: '/',
+        start_url: '/',
+        scope: '/',
+        lang: 'en',
         theme_color: '#0B0E14',
         background_color: '#0B0E14',
         display: 'standalone',
         icons: [
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
         ],
       },
       workbox: {
+        importScripts: ['/push-sw.js'],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
@@ -33,10 +38,8 @@ export default defineConfig({
             },
           },
           {
-            urlPattern: ({ url }) =>
-              url.pathname.startsWith('/api/') &&
-              !url.pathname.startsWith('/api/circles') &&
-              !url.pathname.startsWith('/api/location'),
+            urlPattern: ({ url, request }) =>
+              request.method === 'GET' && url.pathname.startsWith('/api/events'),
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'sm-api',

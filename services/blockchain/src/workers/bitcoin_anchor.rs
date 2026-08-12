@@ -153,7 +153,7 @@ fn build_tx(input: &AnchorInput) -> Result<Transaction> {
     let mut cache = SighashCache::new(&tx);
     let sighash = cache
         .p2wpkh_signature_hash(0, &utxo_script, utxo_amount, EcdsaSighashType::All)
-        .map_err(|e| anyhow!("sighash error: {}", e))?;
+        .map_err(|e| anyhow!("sighash error: {e}"))?;
 
     let message = Message::from_digest(sighash.to_byte_array());
     let sig = secp.sign_ecdsa(&message, &private_key.inner);

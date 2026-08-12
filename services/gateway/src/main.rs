@@ -16,7 +16,10 @@ use axum::http::{HeaderName, Method};
 use axum::{extract::State, http::StatusCode, response::Json, routing::get, Router};
 use governor::{DefaultKeyedRateLimiter, Quota, RateLimiter};
 use std::num::NonZeroU32;
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
@@ -34,6 +37,7 @@ pub struct AppState {
     pub hub: Arc<WsHub>,
     pub circle_hub: Arc<CircleHub>,
     pub redis_healthy: Arc<AtomicBool>,
+    pub workers_healthy: Arc<AtomicBool>,
     pub map_provider: std::sync::Arc<dyn maps::MapProvider>,
     pub acoustic_limiter: Arc<DefaultKeyedRateLimiter<String>>,
     pub event_tx: Arc<broadcast::Sender<ws::ViewportEvent>>,
@@ -48,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Arc::new(config::Config::from_env()?);
     let db = db::create_pool(&config.database_url, config.max_db_connections).await?;
+    db::assert_schema_version(&db).await?;
     let reputation_db = db::create_reputation_pool(&config.database_url).await?;
     let http_client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
@@ -55,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
     let hub = Arc::new(WsHub::new());
     let circle_hub = Arc::new(CircleHub::new());
     let redis_healthy = Arc::new(AtomicBool::new(false));
+    let workers_healthy = Arc::new(AtomicBool::new(true));
 
     let map_provider: std::sync::Arc<dyn maps::MapProvider> =
         std::sync::Arc::new(maps::MapboxAdapter::new(
@@ -91,6 +97,7 @@ async fn main() -> anyhow::Result<()> {
         hub: hub.clone(),
         circle_hub,
         redis_healthy: redis_healthy.clone(),
+        workers_healthy: workers_healthy.clone(),
         map_provider,
         acoustic_limiter,
         event_tx: event_tx.clone(),
@@ -104,41 +111,42 @@ async fn main() -> anyhow::Result<()> {
         let hub_ref = hub.clone();
         let healthy = redis_healthy.clone();
         let tx = event_tx.clone();
+        let workers_ok = workers_healthy.clone();
         tokio::spawn(async move {
             subscribers::event_subscriber::run(redis_url, pool, hub_ref, healthy, tx).await;
+            workers_ok.store(false, Ordering::Relaxed);
+            tracing::error!(worker = "event_subscriber", "critical worker exited");
         });
     }
 
     // Spawn synthesis worker (ticks every 5s, clusters acoustic signals into public_events)
-    {
+    if config.synthesis_enabled {
         let pool_synth = db.clone();
-        let synthesis_enabled = config.synthesis_enabled;
         let confirm_enabled = config.acoustic_confirm_enabled;
         let tx_synth = event_tx.clone();
+        let workers_ok = workers_healthy.clone();
         tokio::spawn(async move {
-            subscribers::synthesis_worker::run(
-                pool_synth,
-                synthesis_enabled,
-                confirm_enabled,
-                tx_synth,
-            )
-            .await;
+            subscribers::synthesis_worker::run(pool_synth, true, confirm_enabled, tx_synth).await;
+            workers_ok.store(false, Ordering::Relaxed);
+            tracing::error!(worker = "acoustic_synthesis", "critical worker exited");
         });
     }
 
     // Spawn NLP trust-ladder synthesis worker (promotes heuristic->corroborating
     // ->confirmed from staged nlp_signals, expires stale detections, and fires
     // push only on the confirm transition). H-5 Phase 2B-ii.
-    {
+    if config.nlp_synthesis_enabled {
         let pool_nlp = db.clone();
-        let nlp_enabled = config.nlp_synthesis_enabled;
         let push = subscribers::nlp_synthesis_worker::PushConfig {
             vapid_private_key: config.vapid_private_key.clone(),
             vapid_subject: config.vapid_subject.clone(),
         };
         let tx_nlp = event_tx.clone();
+        let workers_ok = workers_healthy.clone();
         tokio::spawn(async move {
-            subscribers::nlp_synthesis_worker::run(pool_nlp, nlp_enabled, push, tx_nlp).await;
+            subscribers::nlp_synthesis_worker::run(pool_nlp, true, push, tx_nlp).await;
+            workers_ok.store(false, Ordering::Relaxed);
+            tracing::error!(worker = "nlp_synthesis", "critical worker exited");
         });
     }
 
@@ -154,8 +162,11 @@ async fn main() -> anyhow::Result<()> {
             floor: config.reputation_decay_floor,
             retention_days: config.observatory_snapshot_retention_days,
         };
+        let workers_ok = workers_healthy.clone();
         tokio::spawn(async move {
             subscribers::trust_worker::run(pool_trust, tick, cfg).await;
+            workers_ok.store(false, Ordering::Relaxed);
+            tracing::error!(worker = "trust_hygiene", "critical worker exited");
         });
     }
 
@@ -163,8 +174,11 @@ async fn main() -> anyhow::Result<()> {
     // Always on — it is a privacy/safety hygiene control (audit AC-5, AC-7).
     {
         let pool_ret = db.clone();
+        let workers_ok = workers_healthy.clone();
         tokio::spawn(async move {
             subscribers::retention_worker::run(pool_ret).await;
+            workers_ok.store(false, Ordering::Relaxed);
+            tracing::error!(worker = "retention", "critical worker exited");
         });
     }
 
@@ -188,6 +202,8 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/live", get(health))
+        .route("/ready", get(ready))
         .route("/health/detailed", get(health_detailed))
         .route("/ws", get(ws::ws_handler))
         .route("/ws/circles", get(ws::ws_circles_handler))
@@ -221,12 +237,47 @@ async fn health() -> (StatusCode, Json<serde_json::Value>) {
     )
 }
 
-async fn health_detailed(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let redis_ok = state
-        .redis_healthy
-        .load(std::sync::atomic::Ordering::Relaxed);
+async fn ready(State(state): State<AppState>) -> (StatusCode, Json<serde_json::Value>) {
+    dependency_health(&state).await
+}
+
+async fn health_detailed(State(state): State<AppState>) -> (StatusCode, Json<serde_json::Value>) {
+    dependency_health(&state).await
+}
+
+async fn dependency_health(state: &AppState) -> (StatusCode, Json<serde_json::Value>) {
+    let postgres_ok = matches!(
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            sqlx::query_scalar::<_, i32>("SELECT 1").fetch_one(&state.db),
+        )
+        .await,
+        Ok(Ok(1))
+    );
+    let redis_ok = state.redis_healthy.load(Ordering::Relaxed);
+    let workers_ok = state.workers_healthy.load(Ordering::Relaxed);
+    let ok = postgres_ok && redis_ok && workers_ok;
     let ts = chrono::Utc::now().to_rfc3339();
-    Json(serde_json::json!({ "ok": true, "service": "gateway", "ts": ts, "redis": redis_ok }))
+    let status = readiness_status(postgres_ok, redis_ok, workers_ok);
+    (
+        status,
+        Json(serde_json::json!({
+            "ok": ok,
+            "service": "gateway",
+            "ts": ts,
+            "postgres": postgres_ok,
+            "redis": redis_ok,
+            "workers": workers_ok
+        })),
+    )
+}
+
+fn readiness_status(postgres_ok: bool, redis_ok: bool, workers_ok: bool) -> StatusCode {
+    if postgres_ok && redis_ok && workers_ok {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    }
 }
 
 /// One-shot: snap any pre-C-2 community_reports rows (h3_r9 IS NULL) to their r9
@@ -330,4 +381,26 @@ async fn shutdown_signal() {
     ctrl_c.await;
 
     tracing::info!("shutdown signal received");
+}
+
+#[cfg(test)]
+mod health_tests {
+    use super::*;
+
+    #[test]
+    fn readiness_requires_every_core_dependency() {
+        assert_eq!(readiness_status(true, true, true), StatusCode::OK);
+        assert_eq!(
+            readiness_status(false, true, true),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert_eq!(
+            readiness_status(true, false, true),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert_eq!(
+            readiness_status(true, true, false),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
 }

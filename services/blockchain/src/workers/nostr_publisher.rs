@@ -20,7 +20,7 @@ pub async fn publish_nostr_events(
     source_type: &str,
     source: &SourceRow,
 ) -> Result<PublishResult> {
-    let keys = Keys::parse(privkey_hex).map_err(|e| anyhow!("invalid NOSTR_PRIVKEY: {}", e))?;
+    let keys = Keys::parse(privkey_hex).map_err(|e| anyhow!("invalid NOSTR_PRIVKEY: {e}"))?;
 
     // Resolve location and bind temporaries before building events.
     let location_owned: String = source
@@ -53,7 +53,7 @@ pub async fn publish_nostr_events(
 
     let kind30078 = EventBuilder::new(Kind::Custom(30078), content_json.to_string())
         .tags([
-            Tag::identifier(format!("sentinelmesh:{}", source_id_str)),
+            Tag::identifier(format!("sentinelmesh:{source_id_str}")),
             Tag::custom(TagKind::custom("source_type"), [source_type]),
             Tag::custom(TagKind::custom("source_id"), [source_id_str.as_str()]),
             Tag::custom(TagKind::custom("severity"), [source.severity.as_str()]),
@@ -105,16 +105,14 @@ async fn send_events(
     let kind1_ok = send_event_per_relay(client, relay_urls, kind1, kind1_id).await?;
     if !kind1_ok {
         return Err(anyhow!(
-            "all relays timed out or failed for kind 1 event ({})",
-            kind1_id
+            "all relays timed out or failed for kind 1 event ({kind1_id})"
         ));
     }
 
     let kind30078_ok = send_event_per_relay(client, relay_urls, kind30078, kind30078_id).await?;
     if !kind30078_ok {
         return Err(anyhow!(
-            "all relays timed out or failed for kind 30078 event ({})",
-            kind30078_id
+            "all relays timed out or failed for kind 30078 event ({kind30078_id})"
         ));
     }
 

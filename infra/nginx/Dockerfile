@@ -1,0 +1,36 @@
+FROM node:20-bookworm-slim AS pwa-builder
+
+WORKDIR /app
+COPY apps/pwa/package.json apps/pwa/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm ci --prefer-offline --no-audit --no-fund
+COPY apps/pwa/ ./
+COPY shared/ /shared/
+ARG VITE_MAP_STYLE_URL=/sentinelmesh-dark.json
+ARG VITE_VAPID_PUBLIC_KEY
+ARG VITE_ENABLE_EXPERIMENTAL_ACOUSTIC=false
+ARG VITE_ENABLE_EXPERIMENTAL_BLOCKCHAIN=false
+ARG VITE_ENABLE_EXPERIMENTAL_CIRCLES=false
+ARG VITE_ENABLE_EXPERIMENTAL_INSIGHTS=false
+ARG VITE_ENABLE_EXPERIMENTAL_PHOTOS=false
+ARG VITE_ENABLE_EXPERIMENTAL_ROUTING=false
+ENV VITE_MAP_STYLE_URL=$VITE_MAP_STYLE_URL \
+    VITE_VAPID_PUBLIC_KEY=$VITE_VAPID_PUBLIC_KEY \
+    VITE_ENABLE_EXPERIMENTAL_ACOUSTIC=$VITE_ENABLE_EXPERIMENTAL_ACOUSTIC \
+    VITE_ENABLE_EXPERIMENTAL_BLOCKCHAIN=$VITE_ENABLE_EXPERIMENTAL_BLOCKCHAIN \
+    VITE_ENABLE_EXPERIMENTAL_CIRCLES=$VITE_ENABLE_EXPERIMENTAL_CIRCLES \
+    VITE_ENABLE_EXPERIMENTAL_INSIGHTS=$VITE_ENABLE_EXPERIMENTAL_INSIGHTS \
+    VITE_ENABLE_EXPERIMENTAL_PHOTOS=$VITE_ENABLE_EXPERIMENTAL_PHOTOS \
+    VITE_ENABLE_EXPERIMENTAL_ROUTING=$VITE_ENABLE_EXPERIMENTAL_ROUTING
+RUN npm run build
+
+FROM nginxinc/nginx-unprivileged:1.27-alpine
+COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=pwa-builder /app/dist /usr/share/nginx/html
+
+EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1

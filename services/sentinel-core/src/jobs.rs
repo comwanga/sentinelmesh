@@ -23,7 +23,7 @@ impl std::fmt::Display for JobStatus {
             Self::Failed => "FAILED",
             Self::Dead => "DEAD",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
