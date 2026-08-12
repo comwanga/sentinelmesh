@@ -38,6 +38,7 @@ pub struct CreateReportInput {
 
 pub struct CastVoteInput {
     pub voter_pubkey: String,
+    pub nostr_event_id: String,
     pub vote: String,
     pub voter_lat: Option<f64>,
     pub voter_lng: Option<f64>,
@@ -169,15 +170,18 @@ pub async fn create_report(pool: &PgPool, input: CreateReportInput) -> Result<Re
     Ok(report)
 }
 
-/// Returns (updated_report, old_score, established_confirmations). The caller must
-/// have already rejected self-votes (the author pubkey lives in report_authors,
-/// reachable only via the reputation pool).
+/// Casts a vote and applies every resulting state change in one locked transaction.
+/// The caller must have already rejected self-votes because report identity is
+/// accessible only through the restricted reputation pool.
 pub async fn cast_vote(
     pool: &PgPool,
     report_id: Uuid,
     input: CastVoteInput,
     genesis_roots: &[String],
-) -> Result<(Report, i32, i32)> {
+    require_established: bool,
+    reporter_pubkey: &str,
+    anchoring_enabled: bool,
+) -> Result<(Report, bool)> {
     let mut tx = pool.begin().await?;
 
     let report = sqlx::query_as::<_, Report>(
@@ -191,16 +195,30 @@ pub async fn cast_vote(
     .await?
     .ok_or_else(|| anyhow::anyhow!("report not found"))?;
 
-    let old_score = report.consensus_score;
-
     sqlx::query(
-        "INSERT INTO users (nostr_pubkey, last_active)
-         VALUES ($1, NOW())
-         ON CONFLICT (nostr_pubkey) DO UPDATE SET last_active = NOW()",
+        "INSERT INTO users (nostr_pubkey) VALUES ($1)
+         ON CONFLICT (nostr_pubkey) DO NOTHING",
     )
     .bind(&input.voter_pubkey)
     .execute(&mut *tx)
     .await?;
+
+    // Lock both potentially-mutated user rows in a stable order. Without this,
+    // users voting on each other's reports can deadlock during verification.
+    sqlx::query(
+        "SELECT nostr_pubkey FROM users
+         WHERE nostr_pubkey = ANY($1)
+         ORDER BY nostr_pubkey
+         FOR UPDATE",
+    )
+    .bind(vec![input.voter_pubkey.as_str(), reporter_pubkey])
+    .fetch_all(&mut *tx)
+    .await?;
+
+    sqlx::query("UPDATE users SET last_active = NOW() WHERE nostr_pubkey = $1")
+        .bind(&input.voter_pubkey)
+        .execute(&mut *tx)
+        .await?;
 
     let voter_tier: String =
         sqlx::query_scalar("SELECT reputation_tier FROM users WHERE nostr_pubkey = $1")
@@ -241,17 +259,18 @@ pub async fn cast_vote(
     };
 
     sqlx::query(
-        "INSERT INTO report_votes (report_id, voter_pubkey, vote, voter_was_nearby)
-         VALUES ($1, $2, $3, $4)",
+        "INSERT INTO report_votes (report_id, voter_pubkey, nostr_event_id, vote, voter_was_nearby)
+         VALUES ($1, $2, $3, $4, $5)",
     )
     .bind(report_id)
     .bind(&input.voter_pubkey)
+    .bind(&input.nostr_event_id)
     .bind(&input.vote)
     .bind(nearby)
     .execute(&mut *tx)
     .await?;
 
-    let updated = sqlx::query_as::<_, Report>(
+    let mut updated = sqlx::query_as::<_, Report>(
         "UPDATE community_reports
          SET consensus_score    = consensus_score + $2,
              confirmation_count = confirmation_count + $3,
@@ -298,62 +317,84 @@ pub async fn cast_vote(
     .fetch_one(&mut *tx)
     .await?;
 
-    tx.commit().await?;
-    Ok((updated, old_score, established_confirmations as i32))
-}
+    let new_status = crate::reports::consensus::compute_new_status(
+        &updated.status,
+        updated.consensus_score,
+        updated.confirmation_count,
+        updated.denial_count,
+        established_confirmations as i32,
+        require_established,
+    );
+    let mut publish_job_created = false;
 
-pub async fn apply_status_transition(
-    pool: &PgPool,
-    report_id: Uuid,
-    new_status: &str,
-    reporter_pubkey: &str,
-) -> Result<()> {
-    let mut tx = pool.begin().await?;
-
-    sqlx::query("UPDATE community_reports SET status = $2, updated_at = NOW() WHERE id = $1")
+    if let Some(new_status) = new_status {
+        updated = sqlx::query_as::<_, Report>(
+            "UPDATE community_reports
+             SET status = $3, updated_at = NOW()
+             WHERE id = $1 AND status = $2
+             RETURNING id, report_type, description, lat::float8 AS lat, lng::float8 AS lng,
+                       place_name, reporter_tier, consensus_score, confirmation_count,
+                       denial_count, status, photo_ipfs_cid, linked_event_id,
+                       created_at, updated_at",
+        )
         .bind(report_id)
-        .bind(new_status)
-        .execute(&mut *tx)
+        .bind(&report.status)
+        .bind(&new_status)
+        .fetch_one(&mut *tx)
         .await?;
 
-    if new_status == "VERIFIED" {
-        // Postgres evaluates every SET RHS against the PRE-update row, so both
-        // reputation_score and effective_reputation_score read the OLD earned score
-        // and land on old+10 = the new earned score. That resets effective to earned
-        // (decay reset) regardless of SET-clause order.
-        let new_score: i64 = sqlx::query_scalar(
-            "UPDATE users
+        if new_status == "VERIFIED" {
+            // Postgres evaluates every SET RHS against the PRE-update row, so both
+            // reputation_score and effective_reputation_score read the OLD earned score
+            // and land on old+10 = the new earned score. That resets effective to earned
+            // (decay reset) regardless of SET-clause order.
+            let new_score: i64 = sqlx::query_scalar(
+                "UPDATE users
              SET accurate_reports = accurate_reports + 1,
                  reputation_score = reputation_score + 10,
                  effective_reputation_score = reputation_score + 10,
                  last_verified_at = NOW()
              WHERE nostr_pubkey = $1
              RETURNING reputation_score",
-        )
-        .bind(reporter_pubkey)
-        .fetch_one(&mut *tx)
-        .await?;
-
-        let new_tier = compute_tier(new_score);
-        sqlx::query("UPDATE users SET reputation_tier = $2 WHERE nostr_pubkey = $1")
+            )
             .bind(reporter_pubkey)
-            .bind(new_tier)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            let new_tier = compute_tier(new_score);
+            sqlx::query("UPDATE users SET reputation_tier = $2 WHERE nostr_pubkey = $1")
+                .bind(reporter_pubkey)
+                .bind(new_tier)
+                .execute(&mut *tx)
+                .await?;
+        } else if new_status == "REJECTED" {
+            // Feeds advisory voucher_quality (C-1b-1). The report author keeps no
+            // reputation penalty here (consensus already rejected the report); only
+            // the rejected counter is bumped for accountability analytics.
+            sqlx::query(
+                "UPDATE users SET rejected_reports = rejected_reports + 1 WHERE nostr_pubkey = $1",
+            )
+            .bind(reporter_pubkey)
             .execute(&mut *tx)
             .await?;
-    } else if new_status == "REJECTED" {
-        // Feeds advisory voucher_quality (C-1b-1). The report author keeps no
-        // reputation penalty here (consensus already rejected the report); only
-        // the rejected counter is bumped for accountability analytics.
-        sqlx::query(
-            "UPDATE users SET rejected_reports = rejected_reports + 1 WHERE nostr_pubkey = $1",
-        )
-        .bind(reporter_pubkey)
-        .execute(&mut *tx)
-        .await?;
+        }
+
+        if anchoring_enabled && updated.consensus_score >= 3 {
+            publish_job_created = sqlx::query(
+                "INSERT INTO publish_jobs (source_type, source_id, status, next_retry_at)
+                 VALUES ('COMMUNITY_REPORT', $1, 'PENDING', NOW())
+                 ON CONFLICT DO NOTHING",
+            )
+            .bind(report_id)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected()
+                > 0;
+        }
     }
 
     tx.commit().await?;
-    Ok(())
+    Ok((updated, publish_job_created))
 }
 
 pub async fn list_reports(pool: &PgPool, params: ListReportsParams) -> Result<Vec<Report>> {

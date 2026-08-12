@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react'
+import { vi } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { store } from '../../store'
+
+vi.mock('../../hooks/useSafetyDataSync', () => ({ useSafetyDataSync: vi.fn() }))
+
 import { AppShell } from './AppShell'
 
 function Wrapper({ children }: { children: React.ReactNode }) {

@@ -43,19 +43,24 @@ export interface SafetyEvent {
   event_type: EventType
   severity: Severity
   title: string
-  summary: string | null
+  summary?: string | null
   lat: number
   lng: number
-  place_name: string | null
-  county: string | null
+  place_name?: string | null
+  county?: string | null
   is_active: boolean
   state: EventState
   started_at: string
   created_at: string
-  nostr_event_id: string | null
-  bitcoin_txid: string | null
-  // Optional for back-compat: older payloads and the lighter viewport-WS event
-  // omit these. Consumers treat a missing trust_state as `confirmed`.
+  updated_at?: string
+  radius_meters?: number | null
+  confidence?: number | null
+  source_count?: number | null
+  source_breakdown?: Record<string, unknown> | null
+  nostr_event_id?: string | null
+  bitcoin_txid?: string | null
+  // Lightweight realtime projections omit these fields. Missing trust data is
+  // unverified, never implicitly confirmed.
   trust_state?: TrustState
   origin_class?: OriginClass
 }
@@ -72,7 +77,7 @@ export type ReportType =
   | 'OTHER'
 
 export interface CommunityReport {
-  report_id: string
+  id: string
   report_type: ReportType
   description: string | null
   lat: number

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Marker, useMap } from 'react-map-gl/maplibre'
 import { useAppSelector } from '../../store'
-import { selectViewportEventItems } from '../../store/viewportEventsSlice'
+import { selectViewportEventItems } from '../../store/eventsSlice'
 import EventMarker from '../EventMarker'
 import { ClusterMarker } from './ClusterMarker'
 import type { SafetyEvent } from '../../../../../shared/types'

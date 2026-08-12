@@ -1,5 +1,7 @@
 import { useCallback } from 'react'
-import { useAppSelector } from '../store'
+import { useAppDispatch, useAppSelector } from '../store'
+import { reportReceived } from '../store/reportSlice'
+import { parseReport } from '../services/safetyDataApi'
 import { getCachedKeypair, signReport, voteBindingContent } from '../services/nostrService'
 import { VerificationBadges } from './VerificationBadges'
 import type { CommunityReport } from '../../../../shared/types'
@@ -17,10 +19,11 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function ReportList() {
   const reports = useAppSelector(s => s.reports.items)
+  const dispatch = useAppDispatch()
 
   const castVote = useCallback(async (report: CommunityReport, vote: 'CONFIRM' | 'DENY') => {
     const keypair = getCachedKeypair()
-    const voteEvent = signReport(voteBindingContent(vote, report.report_id), keypair.secretKey)
+    const voteEvent = signReport(voteBindingContent(vote, report.id), keypair.secretKey)
 
     let lat: number | null = null
     let lng: number | null = null
@@ -33,7 +36,7 @@ export function ReportList() {
     } catch { /* vote without location */ }
 
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${report.report_id}/vote`, {
+      const res = await fetch(`${API_BASE}/api/reports/${report.id}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(15_000),
@@ -46,10 +49,14 @@ export function ReportList() {
         }),
       })
       if (!res.ok) console.error(`[vote] server error ${res.status}`)
+      else {
+        const updated = parseReport(await res.json())
+        if (updated) dispatch(reportReceived(updated))
+      }
     } catch (err) {
       console.error('[vote] network error', err)
     }
-  }, [])
+  }, [dispatch])
 
   if (reports.length === 0) {
     return (
@@ -65,7 +72,7 @@ export function ReportList() {
     <div style={containerStyle}>
       <h3 style={{ margin: '0 0 12px', fontSize: 14, fontFamily: 'sans-serif' }}>Community Reports</h3>
       {reports.map(report => (
-        <div key={report.report_id} style={cardStyle}>
+        <div key={report.id} style={cardStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <span style={{ fontFamily: 'sans-serif', fontSize: 12, fontWeight: 600 }}>
               {report.report_type.replace(/_/g, ' ')}

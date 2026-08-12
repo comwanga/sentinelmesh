@@ -97,7 +97,7 @@ CREATE TABLE report_authors (
   report_id       UUID PRIMARY KEY REFERENCES community_reports(id) ON DELETE CASCADE,
   nostr_pubkey    TEXT NOT NULL,
   nostr_signature TEXT,
-  nostr_event_id  TEXT,
+  nostr_event_id  TEXT UNIQUE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -105,6 +105,7 @@ CREATE TABLE report_votes (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   report_id         UUID NOT NULL REFERENCES community_reports(id) ON DELETE CASCADE,
   voter_pubkey      TEXT NOT NULL,
+  nostr_event_id    TEXT NOT NULL UNIQUE,
   vote              TEXT NOT NULL CHECK (vote IN ('CONFIRM','DENY')),
   voter_was_nearby  BOOLEAN,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),

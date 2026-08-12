@@ -5,7 +5,6 @@ import { configureStore } from '@reduxjs/toolkit'
 import type { ReactNode } from 'react'
 import eventsReducer from '../store/eventsSlice'
 import uiReducer from '../store/uiSlice'
-import viewportEventsReducer from '../store/viewportEventsSlice'
 import { LiveMapPage } from './LiveMapPage'
 import type { SafetyEvent } from '../../../../shared/types'
 
@@ -47,7 +46,7 @@ vi.mock('react-router-dom', () => ({
 
 function makeStore() {
   return configureStore({
-    reducer: { events: eventsReducer, ui: uiReducer, viewportEvents: viewportEventsReducer },
+    reducer: { events: eventsReducer, ui: uiReducer },
   })
 }
 
