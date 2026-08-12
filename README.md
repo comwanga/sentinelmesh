@@ -119,8 +119,8 @@ Two things flow through the gateway continuously and are worth calling out, beca
 
 - Docker 24+ and Docker Compose v2
 - Rust toolchain (stable) — [install via rustup](https://rustup.rs)
-- A Mapbox **secret** token — [mapbox.com](https://mapbox.com) (used server-side for the tile proxy)
-- Node.js 20+ (for the PWA only)
+- A Mapbox secret token only if Mapbox-backed routes or tiles are enabled
+- Node.js 20+ for local PWA development
 
 ### Step 1 — Clone and configure
 
@@ -132,37 +132,44 @@ cp .env.example .env
 # Open .env and fill in the required variables (see below)
 ```
 
-### Step 2 — Start the backend (Docker)
+### Step 2 — Start the core stack
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis gateway-rs
+docker compose up -d --build --wait
 ```
 
 Check it's running:
 ```bash
-curl http://localhost:3000/health
-# → {"ok":true,"service":"gateway"}
+curl http://localhost/live
+curl http://localhost/ready
+# Both return HTTP 200 when the process and required dependencies are healthy.
 ```
 
-### Step 3 — Start the PWA
+Open **http://localhost**. The unprivileged Nginx container serves the built PWA and proxies `/api`, `/ws`, `/live`, and `/ready` to the Rust gateway.
+
+The first V2 bootstrap requires a fresh database volume. During pre-production development, reset an old prototype volume with:
 
 ```bash
-cd apps/pwa
-npm install
-npm run dev
+docker compose down -v --remove-orphans
 ```
 
-Open **http://localhost:5173** in your browser.
+### Optional profiles
 
-The PWA automatically proxies `/api` and `/ws` requests to the gateway on port 3000.
+```bash
+docker compose --profile signal up -d --build
+docker compose --profile ml up -d --build
+docker compose --profile blockchain up -d --build
+```
+
+Signal ingestion, ML transcription, and blockchain anchoring are not part of the default core stack.
 
 ### All service URLs (dev)
 
 | Service | URL |
 |---|---|
-| PWA | http://localhost:5173 |
+| Core PWA and proxy | http://localhost |
 | API Gateway | http://localhost:3000 |
-| Signal Service | http://localhost:8000 (optional, needs Docker build) |
+| Signal Service | http://localhost:8000 (optional `signal` profile) |
 | PostgreSQL | localhost:5432 |
 | Redis | localhost:6379 |
 
@@ -171,20 +178,15 @@ The PWA automatically proxies `/api` and `/ws` requests to the gateway on port 3
 ## Running tests
 
 ```bash
-# Gateway (Rust)
-cd services/gateway && cargo test
-
-# Blockchain service (Rust)
-cd services/blockchain && cargo test
-
-# PWA
-cd apps/pwa && npm test
-
-# Signal service (Python)
-cd services/signal && pytest
+make lint
+make test-rust
+make test-pwa
+make build-pwa
+make test-signal
+make config
 ```
 
-CI also enforces `cargo fmt --check`, `cargo clippy -D warnings`, `tsc --noEmit`, and that every database migration applies cleanly to a fresh database.
+CI also enforces `cargo fmt --check`, `cargo clippy -D warnings`, `tsc --noEmit`, the clean V2 schema, and the restricted runtime database role boundary.
 
 ---
 
@@ -196,14 +198,15 @@ All variables go in the root `.env` file. Copy `.env.example` to get started.
 
 | Variable | Description |
 |---|---|
-| `POSTGRES_PASSWORD` | Password for the PostgreSQL `sentinel` user |
-| `DATABASE_URL` | Full Postgres connection string — must match `POSTGRES_PASSWORD` |
+| `POSTGRES_ADMIN_PASSWORD` | Bootstrap-only PostgreSQL administrator password; never used by the app |
+| `APP_DATABASE_PASSWORD` | Password for the non-superuser `sentinel_app` runtime role |
+| `DATABASE_URL` | Runtime connection string using `sentinel_app` |
 | `REDIS_PASSWORD` | Password for Redis |
 | `REDIS_URL` | Full Redis connection string — must match `REDIS_PASSWORD` |
 | `INTERNAL_SERVICE_SECRET` | Random string for service-to-service auth (required in production; fails closed if unset) |
 | `CIRCLE_TOKEN_SECRET` | Random string used to derive the per-circle membership tokens (required in production; **stable** — rotating it invalidates existing circle tokens) |
-| `MAPBOX_TOKEN` | Your Mapbox **secret** access token (server-side tile proxy) |
-| `VITE_MAPBOX_TOKEN` | Your Mapbox **public** access token (PWA, used only for style URLs) |
+| `PUBLIC_BASE_URL` | Canonical external origin used by NIP-98 validation |
+| `MAPBOX_TOKEN` | Optional Mapbox secret token used only by the server-side proxy |
 
 ### Blockchain service
 
@@ -243,7 +246,8 @@ sentinelmesh/
 ├── apps/
 │   └── pwa/                    # React + Vite browser app
 │       ├── public/
-│       │   └── sw.js           # Service worker (push notifications)
+│       │   ├── push-sw.js      # Push handlers imported by generated Workbox worker
+│       │   └── icon.svg        # Install and notification icon
 │       └── src/
 │           ├── components/     # Map, reports, circles
 │           ├── hooks/          # useCircles, usePushSubscription, etc.
@@ -268,14 +272,15 @@ sentinelmesh/
 │       └── worker/             # Whisper ML worker
 ├── infra/
 │   └── postgres/
-│       ├── init.sql            # Base database schema
-│       └── migrations/         # Numbered, idempotent migrations
+│       ├── schema-v2.sql       # Authoritative clean V2 baseline
+│       ├── bootstrap-roles.sh  # Runtime/reputation role creation
+│       └── migrations/         # Historical pre-V2 migrations; not executable for V2
 ├── shared/
 │   └── types/                  # Shared TypeScript types
 ├── docs/
 │   ├── audit/                  # Security/privacy audit + remediation plan
 │   └── superpowers/            # Design specs and implementation plans
-├── docker-compose.yml          # Current multi-service stack; not production-ready
+├── docker-compose.yml          # Core single-host stack plus optional profiles
 └── docker-compose.dev.yml      # Local development overrides
 ```
 

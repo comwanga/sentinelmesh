@@ -1,7 +1,4 @@
-version: '3.9'
-
 # Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-# Overrides prod settings for local development.
 
 services:
   postgres:
@@ -19,7 +16,8 @@ services:
     ports:
       - "3000:3000"
     healthcheck:
-      start_period: 60s   # debug builds start slower than release
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ready >/dev/null || exit 1"]
+      start_period: 60s
 
   signal:
     build:
@@ -31,8 +29,6 @@ services:
       - ./services/signal:/app
     environment:
       WHISPER_MODEL: base
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      DATABASE_URL: postgresql://sentinel:${POSTGRES_PASSWORD}@postgres:5432/sentinelmesh
       LOG_LEVEL: DEBUG
 
   ml-worker:
@@ -45,9 +41,4 @@ services:
       - whisper-cache:/root/.cache/whisper
     environment:
       WHISPER_MODEL: base
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      DATABASE_URL: postgresql://sentinel:${POSTGRES_PASSWORD}@postgres:5432/sentinelmesh
       LOG_LEVEL: DEBUG
-
-volumes:
-  whisper-cache:

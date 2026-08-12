@@ -164,7 +164,7 @@ fn report_binding_content(
 
 /// Canonical binding string for a vote — binds the signature to this report + choice.
 fn vote_binding_content(vote: &str, report_id: &Uuid) -> String {
-    format!("v1|{}|{}", vote, report_id)
+    format!("v1|{vote}|{report_id}")
 }
 
 /// Per-event replay guard: SET NX with a TTL covering the freshness window.
@@ -359,10 +359,7 @@ async fn vote(
         // reachable by 3 Sybil keys, so auto-anchoring on it lets attackers drain the
         // hot wallet via on-chain fees. Off by default until anchoring is decoupled
         // from raw consensus and a spend cap exists (audit H-8 / C-1).
-        let anchoring_enabled = std::env::var("ANCHORING_ENABLED")
-            .map(|v| v == "true" || v == "1")
-            .unwrap_or(false);
-        if anchoring_enabled && updated.consensus_score >= 3 && old_score < 3 {
+        if state.config.anchoring_enabled && updated.consensus_score >= 3 && old_score < 3 {
             let _ = sqlx::query(
                 "INSERT INTO publish_jobs (source_type, source_id, status, next_retry_at)
                  VALUES ('COMMUNITY_REPORT', $1, 'PENDING', NOW())
@@ -479,7 +476,7 @@ mod tests {
         let id = Uuid::nil();
         assert_eq!(
             vote_binding_content("CONFIRM", &id),
-            format!("v1|CONFIRM|{}", id)
+            format!("v1|CONFIRM|{id}")
         );
     }
 }

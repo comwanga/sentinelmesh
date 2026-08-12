@@ -34,7 +34,7 @@ async fn proxy_tile(
         .collect::<Vec<_>>()
         .join("&");
 
-    let upstream_url = format!("https://api.mapbox.com/{}?{}", path, query_string);
+    let upstream_url = format!("https://api.mapbox.com/{path}?{query_string}");
 
     let resp = match state.http_client.get(&upstream_url).send().await {
         Ok(r) => r,

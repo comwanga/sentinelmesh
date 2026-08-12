@@ -27,10 +27,15 @@ RUN cargo build --release -p blockchain
 
 FROM debian:bookworm-slim AS runtime
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget && rm -rf /var/lib/apt/lists/* && \
+    groupadd --system --gid 10002 blockchain && \
+    useradd --system --uid 10002 --gid blockchain --no-create-home blockchain
 
-COPY --from=builder /app/target/release/blockchain /usr/local/bin/blockchain
+COPY --from=builder --chown=blockchain:blockchain /app/target/release/blockchain /usr/local/bin/blockchain
 
 EXPOSE 3003
 
-CMD ["/usr/local/bin/blockchain"]
+USER blockchain
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:3003/health >/dev/null || exit 1
+ENTRYPOINT ["/usr/local/bin/blockchain"]

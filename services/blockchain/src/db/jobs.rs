@@ -172,8 +172,7 @@ pub async fn fetch_source_row(pool: &PgPool, job: &PublishJob) -> Result<Option<
         ("community_reports", "report_type", "''")
     };
     let sql = format!(
-        "SELECT {} AS severity, {} AS event_type, lat::float8, lng::float8, place_name FROM {} WHERE id = $1",
-        severity_expr, type_col, table
+        "SELECT {severity_expr} AS severity, {type_col} AS event_type, lat::float8, lng::float8, place_name FROM {table} WHERE id = $1"
     );
     let row = sqlx::query_as::<_, (String, String, f64, f64, Option<String>)>(&sql)
         .bind(job.source_id)

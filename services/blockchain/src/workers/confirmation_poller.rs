@@ -117,7 +117,7 @@ async fn check_and_confirm(
                 other,
                 job.id
             );
-            return Err(anyhow!("unknown source_type: {}", other));
+            return Err(anyhow!("unknown source_type: {other}"));
         }
     };
 
@@ -128,8 +128,7 @@ async fn check_and_confirm(
         .execute(&mut *tx)
         .await?;
     sqlx::query(&format!(
-        "UPDATE {} SET bitcoin_block = $2 WHERE id = $1 AND bitcoin_block IS NULL",
-        table
+        "UPDATE {table} SET bitcoin_block = $2 WHERE id = $1 AND bitcoin_block IS NULL"
     ))
     .bind(job.source_id)
     .bind(block_height)

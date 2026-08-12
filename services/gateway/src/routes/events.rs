@@ -126,7 +126,9 @@ async fn create_event(
     .fetch_one(&mut *tx)
     .await?;
 
-    let should_publish = matches!(body.severity.as_str(), "AUTHORITATIVE" | "CRITICAL");
+    let should_publish = state.config.anchoring_enabled
+        && event.trust_state == "confirmed"
+        && event.severity == "CRITICAL";
     if should_publish {
         sqlx::query(
             "INSERT INTO publish_jobs (source_type, source_id, status, next_retry_at)

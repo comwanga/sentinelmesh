@@ -34,10 +34,15 @@ RUN cargo build --release -p gateway
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget && rm -rf /var/lib/apt/lists/* && \
+    groupadd --system --gid 10001 gateway && \
+    useradd --system --uid 10001 --gid gateway --no-create-home gateway
 
-COPY --from=builder /app/target/release/gateway /usr/local/bin/gateway
+COPY --from=builder --chown=gateway:gateway /app/target/release/gateway /usr/local/bin/gateway
 
 EXPOSE 3000
 
-CMD ["/usr/local/bin/gateway"]
+USER gateway
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:3000/ready >/dev/null || exit 1
+ENTRYPOINT ["/usr/local/bin/gateway"]

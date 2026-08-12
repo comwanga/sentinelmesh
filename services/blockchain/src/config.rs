@@ -13,8 +13,7 @@ impl BitcoinNetwork {
             "mainnet" => Ok(Self::Mainnet),
             "testnet" => Ok(Self::Testnet),
             other => Err(anyhow!(
-                "Invalid BITCOIN_NETWORK {:?}. Must be \"mainnet\" or \"testnet\".",
-                other
+                "Invalid BITCOIN_NETWORK {other:?}. Must be \"mainnet\" or \"testnet\"."
             )),
         }
     }
@@ -42,8 +41,8 @@ impl BitcoinNetwork {
 
     pub fn mempool_tx_url(&self, txid: &str) -> String {
         match self {
-            Self::Mainnet => format!("https://mempool.space/api/tx/{}", txid),
-            Self::Testnet => format!("https://mempool.space/testnet/api/tx/{}", txid),
+            Self::Mainnet => format!("https://mempool.space/api/tx/{txid}"),
+            Self::Testnet => format!("https://mempool.space/testnet/api/tx/{txid}"),
         }
     }
 
@@ -107,7 +106,7 @@ impl Config {
 }
 
 fn required(key: &str) -> Result<String> {
-    std::env::var(key).map_err(|_| anyhow!("Missing required env var: {}", key))
+    std::env::var(key).map_err(|_| anyhow!("Missing required env var: {key}"))
 }
 
 #[cfg(test)]

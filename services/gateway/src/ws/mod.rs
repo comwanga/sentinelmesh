@@ -231,7 +231,7 @@ async fn fetch_blob_snapshot(
     circle_id: Uuid,
 ) -> anyhow::Result<Vec<serde_json::Value>> {
     let rows = sqlx::query_as::<_, (Uuid, String, String, chrono::DateTime<chrono::Utc>)>(
-        "SELECT id, sender_pubkey, encrypted_payload, expires_at
+        "SELECT id, sender_ephemeral_pubkey, encrypted_payload, expires_at
          FROM location_blobs WHERE circle_id = $1 AND expires_at > NOW()",
     )
     .bind(circle_id)
@@ -242,7 +242,7 @@ async fn fetch_blob_snapshot(
         .into_iter()
         .map(|(id, sender, payload, exp)| {
             serde_json::json!({
-                "id": id, "sender_pubkey": sender, "encrypted_payload": payload, "expires_at": exp
+                "id": id, "sender_ephemeral_pubkey": sender, "encrypted_payload": payload, "expires_at": exp
             })
         })
         .collect())
