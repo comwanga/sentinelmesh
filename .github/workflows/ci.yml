@@ -136,20 +136,37 @@ jobs:
           CREATE ROLE sentinel_reputation NOLOGIN NOINHERIT;
           GRANT sentinel_reputation TO sentinel_app WITH INHERIT FALSE;
           SQL
-      - name: Apply clean V2 baseline
+      - name: Apply clean V2 baseline and forward migrations
         env:
           PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d sentinelmesh -v ON_ERROR_STOP=1 -f infra/postgres/schema-v2.sql
+        run: |
+          psql -h localhost -U postgres -d sentinelmesh -v ON_ERROR_STOP=1 -f infra/postgres/schema-v2.sql
+          POSTGRES_HOST=localhost POSTGRES_DB=sentinelmesh POSTGRES_USER=postgres \
+            POSTGRES_ADMIN_PASSWORD=postgres MIGRATIONS_DIR="$PWD/infra/postgres/migrations-v2" \
+            sh infra/postgres/migrate.sh
+          POSTGRES_HOST=localhost POSTGRES_DB=sentinelmesh POSTGRES_USER=postgres \
+            POSTGRES_ADMIN_PASSWORD=postgres MIGRATIONS_DIR="$PWD/infra/postgres/migrations-v2" \
+            sh infra/postgres/migrate.sh
       - name: Probe runtime role and RLS boundary
         env:
           PGPASSWORD: ci-runtime-password
         run: |
           set -euo pipefail
-          psql -h localhost -U sentinel_app -d sentinelmesh -v ON_ERROR_STOP=1 -c "SELECT 1 FROM schema_versions WHERE version = 2"
+          test "$(psql -h localhost -U sentinel_app -d sentinelmesh -Atc 'SELECT MAX(version) FROM schema_versions')" = 3
           psql -h localhost -U sentinel_app -d sentinelmesh -v ON_ERROR_STOP=1 -c "SELECT PostGIS_Version()"
+          if psql -h localhost -U sentinel_app -d sentinelmesh -c "DELETE FROM schema_versions"; then
+            echo "sentinel_app unexpectedly modified migration history" >&2
+            exit 1
+          fi
           if psql -h localhost -U sentinel_app -d sentinelmesh -c "SELECT * FROM report_authors"; then
             echo "sentinel_app unexpectedly read report_authors" >&2
             exit 1
           fi
           psql -h localhost -U sentinel_app -d sentinelmesh -v ON_ERROR_STOP=1 -c "SET ROLE sentinel_reputation; SELECT * FROM report_authors"
+          PGPASSWORD=postgres pg_dump -h localhost -U postgres -d sentinelmesh --format=custom --no-owner -f /tmp/sentinelmesh.dump
+          PGPASSWORD=postgres createdb -h localhost -U postgres sentinelmesh_restore
+          PGPASSWORD=postgres pg_restore -h localhost -U postgres -d sentinelmesh_restore --exit-on-error --no-owner /tmp/sentinelmesh.dump
+          test "$(PGPASSWORD=postgres psql -h localhost -U postgres -d sentinelmesh_restore -Atc 'SELECT MAX(version) FROM schema_versions')" = 3
           echo "V2 schema and runtime role boundary validated." >> "$GITHUB_STEP_SUMMARY"
+      - name: Operations migration and restore smoke test
+        run: ./tests/operations-smoke.sh

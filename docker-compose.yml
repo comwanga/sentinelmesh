@@ -13,11 +13,27 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - PGPASSWORD=$$APP_DATABASE_PASSWORD psql -U sentinel_app -d sentinelmesh -tAc "SELECT 1 FROM schema_versions WHERE version = 2" | grep -q 1
+        - PGPASSWORD=$$APP_DATABASE_PASSWORD psql -U sentinel_app -d sentinelmesh -tAc "SELECT 1" | grep -q 1
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 15s
+
+  migrate:
+    build:
+      context: ./infra/postgres
+    restart: "no"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: sentinelmesh
+      POSTGRES_USER: postgres
+      POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD}
+    command: ["/usr/local/bin/sentinel-migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
 
   redis:
     image: redis:7-alpine
@@ -57,8 +73,8 @@ services:
       CONSENSUS_REQUIRE_ESTABLISHED: ${CONSENSUS_REQUIRE_ESTABLISHED:-true}
       MAX_DB_CONNECTIONS: ${MAX_DB_CONNECTIONS:-50}
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     security_opt:
@@ -79,7 +95,7 @@ services:
         VITE_ENABLE_EXPERIMENTAL_ROUTING: ${VITE_ENABLE_EXPERIMENTAL_ROUTING:-false}
     restart: unless-stopped
     ports:
-      - "80:8080"
+      - "${SENTINEL_BIND_ADDRESS:-0.0.0.0}:${SENTINEL_HTTP_PORT:-80}:8080"
     depends_on:
       gateway-rs:
         condition: service_healthy

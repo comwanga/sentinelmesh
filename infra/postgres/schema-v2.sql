@@ -336,6 +336,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO sentinel_
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO sentinel_app;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO sentinel_app;
 
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON schema_versions FROM sentinel_app;
+GRANT SELECT ON schema_versions TO sentinel_app;
+
 REVOKE ALL ON report_authors FROM PUBLIC;
 REVOKE SELECT, UPDATE, DELETE ON report_authors FROM sentinel_app;
 GRANT INSERT ON report_authors TO sentinel_app;
