@@ -2,6 +2,9 @@ import { useState, useCallback, useRef } from 'react'
 import { getCachedKeypair, signReport, reportBindingContent } from '../services/nostrService'
 import { compressAndStrip, blurFaces, uploadToIPFS } from '../services/photoService'
 import { experimentalFeatures } from '../config/features'
+import { parseReport } from '../services/safetyDataApi'
+import { reportReceived } from '../store/reportSlice'
+import { useAppDispatch } from '../store'
 
 const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
 
@@ -18,6 +21,7 @@ interface Props {
 type SubmitState = 'idle' | 'locating' | 'submitting' | 'error'
 
 export function ReportSubmit({ onClose, linkedEventId }: Props) {
+  const dispatch = useAppDispatch()
   const [reportType, setReportType] = useState('FLOODING')
   const [description, setDescription] = useState('')
   const [submitState, setSubmitState] = useState<SubmitState>('idle')
@@ -94,12 +98,14 @@ export function ReportSubmit({ onClose, linkedEventId }: Props) {
         setErrorMsg(`Submit failed (${res.status}) — please try again`)
         return
       }
+      const report = parseReport(await res.json())
+      if (report) dispatch(reportReceived(report))
       onClose()
     } catch {
       setSubmitState('error')
       setErrorMsg('Network error — please try again')
     }
-  }, [reportType, description, linkedEventId, onClose])
+  }, [reportType, description, linkedEventId, onClose, dispatch])
 
   return (
     <div style={containerStyle}>

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useDispatch } from 'react-redux'
 import { eventReceived, eventResolved, setConnected } from '../store/eventsSlice'
 import { reportReceived } from '../store/reportSlice'
-import type { WsMessage } from '../../../../shared/types'
+import { parseEvent, parseReport } from './safetyDataApi'
 
 // Always use window.location.host — in dev the Vite proxy forwards /ws to the gateway
 // (Node.js resolves localhost → 127.0.0.1, avoiding the Windows IPv6 pitfall).
@@ -37,13 +37,15 @@ export function useWsConnection(): void {
 
     ws.onmessage = (event) => {
       try {
-        const msg: WsMessage = JSON.parse(event.data)
+        const msg: { type?: string; payload?: unknown } = JSON.parse(event.data)
         if (msg.type === 'NEW_EVENT' || msg.type === 'EVENT_UPDATED') {
-          dispatch(eventReceived(msg.payload))
-        } else if (msg.type === 'EVENT_RESOLVED') {
-          dispatch(eventResolved(msg.payload))
+          const payload = parseEvent(msg.payload)
+          if (payload) dispatch(eventReceived(payload))
+        } else if (msg.type === 'EVENT_RESOLVED' && typeof (msg.payload as { id?: unknown })?.id === 'string') {
+          dispatch(eventResolved({ id: (msg.payload as { id: string }).id }))
         } else if (msg.type === 'NEW_REPORT' || msg.type === 'REPORT_UPDATED') {
-          dispatch(reportReceived(msg.payload))
+          const payload = parseReport(msg.payload)
+          if (payload) dispatch(reportReceived(payload))
         }
       } catch {
         console.warn('Invalid WebSocket message received')

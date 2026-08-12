@@ -1,6 +1,9 @@
 import { vi, describe, test, expect, beforeEach } from 'vitest'
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import reportsReducer from '../store/reportSlice'
 
 // Mock services before import
 vi.mock('../services/nostrService', () => ({
@@ -33,20 +36,25 @@ import { ReportSubmit } from './ReportSubmit'
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockFetch.mockResolvedValue({ ok: true, json: async () => ({ report_id: 'r1' }) })
+  mockFetch.mockResolvedValue({ ok: true, json: async () => ({ id: 'r1', report_type: 'FLOODING', status: 'PENDING' }) })
 })
+
+function renderSubmit(onClose: () => void) {
+  const store = configureStore({ reducer: { reports: reportsReducer } })
+  return render(<Provider store={store}><ReportSubmit onClose={onClose} /></Provider>)
+}
 
 describe('ReportSubmit', () => {
   test('renders report type selector and submit button', () => {
     const onClose = vi.fn()
-    render(<ReportSubmit onClose={onClose} />)
+    renderSubmit(onClose)
     expect(screen.getByRole('combobox')).toBeTruthy()
     expect(screen.getByRole('button', { name: /submit/i })).toBeTruthy()
   })
 
   test('POSTs to /api/reports on submit', async () => {
     const onClose = vi.fn()
-    render(<ReportSubmit onClose={onClose} />)
+    renderSubmit(onClose)
     fireEvent.click(screen.getByRole('button', { name: /submit/i }))
     await waitFor(() => expect(mockFetch).toHaveBeenCalledOnce())
     const [url] = mockFetch.mock.calls[0] as [string]
@@ -55,7 +63,7 @@ describe('ReportSubmit', () => {
 
   test('calls onClose after successful submit', async () => {
     const onClose = vi.fn()
-    render(<ReportSubmit onClose={onClose} />)
+    renderSubmit(onClose)
     fireEvent.click(screen.getByRole('button', { name: /submit/i }))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
   })
@@ -63,7 +71,7 @@ describe('ReportSubmit', () => {
   test('shows error message on fetch failure', async () => {
     mockFetch.mockResolvedValueOnce({ ok: false, status: 500 })
     const onClose = vi.fn()
-    render(<ReportSubmit onClose={onClose} />)
+    renderSubmit(onClose)
     fireEvent.click(screen.getByRole('button', { name: /submit/i }))
     await waitFor(() => screen.getByText(/failed/i))
   })

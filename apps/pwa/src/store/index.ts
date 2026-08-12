@@ -7,7 +7,6 @@ import uiReducer from './uiSlice'
 import insightsEventsReducer from './insightsEventsSlice'
 import communityStatsReducer from './communityStatsSlice'
 import safetyLogReducer from './safetyLogSlice'
-import viewportEventsReducer from './viewportEventsSlice'
 import { useSelector, TypedUseSelectorHook, useDispatch } from 'react-redux'
 
 export const store = configureStore({
@@ -20,7 +19,6 @@ export const store = configureStore({
     insightsEvents: insightsEventsReducer,
     communityStats: communityStatsReducer,
     safetyLog:      safetyLogReducer,
-    viewportEvents: viewportEventsReducer,
   },
 })
 

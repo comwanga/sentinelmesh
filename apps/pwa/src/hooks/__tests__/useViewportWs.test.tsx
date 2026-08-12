@@ -3,10 +3,7 @@ import { renderHook, act } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import type { ReactNode } from 'react'
-import viewportEventsReducer, {
-  viewportEventsSet,
-  viewportEventsBatchApply,
-} from '../../store/viewportEventsSlice'
+import eventsReducer from '../../store/eventsSlice'
 import { useViewportWs } from '../useViewportWs'
 import type { ViewportBounds } from '../useViewportWs'
 import type { SafetyEvent } from '../../../../../shared/types'
@@ -39,7 +36,7 @@ class MockWebSocket {
 }
 
 function makeStore() {
-  return configureStore({ reducer: { viewportEvents: viewportEventsReducer } })
+  return configureStore({ reducer: { events: eventsReducer } })
 }
 
 function wrapper(store: ReturnType<typeof makeStore>) {
@@ -138,8 +135,8 @@ describe('useViewportWs', () => {
     const ws = MockWebSocket.instances[0]!
     act(() => ws.simulateOpen())
     act(() => ws.simulateMessage({ type: 'INITIAL_BATCH', events: [wsEvent] }))
-    expect(store.getState().viewportEvents.items).toHaveLength(1)
-    expect(store.getState().viewportEvents.items[0]!.id).toBe('e1')
+    expect(store.getState().events.viewportIds).toEqual(['e1'])
+    expect(store.getState().events.items[0]!.id).toBe('e1')
   })
 
   it('dispatches viewportEventsSet on SNAPSHOT', () => {
@@ -148,7 +145,7 @@ describe('useViewportWs', () => {
     const ws = MockWebSocket.instances[0]!
     act(() => ws.simulateOpen())
     act(() => ws.simulateMessage({ type: 'SNAPSHOT', events: [wsEvent] }))
-    expect(store.getState().viewportEvents.items).toHaveLength(1)
+    expect(store.getState().events.viewportIds).toEqual(['e1'])
   })
 
   it('dispatches viewportEventsBatchApply on DIFF_PATCH', () => {
@@ -163,9 +160,8 @@ describe('useViewportWs', () => {
       removed: ['e1'],
       updated: [],
     }))
-    const items = store.getState().viewportEvents.items
-    expect(items).toHaveLength(1)
-    expect(items[0]!.id).toBe('e2')
+    expect(store.getState().events.viewportIds).toEqual(['e2'])
+    expect(store.getState().events.items.some(event => event.id === 'e2')).toBe(true)
   })
 
   it('toSafetyEvent maps is_active from state', () => {
@@ -177,7 +173,7 @@ describe('useViewportWs', () => {
       type: 'INITIAL_BATCH',
       events: [{ ...wsEvent, state: 'RESOLVED' }],
     }))
-    expect(store.getState().viewportEvents.items[0]!.is_active).toBe(false)
+    expect(store.getState().events.items[0]!.is_active).toBe(false)
   })
 
   it('reconnects with backoff on unexpected close', () => {

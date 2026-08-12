@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useAppDispatch } from '../store'
-import { viewportEventsSet, viewportEventsBatchApply } from '../store/viewportEventsSlice'
+import { viewportEventsSet, viewportEventsBatchApply } from '../store/eventsSlice'
 import type { SafetyEvent, EventType, EventState, Severity, TrustState } from '../../../../shared/types'
 
 export interface ViewportBounds {
@@ -23,12 +23,13 @@ interface WsEvent {
 }
 
 // The map WS emits trust_state lowercase ('heuristic'|'corroborating'|'confirmed').
-// Older payloads omit it; treat those as confirmed for back-compat.
+// Missing trust evidence is unverified under the V2 release rules.
 function normalizeTrustState(s: string | undefined): TrustState {
   switch ((s ?? '').toLowerCase()) {
     case 'heuristic':     return 'heuristic'
     case 'corroborating': return 'corroborating'
-    default:              return 'confirmed'
+    case 'confirmed':     return 'confirmed'
+    default:              return 'heuristic'
   }
 }
 
@@ -57,17 +58,12 @@ function toSafetyEvent(e: WsEvent): SafetyEvent {
     event_type: e.event_type as EventType,
     severity: e.severity as Severity,
     title: e.title,
-    summary: null,
     lat: e.lat,
     lng: e.lng,
-    place_name: null,
-    county: null,
     is_active: e.state !== 'RESOLVED' && e.state !== 'EXPIRED',
     state: e.state as EventState,
     started_at: e.started_at,
     created_at: e.started_at,
-    nostr_event_id: null,
-    bitcoin_txid: null,
     trust_state: normalizeTrustState(e.trust_state),
   }
 }

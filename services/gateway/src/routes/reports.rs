@@ -16,12 +16,8 @@ use uuid::Uuid;
 
 use crate::{
     error::AppError,
-    reports::{
-        consensus::compute_new_status,
-        service::{
-            apply_status_transition, cast_vote, create_report, list_reports, CastVoteInput,
-            CreateReportInput, ListReportsParams,
-        },
+    reports::service::{
+        cast_vote, create_report, list_reports, CastVoteInput, CreateReportInput, ListReportsParams,
     },
     AppState,
 };
@@ -213,7 +209,6 @@ async fn post_report(
     if !rl.check(&pk_key) && !rl.check(&format!("ip:{ip}")) {
         return Err(AppError::RateLimited);
     }
-
     if !VALID_REPORT_TYPES.contains(&body.report_type.as_str()) {
         return Err(AppError::BadRequest(format!(
             "invalid report_type: {}",
@@ -277,6 +272,19 @@ async fn post_report(
     ))
 }
 
+fn valid_optional_coordinate_pair(lat: Option<f64>, lng: Option<f64>) -> bool {
+    match (lat, lng) {
+        (None, None) => true,
+        (Some(lat), Some(lng)) => {
+            lat.is_finite()
+                && lng.is_finite()
+                && (-90.0..=90.0).contains(&lat)
+                && (-180.0..=180.0).contains(&lng)
+        }
+        _ => false,
+    }
+}
+
 /// POST /api/reports/:id/vote
 async fn vote(
     State(state): State<AppState>,
@@ -289,6 +297,14 @@ async fn vote(
     let pk_key = format!("vote:{}", body.voter_pubkey);
     if !rl.check(&pk_key) && !rl.check(&format!("ip:{ip}")) {
         return Err(AppError::RateLimited);
+    }
+    if !matches!(body.vote.as_str(), "CONFIRM" | "DENY") {
+        return Err(AppError::BadRequest("vote must be CONFIRM or DENY".into()));
+    }
+    if !valid_optional_coordinate_pair(body.voter_lat, body.voter_lng) {
+        return Err(AppError::BadRequest(
+            "voter coordinates must be valid latitude/longitude values".into(),
+        ));
     }
 
     verify_nostr_event(&body.voter_nostr_event, &body.voter_pubkey, 300)?;
@@ -319,16 +335,20 @@ async fn vote(
         ));
     }
 
-    let (updated, old_score, established_confirmations) = cast_vote(
+    let (updated, publish_job_created) = cast_vote(
         &state.db,
         report_id,
         CastVoteInput {
             voter_pubkey: body.voter_pubkey,
+            nostr_event_id: vote_event_id,
             vote: body.vote,
             voter_lat: body.voter_lat,
             voter_lng: body.voter_lng,
         },
         &state.config.vouch_genesis_roots,
+        state.config.consensus_require_established,
+        &author,
+        state.config.anchoring_enabled,
     )
     .await
     .map_err(|e| {
@@ -342,36 +362,10 @@ async fn vote(
         }
     })?;
 
-    if let Some(new_status) = compute_new_status(
-        &updated.status,
-        updated.consensus_score,
-        updated.confirmation_count,
-        updated.denial_count,
-        established_confirmations,
-        state.config.consensus_require_established,
-    ) {
-        apply_status_transition(&state.db, report_id, &new_status, &author).await?;
-
-        // Once the score crosses 3 for the first time, queue a publish job and
-        // nudge the blockchain service so it picks it up quickly.
-        //
-        // Gated behind ANCHORING_ENABLED (default false): a raw vote count of 3 is
-        // reachable by 3 Sybil keys, so auto-anchoring on it lets attackers drain the
-        // hot wallet via on-chain fees. Off by default until anchoring is decoupled
-        // from raw consensus and a spend cap exists (audit H-8 / C-1).
-        if state.config.anchoring_enabled && updated.consensus_score >= 3 && old_score < 3 {
-            let _ = sqlx::query(
-                "INSERT INTO publish_jobs (source_type, source_id, status, next_retry_at)
-                 VALUES ('COMMUNITY_REPORT', $1, 'PENDING', NOW())
-                 ON CONFLICT DO NOTHING",
-            )
-            .bind(report_id)
-            .execute(&state.db)
-            .await;
-
-            if let Some(url) = state.config.blockchain_service_url.clone() {
-                crate::nudge::nudge_blockchain(state.http_client.clone(), url);
-            }
+    // Polling is durable; this nudge only reduces pickup latency after commit.
+    if publish_job_created {
+        if let Some(url) = state.config.blockchain_service_url.clone() {
+            crate::nudge::nudge_blockchain(state.http_client.clone(), url);
         }
     }
 
@@ -478,5 +472,13 @@ mod tests {
             vote_binding_content("CONFIRM", &id),
             format!("v1|CONFIRM|{id}")
         );
+    }
+
+    #[test]
+    fn optional_vote_coordinates_must_be_a_valid_pair() {
+        assert!(valid_optional_coordinate_pair(None, None));
+        assert!(valid_optional_coordinate_pair(Some(-1.2), Some(36.8)));
+        assert!(!valid_optional_coordinate_pair(Some(91.0), Some(36.8)));
+        assert!(!valid_optional_coordinate_pair(Some(-1.2), None));
     }
 }

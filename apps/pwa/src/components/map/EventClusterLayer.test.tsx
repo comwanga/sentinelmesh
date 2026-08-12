@@ -28,7 +28,7 @@ vi.mock('../../store', () => ({
   useAppSelector: vi.fn(),
 }))
 
-vi.mock('../../store/viewportEventsSlice', () => ({
+vi.mock('../../store/eventsSlice', () => ({
   selectViewportEventItems: vi.fn(),
 }))
 

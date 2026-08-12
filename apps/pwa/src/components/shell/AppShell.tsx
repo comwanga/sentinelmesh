@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
-import { useWsConnection } from '../../services/websocket'
+import { useSafetyDataSync } from '../../hooks/useSafetyDataSync'
 import { useCircles } from '../../hooks/useCircles'
 import { usePushSubscription } from '../../hooks/usePushSubscription'
 import { useAppSelector } from '../../store'
@@ -10,7 +10,7 @@ import { Sidebar } from './Sidebar'
 import { BottomNav } from './BottomNav'
 
 export function AppShell() {
-  useWsConnection()
+  useSafetyDataSync()
   // Acoustic detection is opt-in — started only when user activates the overlay
   useCircles()
   usePushSubscription()

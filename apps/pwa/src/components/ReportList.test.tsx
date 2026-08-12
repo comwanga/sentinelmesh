@@ -30,7 +30,7 @@ import { ReportList } from './ReportList'
 
 function makeReport(id: string, status: ReportStatus = 'PENDING'): CommunityReport {
   return {
-    report_id: id, report_type: 'FLOODING', description: 'road blocked',
+    id, report_type: 'FLOODING', description: 'road blocked',
     lat: -1.29, lng: 36.82, place_name: 'Mathare',
     reporter_tier: 'NEWCOMER', consensus_score: 1, status,
     confirmation_count: 0, denial_count: 0, photo_ipfs_cid: null,
@@ -39,7 +39,7 @@ function makeReport(id: string, status: ReportStatus = 'PENDING'): CommunityRepo
 }
 
 function buildStore(reports: CommunityReport[]) {
-  return configureStore({ reducer: { reports: reportReducer }, preloadedState: { reports: { items: reports } } })
+  return configureStore({ reducer: { reports: reportReducer }, preloadedState: { reports: { items: reports, initialized: true, error: null } } })
 }
 
 beforeEach(() => {

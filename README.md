@@ -292,9 +292,9 @@ sentinelmesh/
 - [x] Community report submission and voting paths
 - [x] Viewport-scoped map event transport
 - [x] Report coordinate coarsening and separated author storage
-- [ ] Initial event and report synchronization
-- [ ] One canonical event contract and frontend store
-- [ ] Transactionally atomic report transitions and side effects
+- [x] Initial event and report synchronization
+- [x] One canonical event contract and frontend store
+- [x] Transactionally atomic report transitions and side effects
 - [ ] Production-ready deployment, migrations, readiness, backups, and monitoring
 - [ ] Durable and targeted push delivery
 

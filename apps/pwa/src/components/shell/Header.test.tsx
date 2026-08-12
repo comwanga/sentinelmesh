@@ -18,7 +18,7 @@ const baseEvent: SafetyEvent = {
 function makeStore(opts: { connected?: boolean; items?: SafetyEvent[] } = {}) {
   return configureStore({
     reducer: { events: eventsReducer, ui: uiReducer },
-    preloadedState: { events: { items: opts.items ?? [], connected: opts.connected ?? false } },
+    preloadedState: { events: { items: opts.items ?? [], viewportIds: [], connected: opts.connected ?? false, initialized: false, error: null } },
   })
 }
 
