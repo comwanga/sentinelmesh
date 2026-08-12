@@ -21,7 +21,9 @@ test -s "$temporary"
 mv "$temporary" "$dump"
 (cd "$backup_dir" && sha256sum "$(basename "$dump")") > "$dump.sha256.tmp"
 ./ops/compose.sh exec -T postgres psql -U postgres -d sentinelmesh -Atc \
-  'SELECT MAX(version) FROM schema_versions' > "$dump.schema-version.tmp"
+  "SELECT version || '|' || description FROM schema_versions ORDER BY version;
+   SELECT version || '|' || name || '|' || checksum FROM schema_migrations ORDER BY version" \
+  > "$dump.schema-version.tmp"
 mv "$dump.sha256.tmp" "$dump.sha256"
 mv "$dump.schema-version.tmp" "$dump.schema-version"
 touch "$dump.complete"

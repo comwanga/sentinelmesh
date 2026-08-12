@@ -6,6 +6,8 @@ dump=${1:?usage: ops/postgres-restore-verify.sh BACKUP.dump}
 postgres_image=${POSTGRES_IMAGE:-sentinelmesh-postgres}
 test -f "$dump"
 test -f "$dump.sha256"
+test -f "$dump.schema-version"
+test -f "$dump.complete"
 dump_dir=$(dirname "$dump")
 dump_name=$(basename "$dump")
 (cd "$dump_dir" && sha256sum --check "$dump_name.sha256")
@@ -40,10 +42,22 @@ docker exec -i "$container" pg_restore -U postgres -d sentinelmesh_restore \
 
 version=$(docker exec "$container" psql -U postgres -d sentinelmesh_restore -Atc \
   'SELECT MAX(version) FROM schema_versions')
-test "$version" = "3"
+test "$version" = "4"
+manifest=$(docker exec "$container" psql -U postgres -d sentinelmesh_restore -Atc \
+  "SELECT version || '|' || description FROM schema_versions ORDER BY version;
+   SELECT version || '|' || name || '|' || checksum FROM schema_migrations ORDER BY version")
+test "$manifest" = "$(cat "$dump.schema-version")"
 
 docker exec "$container" psql -U postgres -d sentinelmesh_restore -v ON_ERROR_STOP=1 \
-  -c 'SELECT PostGIS_Version()' -c 'SELECT count(*) FROM safety_events' >/dev/null
+  -c 'SELECT PostGIS_Version()' -c 'SELECT count(*) FROM safety_events' \
+  -c "DO \$\$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND column_name IN ('bitcoin_txid','bitcoin_block','anchor_hash')) THEN
+          RAISE EXCEPTION 'obsolete event columns remain';
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('publish_jobs','publish_failures','utxos')) THEN
+          RAISE EXCEPTION 'obsolete publication tables remain';
+        END IF;
+      END \$\$" >/dev/null
 
 if docker exec -e PGPASSWORD="$app_password" "$container" \
   psql -U sentinel_app -d sentinelmesh_restore -c 'SELECT * FROM report_authors'; then

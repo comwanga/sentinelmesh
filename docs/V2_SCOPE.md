@@ -1,10 +1,10 @@
 # SentinelMesh V2 Scope
 
-This document is the current product boundary. Historical plans and audits describe prior implementations and are not release claims.
+This document defines the current product boundary.
 
 ## Supported Core
 
-The V2 release is being reduced to four user-visible capabilities:
+The V2 release supports four user-visible capabilities:
 
 1. Browse loaded incidents on a map and alert list.
 2. Submit a location-based community report signed by a local Nostr identity.
@@ -18,7 +18,6 @@ Push notifications will return after delivery is moved to a durable outbox and p
 The following implementations remain in the repository but are disabled by default and are not supported release capabilities:
 
 - Acoustic detection
-- Bitcoin anchoring presentation
 - Family Circles
 - Insights
 - Report photos

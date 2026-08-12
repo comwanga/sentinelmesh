@@ -69,7 +69,6 @@ services:
       SYNTHESIS_ENABLED: ${SYNTHESIS_ENABLED:-false}
       ACOUSTIC_CONFIRM_ENABLED: ${ACOUSTIC_CONFIRM_ENABLED:-false}
       NLP_SYNTHESIS_ENABLED: ${NLP_SYNTHESIS_ENABLED:-true}
-      ANCHORING_ENABLED: ${ANCHORING_ENABLED:-false}
       CONSENSUS_REQUIRE_ESTABLISHED: ${CONSENSUS_REQUIRE_ESTABLISHED:-true}
       MAX_DB_CONNECTIONS: ${MAX_DB_CONNECTIONS:-50}
     depends_on:
@@ -88,7 +87,6 @@ services:
         VITE_MAP_STYLE_URL: ${VITE_MAP_STYLE_URL:-/sentinelmesh-dark.json}
         VITE_VAPID_PUBLIC_KEY: ${VITE_VAPID_PUBLIC_KEY:-}
         VITE_ENABLE_EXPERIMENTAL_ACOUSTIC: ${VITE_ENABLE_EXPERIMENTAL_ACOUSTIC:-false}
-        VITE_ENABLE_EXPERIMENTAL_BLOCKCHAIN: ${VITE_ENABLE_EXPERIMENTAL_BLOCKCHAIN:-false}
         VITE_ENABLE_EXPERIMENTAL_CIRCLES: ${VITE_ENABLE_EXPERIMENTAL_CIRCLES:-false}
         VITE_ENABLE_EXPERIMENTAL_INSIGHTS: ${VITE_ENABLE_EXPERIMENTAL_INSIGHTS:-false}
         VITE_ENABLE_EXPERIMENTAL_PHOTOS: ${VITE_ENABLE_EXPERIMENTAL_PHOTOS:-false}
@@ -147,24 +145,6 @@ services:
         limits:
           cpus: "2"
           memory: 3G
-
-  blockchain:
-    profiles: ["blockchain"]
-    build:
-      context: ./services
-      dockerfile: blockchain/Dockerfile
-    restart: unless-stopped
-    environment:
-      DATABASE_URL: postgresql://sentinel_app:${APP_DATABASE_PASSWORD}@postgres:5432/sentinelmesh
-      NOSTR_PRIVKEY: ${NOSTR_PRIVKEY:-}
-      BITCOIN_WIF: ${BITCOIN_WIF:-}
-      BITCOIN_NETWORK: ${BITCOIN_NETWORK:-testnet}
-      RELAY_URLS: ${RELAY_URLS:-}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    security_opt:
-      - no-new-privileges:true
 
 volumes:
   pgdata:

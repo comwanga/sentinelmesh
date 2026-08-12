@@ -58,7 +58,6 @@ export interface SafetyEvent {
   source_count?: number | null
   source_breakdown?: Record<string, unknown> | null
   nostr_event_id?: string | null
-  bitcoin_txid?: string | null
   // Lightweight realtime projections omit these fields. Missing trust data is
   // unverified, never implicitly confirmed.
   trust_state?: TrustState

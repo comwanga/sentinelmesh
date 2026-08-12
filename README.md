@@ -4,7 +4,7 @@ A community incident-awareness prototype. It shows incidents on a map and lets p
 
 The hard part of an app like this isn't drawing dots on a map — it's deciding **which dots to trust**. SentinelMesh's design is built around that question: automated signals start out untrusted and earn trust only through independent corroboration, and the server is built to hold as little readable personal data as possible.
 
-> **V2 scope freeze:** SentinelMesh is being simplified around the incident map, alert list, signed community reports, and local identity. Family Circles, acoustic detection, routing, photos, Insights, and blockchain presentation remain experimental and are hidden by default. See [`docs/V2_SCOPE.md`](docs/V2_SCOPE.md) for the supported boundary and trust terminology.
+> **V2 scope freeze:** SentinelMesh supports the incident map, alert list, signed community reports, and local identity. Family Circles, acoustic detection, routing, photos, and Insights are experimental and hidden by default. See [`docs/V2_SCOPE.md`](docs/V2_SCOPE.md) for the supported boundary and trust terminology.
 
 ---
 
@@ -20,7 +20,6 @@ The hard part of an app like this isn't drawing dots on a map — it's deciding 
 | **Acoustic detection** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ACOUSTIC`; detections are client assertions and cannot independently confirm an event. |
 | **Routing** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ROUTING`; routes are not described as safe or authoritative. |
 | **Photos** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_PHOTOS`; privacy processing is best effort. |
-| **Blockchain anchoring** | Experimental | Off by default. Current anchors commit an identifier digest, not the complete incident record. |
 
 ---
 
@@ -32,9 +31,9 @@ Nothing on the map is assumed trustworthy just because it appeared. Each kind of
 
 | Tier | Meaning | What it can do |
 |---|---|---|
-| **Heuristic** | A single automated detection. Shown on the map but clearly labeled *"Automated Detection"*. | Visible only. **No** push, **no** Bitcoin anchor, **no** influence on escape routes. |
+| **Heuristic** | A single automated detection. Shown on the map but clearly labeled *"Automated Detection"*. | Visible only. **No** push and **no** influence on escape routes. |
 | **Corroborating** | At least **2 independent sources** agree (e.g. two different news domains). | Still labeled automated; gaining support. |
-| **Confirmed** | At least **3 independent sources across ≥2 channels** (e.g. news *and* radio). | Treated as a real event — push + anchoring may fire. |
+| **Confirmed** | At least **3 independent sources across ≥2 channels** (e.g. news *and* radio). | Accepted by SentinelMesh's trust policy; eligible for configured notification behavior. |
 
 A background worker recomputes this every few seconds and only ever *raises* a tier. "Independence" is counted as distinct sources and channels, never as raw row counts, so duplicate ingestion can't fake corroboration. Uncorroborated detections **expire** off the map after a TTL instead of lingering forever.
 
@@ -64,10 +63,9 @@ Be precise about this — overclaiming privacy is a safety risk for the people w
 **NOT protected (known limitations — do not assume otherwise):**
 - **Acoustic-detection locations are stored in plaintext** and linked to a persistent pubkey, with no retention limit yet. Treat acoustic-detection history as an identity-linked location trail.
 - **Family-circle timing metadata is visible to the server**: it can see *when* a member shares location (the coordinates, membership, and names are protected — the timing is not).
-- **A Nostr pubkey is a stable pseudonymous identifier.** Anything published to Nostr relays, IPFS, or Bitcoin is effectively permanent and cannot be erased.
-- **Bitcoin anchoring** commits an identifier digest, not report content — it is not a tamper-proof record of where/what.
+- **A Nostr pubkey is a stable pseudonymous identifier.** User-signed events and anything independently published to external relays or storage may be retained by third parties.
 
-Remaining gaps are tracked in `docs/audit/` with a remediation plan. Bitcoin stays on testnet until maintainers explicitly switch to mainnet.
+Remaining gaps are tracked in `docs/audit/` with a remediation plan.
 
 ---
 
@@ -85,13 +83,11 @@ Remaining gaps are tracked in `docs/audit/` with a remediation plan. Bitcoin sta
 │   Rust + axum 0.7 · sqlx 0.8      │
 │   WebSocket hub · trust workers   │
 │   tile proxy · push               │
-└──┬──────────┬──────────┬──────────┘
-   │          │          │
-   ▼          ▼          ▼
-Postgres   Redis       Blockchain
-           Streams     service (Rust)
-                       └→ Nostr relays
-                       └→ Bitcoin
+└──────────────┬──────────────┘
+               │
+        ┌──────┴──────┐
+        ▼             ▼
+    Postgres      Redis Streams
 ```
 
 Two things flow through the gateway continuously and are worth calling out, because they implement the trust model above:
@@ -105,8 +101,7 @@ Two things flow through the gateway continuously and are worth calling out, beca
 |---|---|---|---|
 | API Gateway | Rust + axum | `services/gateway/` | Auth (Nostr NIP-98, kind 27235), REST routes, WebSocket hub, trust-synthesis workers, tile proxy, push, IPFS photo proxy |
 | Signal Ingest | Python + FastAPI | `services/signal/` | RSS / Twitter / radio → async NLP (negation-aware classifier) → events via Redis Streams |
-| Blockchain Worker | Rust | `services/blockchain/` | Nostr publish (parallel, 4 relays), Bitcoin OP_RETURN anchoring, UTXO management |
-| Shared types | Rust | `services/sentinel-core/` | Domain types and crypto shared across Rust services |
+| Shared types | Rust | `services/sentinel-core/` | Domain types shared across Rust services |
 | PWA | React + Vite | `apps/pwa/` | Map, acoustic detection, reports, family circles, push notifications |
 | Database | PostgreSQL 16 | `infra/postgres/` | All persistent data (active V2 migrations under `infra/postgres/migrations-v2/`) |
 | Cache / Streams | Redis 7 | Docker service | Real-time event delivery via Redis Streams (XADD/XREADGROUP) |
@@ -164,10 +159,9 @@ make migrate
 ```bash
 docker compose --profile signal up -d --build
 docker compose --profile ml up -d --build
-docker compose --profile blockchain up -d --build
 ```
 
-Signal ingestion, ML transcription, and blockchain anchoring are not part of the default core stack.
+Signal ingestion and ML transcription are not part of the default core stack.
 
 ### All service URLs (dev)
 
@@ -214,15 +208,6 @@ All variables go in the root `.env` file. Copy `.env.example` to get started.
 | `PUBLIC_BASE_URL` | Canonical external origin used by NIP-98 validation |
 | `MAPBOX_TOKEN` | Optional Mapbox secret token used only by the server-side proxy |
 
-### Blockchain service
-
-| Variable | Description |
-|---|---|
-| `NOSTR_PRIVKEY` | 64-char hex private key for signing Nostr events |
-| `BITCOIN_WIF` | Bitcoin private key in WIF format for OP_RETURN anchoring |
-| `BITCOIN_NETWORK` | `testnet` (default) or `mainnet` |
-| `RELAY_URLS` | Comma-separated Nostr relay list. Defaults to 4 diverse relays if unset. |
-
 ### Optional
 
 | Variable | Description |
@@ -233,7 +218,6 @@ All variables go in the root `.env` file. Copy `.env.example` to get started.
 | `MAX_DB_CONNECTIONS` | Gateway Postgres pool size. Defaults to 50. |
 | `NLP_SYNTHESIS_ENABLED` | Trust-ladder worker for NLP detections. Default on; set `false` to dark-launch. |
 | `ACOUSTIC_CONFIRM_ENABLED` | Allow acoustic clusters to reach *confirmed* and publish. Default off. |
-| `ANCHORING_ENABLED` | Allow confirmed events to queue Bitcoin anchors. Default off. |
 | `VAPID_PRIVATE_KEY` | Base64url-encoded VAPID private key for Web Push. Push is disabled if unset. |
 | `VAPID_PUBLIC_KEY` | Base64url-encoded VAPID public key (also set as `VITE_VAPID_PUBLIC_KEY` for the PWA) |
 | `VAPID_SUBJECT` | `mailto:` or HTTPS URL identifying the push sender (e.g. `mailto:ops@example.com`) |
@@ -267,11 +251,7 @@ sentinelmesh/
 │   │       ├── circles/        # Per-circle token derivation (C-3)
 │   │       ├── trust/          # Shared trust-tier contract (heuristic→corroborating→confirmed)
 │   │       └── ws/             # WebSocket hub
-│   ├── blockchain/             # Rust blockchain anchoring worker
-│   │   └── src/
-│   │       ├── workers/        # Nostr publisher, Bitcoin anchor, confirmation poller
-│   │       └── utils/          # Fee estimator
-│   ├── sentinel-core/          # Shared Rust domain types and crypto
+│   ├── sentinel-core/          # Shared Rust domain types
 │   └── signal/                 # Python signal ingest + NLP
 │       ├── ingest/             # RSS, Twitter, radio transcription
 │       ├── nlp/                # Negation-aware classifier, severity scorer, location extractor
@@ -304,7 +284,7 @@ sentinelmesh/
 - [x] Single-host core production deployment, migrations, readiness, backup drills, and monitoring
 - [ ] Durable and targeted push delivery
 
-Signal ingestion, Family Circles, acoustic detection, routing, photos, Insights, and blockchain code is retained as experimental work. Presence in the repository is not an end-to-end completion claim.
+Signal ingestion, Family Circles, acoustic detection, routing, photos, and Insights are retained as experimental work. Presence in the repository is not an end-to-end completion claim.
 
 ---
 

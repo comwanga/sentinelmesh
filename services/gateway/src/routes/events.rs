@@ -32,7 +32,6 @@ pub struct SafetyEvent {
     pub is_active: bool,
     pub state: String,
     pub nostr_event_id: Option<String>,
-    pub bitcoin_txid: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -96,8 +95,6 @@ async fn create_event(
         ));
     }
 
-    let mut tx = state.db.begin().await?;
-
     let event = sqlx::query_as::<_, SafetyEvent>(
         "INSERT INTO safety_events
            (event_type, severity, title, lat, lng, started_at, summary, place_name, county,
@@ -107,7 +104,7 @@ async fn create_event(
                    summary, place_name, county, radius_meters, confidence,
                    source_count, source_breakdown, trust_state, origin_class,
                    is_active, state,
-                   nostr_event_id, bitcoin_txid, created_at, updated_at",
+                    nostr_event_id, created_at, updated_at",
     )
     .bind(&body.event_type)
     .bind(&body.severity)
@@ -123,35 +120,14 @@ async fn create_event(
     .bind(body.source_count)
     .bind(&body.source_breakdown)
     .bind(body.is_active.unwrap_or(true))
-    .fetch_one(&mut *tx)
+    .fetch_one(&state.db)
     .await?;
-
-    let should_publish = state.config.anchoring_enabled
-        && event.trust_state == "confirmed"
-        && event.severity == "CRITICAL";
-    if should_publish {
-        sqlx::query(
-            "INSERT INTO publish_jobs (source_type, source_id, status, next_retry_at)
-             VALUES ('SAFETY_EVENT', $1, 'PENDING', NOW())",
-        )
-        .bind(event.id)
-        .execute(&mut *tx)
-        .await?;
-    }
-
-    tx.commit().await?;
 
     let msg = serde_json::json!({ "type": "NEW_EVENT", "payload": event });
     state.hub.broadcast(
         body.county.as_deref(),
         serde_json::to_string(&msg).unwrap().into(),
     );
-
-    if should_publish {
-        if let Some(url) = state.config.blockchain_service_url.clone() {
-            crate::nudge::nudge_blockchain(state.http_client.clone(), url);
-        }
-    }
 
     Ok((StatusCode::CREATED, Json(event)))
 }
@@ -178,7 +154,7 @@ async fn list_events(
                 summary, place_name, county, radius_meters, confidence,
                 source_count, source_breakdown, trust_state, origin_class,
                 is_active, state,
-                nostr_event_id, bitcoin_txid, created_at, updated_at
+                 nostr_event_id, created_at, updated_at
          FROM safety_events
          WHERE ($1::float8 IS NULL OR
                 earth_distance(ll_to_earth($1,$2), ll_to_earth(lat,lng)) <= $3)
@@ -213,7 +189,7 @@ async fn get_event(
                 summary, place_name, county, radius_meters, confidence,
                 source_count, source_breakdown, trust_state, origin_class,
                 is_active, state,
-                nostr_event_id, bitcoin_txid, created_at, updated_at
+                 nostr_event_id, created_at, updated_at
          FROM safety_events WHERE id = $1",
     )
     .bind(id)
@@ -234,7 +210,7 @@ async fn list_events_by_bounds(
                 summary, place_name, county, radius_meters, confidence,
                 source_count, source_breakdown, trust_state, origin_class,
                 is_active, state,
-                nostr_event_id, bitcoin_txid, created_at, updated_at
+                 nostr_event_id, created_at, updated_at
            FROM safety_events
           WHERE geog && ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
             AND state NOT IN ('RESOLVED', 'EXPIRED')
@@ -309,7 +285,6 @@ mod tests {
             is_active: true,
             state: "ACTIVE".into(),
             nostr_event_id: Some("nevent1abc".into()),
-            bitcoin_txid: None,
             created_at: now,
             updated_at: now,
         }
@@ -336,6 +311,15 @@ mod tests {
         let _: String = e.event_type;
         let _: String = e.severity;
         let _: bool = e.is_active;
+    }
+
+    #[test]
+    fn safety_event_api_exposes_only_current_fields() {
+        let value = serde_json::to_value(sample_db_row()).unwrap();
+        assert!(value.get("nostr_event_id").is_some());
+        assert!(value.get("bitcoin_txid").is_none());
+        assert!(value.get("bitcoin_block").is_none());
+        assert!(value.get("anchor_hash").is_none());
     }
 
     #[test]

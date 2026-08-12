@@ -4,7 +4,6 @@ pub struct Config {
     pub database_url: String,
     pub redis_url: String,
     pub port: u16,
-    pub blockchain_service_url: Option<String>,
     pub internal_service_secret: String,
     /// HMAC key for per-circle social-graph tokens (C-3). Dedicated and STABLE:
     /// rotating it invalidates every stored circle/member/recipient token and
@@ -28,7 +27,6 @@ pub struct Config {
     /// Default false: without explicit opt-in the synthesis worker corroborates
     /// (telemetry only) but never auto-publishes acoustic events to the map.
     pub acoustic_confirm_enabled: bool,
-    pub anchoring_enabled: bool,
     /// Default **true** (C-1a): the gate is on; personhood (genesis/earned/vouched)
     /// seeds the established cohort. Set `CONSENSUS_REQUIRE_ESTABLISHED=false` to disable.
     pub consensus_require_established: bool,
@@ -72,9 +70,6 @@ impl Config {
             acoustic_confirm_enabled: std::env::var("ACOUSTIC_CONFIRM_ENABLED")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
-            anchoring_enabled: std::env::var("ANCHORING_ENABLED")
-                .map(|v| v == "true" || v == "1")
-                .unwrap_or(false),
             consensus_require_established: std::env::var("CONSENSUS_REQUIRE_ESTABLISHED")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(true),
@@ -106,7 +101,6 @@ impl Config {
                 std::env::var("OBSERVATORY_SNAPSHOT_RETENTION_DAYS").ok(),
                 180,
             ),
-            blockchain_service_url: std::env::var("BLOCKCHAIN_SERVICE_URL").ok(),
             internal_service_secret,
             circle_token_secret,
             trust_proxy: std::env::var("TRUST_PROXY")

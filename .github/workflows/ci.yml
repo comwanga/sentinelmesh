@@ -152,7 +152,9 @@ jobs:
           PGPASSWORD: ci-runtime-password
         run: |
           set -euo pipefail
-          test "$(psql -h localhost -U sentinel_app -d sentinelmesh -Atc 'SELECT MAX(version) FROM schema_versions')" = 3
+          test "$(psql -h localhost -U sentinel_app -d sentinelmesh -Atc 'SELECT MAX(version) FROM schema_versions')" = 4
+          test "$(psql -h localhost -U sentinel_app -d sentinelmesh -Atc "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND column_name IN ('bitcoin_txid','bitcoin_block','anchor_hash')")" = 0
+          test "$(psql -h localhost -U sentinel_app -d sentinelmesh -Atc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('publish_jobs','publish_failures','utxos')")" = 0
           psql -h localhost -U sentinel_app -d sentinelmesh -v ON_ERROR_STOP=1 -c "SELECT PostGIS_Version()"
           if psql -h localhost -U sentinel_app -d sentinelmesh -c "DELETE FROM schema_versions"; then
             echo "sentinel_app unexpectedly modified migration history" >&2
@@ -166,7 +168,7 @@ jobs:
           PGPASSWORD=postgres pg_dump -h localhost -U postgres -d sentinelmesh --format=custom --no-owner -f /tmp/sentinelmesh.dump
           PGPASSWORD=postgres createdb -h localhost -U postgres sentinelmesh_restore
           PGPASSWORD=postgres pg_restore -h localhost -U postgres -d sentinelmesh_restore --exit-on-error --no-owner /tmp/sentinelmesh.dump
-          test "$(PGPASSWORD=postgres psql -h localhost -U postgres -d sentinelmesh_restore -Atc 'SELECT MAX(version) FROM schema_versions')" = 3
+          test "$(PGPASSWORD=postgres psql -h localhost -U postgres -d sentinelmesh_restore -Atc 'SELECT MAX(version) FROM schema_versions')" = 4
           echo "V2 schema and runtime role boundary validated." >> "$GITHUB_STEP_SUMMARY"
       - name: Operations migration and restore smoke test
         run: ./tests/operations-smoke.sh

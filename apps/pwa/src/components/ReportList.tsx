@@ -3,7 +3,6 @@ import { useAppDispatch, useAppSelector } from '../store'
 import { reportReceived } from '../store/reportSlice'
 import { parseReport } from '../services/safetyDataApi'
 import { getCachedKeypair, signReport, voteBindingContent } from '../services/nostrService'
-import { VerificationBadges } from './VerificationBadges'
 import type { CommunityReport } from '../../../../shared/types'
 
 const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
@@ -106,11 +105,6 @@ export function ReportList() {
               Deny
             </button>
           </div>
-
-          <VerificationBadges
-            nostrEventId={null}
-            bitcoinTxid={null}
-          />
         </div>
       ))}
     </div>

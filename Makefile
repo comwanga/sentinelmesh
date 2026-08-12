@@ -1,4 +1,4 @@
-.PHONY: up dev up-signal up-ml up-blockchain down down-clean logs install fmt lint test test-rust test-gateway test-blockchain test-pwa test-signal build-pwa config smoke seed migrate prod-config prod-up backup restore-verify watchdog test-operations
+.PHONY: up dev up-signal up-ml down down-clean logs install fmt lint test test-rust test-gateway test-pwa test-signal build-pwa config smoke seed migrate prod-config prod-up backup restore-verify watchdog test-operations
 
 up:
 	docker compose up --build
@@ -11,9 +11,6 @@ up-signal:
 
 up-ml:
 	docker compose --profile ml up --build
-
-up-blockchain:
-	docker compose --profile blockchain up --build
 
 down:
 	docker compose down
@@ -40,9 +37,6 @@ lint:
 test-gateway:
 	cd services && cargo test -p gateway --locked
 
-test-blockchain:
-	cd services && cargo test -p blockchain --locked
-
 test-rust:
 	cd services && cargo test --workspace --locked
 
@@ -59,7 +53,7 @@ test: test-rust test-pwa test-signal
 
 config:
 	docker compose --env-file .env.example config --quiet
-	docker compose --env-file .env.example --profile signal --profile ml --profile blockchain config --quiet
+	docker compose --env-file .env.example --profile signal --profile ml config --quiet
 
 migrate:
 	./ops/compose.sh run --rm migrate

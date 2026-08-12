@@ -53,8 +53,7 @@
         "is_active":        { "type": "boolean" },
         "started_at":       { "type": "string", "format": "date-time" },
         "last_updated":     { "type": "string", "format": "date-time" },
-        "nostr_event_id":   { "type": ["string", "null"] },
-        "bitcoin_txid":     { "type": ["string", "null"] }
+        "nostr_event_id":   { "type": ["string", "null"] }
       }
     }
   }

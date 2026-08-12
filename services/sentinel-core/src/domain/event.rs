@@ -5,7 +5,7 @@ use uuid::Uuid;
 /// Canonical safety event — transport/domain form.
 /// No sqlx::FromRow. The gateway's SafetyEvent DB struct converts to this via From.
 /// Fields: only those needed by both services or over the wire. DB-specific tracking
-/// fields (nostr_event_id, bitcoin_txid, radius_meters, source_breakdown, updated_at)
+/// fields (nostr_event_id, radius_meters, source_breakdown, updated_at)
 /// are intentionally excluded.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Event {

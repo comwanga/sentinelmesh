@@ -2,7 +2,6 @@
 
 interface ImportMetaEnv {
   readonly VITE_ENABLE_EXPERIMENTAL_ACOUSTIC?: string
-  readonly VITE_ENABLE_EXPERIMENTAL_BLOCKCHAIN?: string
   readonly VITE_ENABLE_EXPERIMENTAL_CIRCLES?: string
   readonly VITE_ENABLE_EXPERIMENTAL_INSIGHTS?: string
   readonly VITE_ENABLE_EXPERIMENTAL_PHOTOS?: string

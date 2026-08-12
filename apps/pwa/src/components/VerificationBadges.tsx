@@ -1,8 +1,5 @@
-import { experimentalFeatures } from '../config/features'
-
 interface Props {
   nostrEventId?: string | null
-  bitcoinTxid?: string | null
 }
 
 const badgeStyle = (bg: string): React.CSSProperties => ({
@@ -17,14 +14,8 @@ const badgeStyle = (bg: string): React.CSSProperties => ({
   textDecoration: 'none',
 })
 
-export function VerificationBadges({ nostrEventId, bitcoinTxid }: Props) {
-  const network = import.meta.env.VITE_BITCOIN_NETWORK ?? 'testnet'
-  const explorerBase = network === 'mainnet'
-    ? 'https://mempool.space/tx'
-    : 'https://mempool.space/testnet/tx'
-
-  const visibleBitcoinTxid = experimentalFeatures.blockchain ? bitcoinTxid : null
-  if (!nostrEventId && !visibleBitcoinTxid) return null
+export function VerificationBadges({ nostrEventId }: Props) {
+  if (!nostrEventId) return null
 
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
@@ -36,16 +27,6 @@ export function VerificationBadges({ nostrEventId, bitcoinTxid }: Props) {
           style={badgeStyle('#6B46C1')}
         >
           ⚡ Nostr
-        </a>
-      )}
-      {visibleBitcoinTxid && (
-        <a
-          href={`${explorerBase}/${visibleBitcoinTxid}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={badgeStyle('#D97706')}
-        >
-          ₿ Anchored
         </a>
       )}
     </div>

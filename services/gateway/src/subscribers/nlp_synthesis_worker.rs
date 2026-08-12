@@ -11,7 +11,7 @@
 //!      notifications and broadcasts the confirmed event to the map.
 //!
 //! Heuristic and corroborating events are visible on the map (labeled) but never
-//! push, never anchor, never feed reputation. That gating is the core of H-5.
+//! trigger push or feed reputation. That gating is the core of H-5.
 //!
 //! The worker is idempotent (recompute + monotonic promotion via `max`), so a
 //! duplicate run across replicas is safe — multi-replica leader election is
@@ -273,7 +273,7 @@ async fn promote_cluster(
     Ok(Promotion::Corroborated)
 }
 
-/// True on the transition *into* confirmed (push/anchor fire exactly once here).
+/// True on the transition *into* confirmed (push fires exactly once here).
 fn should_confirm(previous: TrustTier, target: TrustTier) -> bool {
     previous < TrustTier::Confirmed && target == TrustTier::Confirmed
 }
