@@ -1,6 +1,7 @@
 pub mod acoustic;
 pub mod circles;
 pub mod events;
+pub mod identity;
 pub mod location_blobs;
 pub mod maps;
 pub mod observatory;
@@ -16,6 +17,7 @@ use axum::Router;
 pub fn build_router() -> Router<AppState> {
     Router::new()
         .nest("/api/events", events::router())
+        .nest("/api/identity", identity::router())
         .nest("/api/reports", reports::router())
         .nest(
             "/api/circles",

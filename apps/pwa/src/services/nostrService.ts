@@ -193,6 +193,22 @@ export async function signNip98AuthEvent(
   })
 }
 
+/** Sign NIP-98 with the device identity even when a NIP-07 extension is present. */
+export function signLocalNip98AuthEvent(
+  url: string,
+  method: string,
+  payloadHash?: string,
+): SignedReportEvent {
+  const tags: string[][] = [['u', url], ['method', method]]
+  if (payloadHash) tags.push(['payload', payloadHash])
+  return finalizeEvent({
+    kind: 27235,
+    created_at: Math.floor(Date.now() / 1000),
+    tags,
+    content: '',
+  }, getCachedKeypair().secretKey) as SignedReportEvent
+}
+
 /** Lowercase hex sha256 of a UTF-8 string (for NIP-98 payload binding). */
 export async function sha256Hex(input: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))

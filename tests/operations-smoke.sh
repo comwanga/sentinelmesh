@@ -37,6 +37,8 @@ VALUES
 INSERT INTO report_authors (report_id, nostr_pubkey, nostr_signature, nostr_event_id)
 VALUES
   ('00000000-0000-0000-0000-000000000042', repeat('b', 64), repeat('c', 128), repeat('d', 64));
+INSERT INTO users (nostr_pubkey, reputation_score, reputation_tier, total_reports)
+VALUES (repeat('e', 64), 17, 'ESTABLISHED', 4);
 SQL
 compose run --rm migrate >/tmp/sentinelmesh-migrate-a-$$ 2>&1 & migrate_a=$!
 compose run --rm migrate >/tmp/sentinelmesh-migrate-b-$$ 2>&1 & migrate_b=$!
@@ -47,10 +49,11 @@ compose run --rm migrate
 
 version=$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
   'SELECT MAX(version) FROM schema_versions')
-test "$version" = "4"
+test "$version" = "5"
 test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
   "SELECT string_agg(version || '|' || name || '|' || checksum, E'\\n' ORDER BY version) FROM schema_migrations")" = "3|003_protect_migration_history.sql|d7c41d110fdbb68f38586a2f57804c4567444946be29c988eba1c467cacfdce9
-4|004_simplify_runtime_schema.sql|e7e3b94079424215c60b88675e045eeebaf3bd1b4d21256b926858945270c1a0"
+4|004_simplify_runtime_schema.sql|e7e3b94079424215c60b88675e045eeebaf3bd1b4d21256b926858945270c1a0
+5|005_add_nip05_identity.sql|77fe3e26e02b444dc5c673af5453f67affe7bd2106d7235778a50f7c1fca1c91"
 test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
   "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND column_name IN ('bitcoin_txid','bitcoin_block','anchor_hash')")" = 0
 test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
@@ -59,6 +62,15 @@ test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
   "SELECT count(*) FROM safety_events WHERE id = '00000000-0000-0000-0000-000000000041' AND nostr_event_id = repeat('a', 64)")" = 1
 test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
   "SELECT count(*) FROM community_reports r JOIN report_authors a ON a.report_id = r.id WHERE r.id = '00000000-0000-0000-0000-000000000042' AND a.nostr_event_id = repeat('d', 64)")" = 1
+test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
+  "SELECT count(*) FROM users WHERE nostr_pubkey = repeat('e', 64) AND reputation_score = 17 AND reputation_tier = 'ESTABLISHED' AND total_reports = 4 AND nip05_identifier IS NULL")" = 1
+test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
+  "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name IN ('nip05_identifier','nip05_verified_at','nip05_valid_until')")" = 3
+if compose exec -T postgres psql -U postgres -d sentinelmesh -v ON_ERROR_STOP=1 \
+  -c "UPDATE users SET nip05_identifier = 'incomplete@example.com' WHERE nostr_pubkey = repeat('e', 64)"; then
+  echo "NIP-05 all-or-none constraint accepted incomplete identity state" >&2
+  exit 1
+fi
 
 if compose exec -T postgres sh -c \
   'PGPASSWORD="$APP_DATABASE_PASSWORD" psql -U sentinel_app -d sentinelmesh -c "DELETE FROM schema_versions"'; then
@@ -66,7 +78,7 @@ if compose exec -T postgres sh -c \
   exit 1
 fi
 
-for tampered_version in 3 4; do
+for tampered_version in 3 4 5; do
   original_checksum=$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
     "SELECT checksum FROM schema_migrations WHERE version = $tampered_version")
   compose exec -T postgres psql -U postgres -d sentinelmesh -v ON_ERROR_STOP=1 \
@@ -79,7 +91,7 @@ for tampered_version in 3 4; do
     -c "UPDATE schema_migrations SET checksum = '$original_checksum' WHERE version = $tampered_version"
 done
 test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
-  'SELECT count(*) FROM schema_migrations WHERE version = 4')" = 1
+  'SELECT count(*) FROM schema_migrations WHERE version = 5')" = 1
 
 BACKUP_DIR=/tmp/sentinelmesh-backup-test ./ops/postgres-backup.sh >/tmp/sentinelmesh-backup-path
 ./ops/postgres-restore-verify.sh "$(cat /tmp/sentinelmesh-backup-path)"

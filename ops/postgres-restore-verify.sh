@@ -42,11 +42,19 @@ docker exec -i "$container" pg_restore -U postgres -d sentinelmesh_restore \
 
 version=$(docker exec "$container" psql -U postgres -d sentinelmesh_restore -Atc \
   'SELECT MAX(version) FROM schema_versions')
-test "$version" = "4"
+test "$version" = "5"
 manifest=$(docker exec "$container" psql -U postgres -d sentinelmesh_restore -Atc \
   "SELECT version || '|' || description FROM schema_versions ORDER BY version;
    SELECT version || '|' || name || '|' || checksum FROM schema_migrations ORDER BY version")
 test "$manifest" = "$(cat "$dump.schema-version")"
+expected_manifest="2|SentinelMesh clean V2 baseline
+3|003_protect_migration_history.sql
+4|004_simplify_runtime_schema.sql
+5|005_add_nip05_identity.sql
+3|003_protect_migration_history.sql|d7c41d110fdbb68f38586a2f57804c4567444946be29c988eba1c467cacfdce9
+4|004_simplify_runtime_schema.sql|e7e3b94079424215c60b88675e045eeebaf3bd1b4d21256b926858945270c1a0
+5|005_add_nip05_identity.sql|77fe3e26e02b444dc5c673af5453f67affe7bd2106d7235778a50f7c1fca1c91"
+test "$manifest" = "$expected_manifest"
 
 docker exec "$container" psql -U postgres -d sentinelmesh_restore -v ON_ERROR_STOP=1 \
   -c 'SELECT PostGIS_Version()' -c 'SELECT count(*) FROM safety_events' \
@@ -56,6 +64,9 @@ docker exec "$container" psql -U postgres -d sentinelmesh_restore -v ON_ERROR_ST
         END IF;
         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('publish_jobs','publish_failures','utxos')) THEN
           RAISE EXCEPTION 'obsolete publication tables remain';
+        END IF;
+        IF (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name IN ('nip05_identifier','nip05_verified_at','nip05_valid_until')) <> 3 THEN
+          RAISE EXCEPTION 'NIP-05 identity columns are incomplete';
         END IF;
       END \$\$" >/dev/null
 

@@ -168,6 +168,18 @@ describe('signNip98AuthEvent', () => {
   })
 })
 
+describe('signLocalNip98AuthEvent', () => {
+  test('uses the local key when NIP-07 is available', async () => {
+    const signEvent = vi.fn()
+    ;(window as unknown as Record<string, unknown>).nostr = { signEvent, getPublicKey: vi.fn() }
+    const { signLocalNip98AuthEvent, getCachedKeypair } = await import('../services/nostrService')
+    const result = signLocalNip98AuthEvent('https://api.example.com/api/identity/nip05', 'PUT', 'abc')
+    expect(signEvent).not.toHaveBeenCalled()
+    expect(result.pubkey).toBe(getCachedKeypair().publicKey)
+    expect(result.tags).toContainEqual(['payload', 'abc'])
+  })
+})
+
 describe('clearStoredKey', () => {
   test('removes sentinel_nostr_sk if present', () => {
     lsStore['sentinel_nostr_sk'] = 'deadbeef'

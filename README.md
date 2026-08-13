@@ -14,7 +14,7 @@ The hard part of an app like this isn't drawing dots on a map — it's deciding 
 |---|---|---|
 | **Incident map and alerts** | Core | Displays loaded incidents and their explicit stored trust state. Missing trust data is treated as unverified. |
 | **Community reports** | Core | Submits location-based reports signed by the user's local Nostr key and supports community confirmation or denial. |
-| **Local identity** | Core | Generates and stores a cryptographic identity in the browser with backup and restore controls. |
+| **Local identity** | Core | Generates and stores a cryptographic identity in the browser with backup, restore, and optional NIP-05 verification controls. |
 | **Push notifications** | Reworking | Not a release promise until permission UX and durable, targeted delivery are complete. |
 | **Family Circles** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_CIRCLES`; the current client/server journey is not release-ready. |
 | **Acoustic detection** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ACOUSTIC`; detections are client assertions and cannot independently confirm an event. |
@@ -54,7 +54,7 @@ Be precise about this — overclaiming privacy is a safety risk for the people w
 - **Family-circle social graph** is tokenized at rest: membership/owner/recipient identifiers are stored as per-circle keyed tokens (no plaintext pubkeys), and circle names and member labels are encrypted under the circle key. A database leak cannot reconstruct who belongs to which circle, or read circle/member names.
 - **Community-report locations** are coarsened to a ~100 m cell, and the reporter's identity (pubkey/signature) is stored in a separate access-controlled table behind a restricted database role. A database leak cannot link a precise location trail to a person.
 - **Audio** never leaves the device. Acoustic detection sends only a label, confidence, and location.
-- **No name/email/phone** is collected. Identity is a Nostr keypair generated on the device.
+- **No name/email/phone is required.** If a user opts into NIP-05 verification, the canonical `name@domain` label and its 24-hour verification window are stored with the public key. The user can remove it explicitly; otherwise it remains as expired history until that public key verifies again or another key reclaims the label.
 - **Mapbox tiles** are proxied through the gateway (`/api/tiles`); the Mapbox token is not exposed to the browser.
 - **Photos** are EXIF-stripped and face-blurred on-device before upload (face blur is best-effort, frontal faces only).
 
@@ -64,6 +64,7 @@ Be precise about this — overclaiming privacy is a safety risk for the people w
 - **Acoustic-detection locations are stored in plaintext** and linked to a persistent pubkey, with no retention limit yet. Treat acoustic-detection history as an identity-linked location trail.
 - **Family-circle timing metadata is visible to the server**: it can see *when* a member shares location (the coordinates, membership, and names are protected — the timing is not).
 - **A Nostr pubkey is a stable pseudonymous identifier.** User-signed events and anything independently published to external relays or storage may be retained by third parties.
+- **An optional NIP-05 label is linkable to the public key.** The server operator, or anyone with access to both profile and restricted report-author records, can correlate that human-readable label with pubkey-linked activity.
 
 Remaining gaps are tracked in `docs/audit/` with a remediation plan.
 
