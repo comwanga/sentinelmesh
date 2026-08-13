@@ -37,9 +37,10 @@ function injectPulseStyles() {
 interface Props {
   event: SafetyEvent
   onClick: (event: SafetyEvent) => void
+  selected?: boolean
 }
 
-export default function EventMarker({ event, onClick }: Props) {
+export default function EventMarker({ event, onClick, selected = false }: Props) {
   const { severity } = event
   const fill = SEVERITY_COLORS[severity] ?? '#4a5568'
   const size = SIZES[severity] ?? 12
@@ -55,12 +56,13 @@ export default function EventMarker({ event, onClick }: Props) {
   }, [severity, unverified])
 
   return (
-    <div
+    <button
+      type="button"
+      aria-label={`Open ${event.severity.toLowerCase()} alert: ${event.title}`}
+      aria-pressed={selected}
       onClick={() => onClick(event)}
+      className={`atlas-marker-hit ${selected ? 'selected' : ''}`}
       style={{
-        padding: '8px',
-        cursor: 'pointer',
-        pointerEvents: 'all',
         opacity: markerStyle.opacity,
       }}
       title={markerStyle.badge ? `${event.title} · ${markerStyle.badge}` : event.title}
@@ -101,6 +103,6 @@ export default function EventMarker({ event, onClick }: Props) {
           }}>!</span>
         )}
       </div>
-    </div>
+    </button>
   )
 }

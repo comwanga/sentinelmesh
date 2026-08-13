@@ -15,7 +15,7 @@ The hard part of an app like this isn't drawing dots on a map — it's deciding 
 | **Incident map and alerts** | Core | Displays loaded incidents and their explicit stored trust state. Missing trust data is treated as unverified. |
 | **Community reports** | Core | Submits location-based reports signed by the user's local Nostr key and supports community confirmation or denial. |
 | **Local identity** | Core | Generates and stores a cryptographic identity in the browser with backup, restore, and optional NIP-05 verification controls. |
-| **Push notifications** | Reworking | Not a release promise until permission UX and durable, targeted delivery are complete. |
+| **Push notifications** | Core | User-enabled alert perimeters deliver confirmed incidents through durable, geographically targeted queues. |
 | **Family Circles** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_CIRCLES`; the current client/server journey is not release-ready. |
 | **Acoustic detection** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ACOUSTIC`; detections are client assertions and cannot independently confirm an event. |
 | **Routing** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ROUTING`; routes are not described as safe or authoritative. |
@@ -284,7 +284,7 @@ sentinelmesh/
 - [x] One canonical event contract and frontend store
 - [x] Transactionally atomic report transitions and side effects
 - [x] Single-host core production deployment, migrations, readiness, backup drills, and monitoring
-- [ ] Durable and targeted push delivery
+- [x] Durable and targeted push delivery with explicit permission controls
 
 Signal ingestion, Family Circles, acoustic detection, routing, photos, and Insights are retained as experimental work. Presence in the repository is not an end-to-end completion claim.
 

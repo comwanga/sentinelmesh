@@ -16,10 +16,9 @@ describe('EventMarker', () => {
   afterEach(() => {
     document.querySelectorAll('style[data-sm-pulse]').forEach(el => el.remove())
   })
-  it('renders a hit-area wrapper with 8px padding', () => {
-    const { container } = render(<EventMarker event={base} onClick={vi.fn()} />)
-    const wrapper = container.firstElementChild as HTMLElement
-    expect(wrapper.style.padding).toBe('8px')
+  it('renders a keyboard-operable incident button', () => {
+    render(<EventMarker event={base} onClick={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /critical alert/i })).toBeInTheDocument()
   })
 
   it('CRITICAL dot has correct background color', () => {

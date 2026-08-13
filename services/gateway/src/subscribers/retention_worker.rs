@@ -69,6 +69,14 @@ async fn run_once(pool: &PgPool) -> anyhow::Result<()> {
     .execute(pool)
     .await?;
 
+    sqlx::query(
+        "DELETE FROM push_deliveries
+          WHERE (status = 'sent' AND sent_at < now() - interval '30 days')
+             OR (status = 'dead' AND updated_at < now() - interval '30 days')",
+    )
+    .execute(pool)
+    .await?;
+
     let (c, h, e) = (
         coords.rows_affected(),
         cells.rows_affected(),
