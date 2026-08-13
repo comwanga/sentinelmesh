@@ -42,7 +42,7 @@ docker exec -i "$container" pg_restore -U postgres -d sentinelmesh_restore \
 
 version=$(docker exec "$container" psql -U postgres -d sentinelmesh_restore -Atc \
   'SELECT MAX(version) FROM schema_versions')
-test "$version" = "6"
+test "$version" = "7"
 manifest=$(docker exec "$container" psql -U postgres -d sentinelmesh_restore -Atc \
   "SELECT version || '|' || description FROM schema_versions ORDER BY version;
    SELECT version || '|' || name || '|' || checksum FROM schema_migrations ORDER BY version")
@@ -52,10 +52,12 @@ expected_manifest="2|SentinelMesh clean V2 baseline
 4|004_simplify_runtime_schema.sql
 5|005_add_nip05_identity.sql
 6|006_add_nip44_circle_key_wrap.sql
+7|007_add_targeted_push_outbox.sql
 3|003_protect_migration_history.sql|d7c41d110fdbb68f38586a2f57804c4567444946be29c988eba1c467cacfdce9
 4|004_simplify_runtime_schema.sql|e7e3b94079424215c60b88675e045eeebaf3bd1b4d21256b926858945270c1a0
 5|005_add_nip05_identity.sql|77fe3e26e02b444dc5c673af5453f67affe7bd2106d7235778a50f7c1fca1c91
-6|006_add_nip44_circle_key_wrap.sql|98085254ae48e12db57e13459ec2a6a425f29f919568475f0597a8a2186b93cb"
+6|006_add_nip44_circle_key_wrap.sql|98085254ae48e12db57e13459ec2a6a425f29f919568475f0597a8a2186b93cb
+7|007_add_targeted_push_outbox.sql|e3d0fbd16d1b343a980b8aa7fa86c39f24d10fe9abd6595a3cc1aa5f0ae3b111"
 test "$manifest" = "$expected_manifest"
 
 docker exec "$container" psql -U postgres -d sentinelmesh_restore -v ON_ERROR_STOP=1 \
@@ -72,6 +74,12 @@ docker exec "$container" psql -U postgres -d sentinelmesh_restore -v ON_ERROR_ST
         END IF;
         IF (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'circle_members' AND column_name IN ('key_wrap_version','key_wrap_ciphertext')) <> 2 THEN
           RAISE EXCEPTION 'NIP-44 circle key envelope columns are incomplete';
+        END IF;
+        IF (SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'push_deliveries') <> 1 THEN
+          RAISE EXCEPTION 'push delivery outbox is missing';
+        END IF;
+        IF (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'push_subscriptions' AND column_name IN ('min_severity','center_lat','center_lng','radius_km','center_geog')) <> 5 THEN
+          RAISE EXCEPTION 'push targeting columns are incomplete';
         END IF;
       END \$\$" >/dev/null
 
