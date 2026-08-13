@@ -18,7 +18,7 @@ Push notifications will return after delivery is moved to a durable outbox and p
 The following implementations remain in the repository but are disabled by default and are not supported release capabilities:
 
 - Acoustic detection
-- Family Circles
+- Family Circles (NIP-44 key delivery and AES-GCM content encryption are implemented; location transport remains experimental)
 - Insights
 - Report photos
 - Escape and home routing

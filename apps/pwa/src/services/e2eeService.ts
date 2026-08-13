@@ -1,7 +1,9 @@
 // Circle keys are stored as non-extractable CryptoKey objects in IndexedDB.
 // localStorage can only hold strings (forcing an extractable, exfiltratable key),
 // so it is no longer used for keys — XSS cannot export a non-extractable key.
-import { upsertCircleKey, removeVaultCircle } from './identityStore'
+import { finalizeEvent, nip44, type VerifiedEvent } from 'nostr-tools'
+import { upsertCircleKey, removeVaultCircle, loadVaultCircleKey } from './identityStore'
+import { getCachedKeypair } from './nostrService'
 
 const LEGACY_KEY_PREFIX = 'sentinelmesh:circle_key:'
 const DB_NAME = 'sentinelmesh'
@@ -84,13 +86,16 @@ export async function saveCircleKey(circleId: string, key: CryptoKey): Promise<v
  * Use this at every site that originates a circle key (create, rotate, restore).
  */
 export async function saveCircleKeyWithBackup(circleId: string, rawKey: Uint8Array): Promise<void> {
-  const liveKey = await crypto.subtle.importKey(
-    'raw', rawKey as unknown as BufferSource, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'],
-  )
-  await idbPut(circleId, liveKey)
-  if (typeof localStorage !== 'undefined') localStorage.removeItem(LEGACY_KEY_PREFIX + circleId)
-  await upsertCircleKey(circleId, rawKey)
-  new Uint8Array(rawKey.buffer, rawKey.byteOffset, rawKey.byteLength).fill(0)
+  try {
+    const liveKey = await crypto.subtle.importKey(
+      'raw', rawKey as unknown as BufferSource, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'],
+    )
+    await idbPut(circleId, liveKey)
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(LEGACY_KEY_PREFIX + circleId)
+    await upsertCircleKey(circleId, rawKey)
+  } finally {
+    new Uint8Array(rawKey.buffer, rawKey.byteOffset, rawKey.byteLength).fill(0)
+  }
 }
 
 /** Load a circle key (non-extractable). Migrates a legacy localStorage key once. */
@@ -102,12 +107,17 @@ export async function loadCircleKey(circleId: string): Promise<CryptoKey | null>
     const b64 = localStorage.getItem(LEGACY_KEY_PREFIX + circleId)
     if (b64) {
       const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
-      const key = await crypto.subtle.importKey(
-        'raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'],
-      )
-      await idbPut(circleId, key)
-      localStorage.removeItem(LEGACY_KEY_PREFIX + circleId)
-      return key
+      try {
+        const key = await crypto.subtle.importKey(
+          'raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'],
+        )
+        await idbPut(circleId, key)
+        await upsertCircleKey(circleId, raw)
+        localStorage.removeItem(LEGACY_KEY_PREFIX + circleId)
+        return key
+      } finally {
+        raw.fill(0)
+      }
     }
   }
   return null
@@ -134,16 +144,15 @@ export async function rotateCircleKey(circleId: string): Promise<CryptoKey> {
   return fresh
 }
 
-export async function generateEphemeralKeypair(): Promise<{ publicKey: Uint8Array; privateKey: CryptoKey }> {
-  const pair = await crypto.subtle.generateKey({ name: 'X25519' } as AlgorithmIdentifier, false, ['deriveBits'])
-  const rawPub = await crypto.subtle.exportKey('raw', (pair as CryptoKeyPair).publicKey)
-  return { publicKey: new Uint8Array(rawPub), privateKey: (pair as CryptoKeyPair).privateKey }
-}
+const CIRCLE_KEY_EVENT_KIND = 30079
+const CIRCLE_KEY_EVENT_TYPE = 'sentinelmesh-circle-key-v1'
 
-async function deriveWrappingKey(myPrivKey: CryptoKey, theirPubBytes: Uint8Array): Promise<CryptoKey> {
-  const theirPub = await crypto.subtle.importKey('raw', theirPubBytes as unknown as BufferSource, { name: 'X25519' } as AlgorithmIdentifier, false, [])
-  const bits = await crypto.subtle.deriveBits({ name: 'X25519', public: theirPub } as AlgorithmIdentifier, myPrivKey, 256)
-  return crypto.subtle.importKey('raw', bits, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
+interface CircleKeyPackageV1 {
+  version: 1
+  type: typeof CIRCLE_KEY_EVENT_TYPE
+  circle_id: string
+  algorithm: 'AES-256-GCM'
+  key: string
 }
 
 function encodeB64(iv: Uint8Array, data: ArrayBuffer): string {
@@ -163,31 +172,69 @@ function decodeB64(b64: string): { iv: Uint8Array; data: Uint8Array } | null {
   }
 }
 
-export async function wrapCircleKey(
-  circleKey: CryptoKey,
-  myPrivKey: CryptoKey,
-  theirPubBytes: Uint8Array,
-): Promise<string> {
-  const wrappingKey = await deriveWrappingKey(myPrivKey, theirPubBytes)
-  const rawCircleKey = await crypto.subtle.exportKey('raw', circleKey)
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  const wrapped = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrappingKey, rawCircleKey)
-  return encodeB64(iv, wrapped)
+function rawB64(raw: Uint8Array): string {
+  return btoa(String.fromCharCode(...raw))
 }
 
-/**
- * @throws {Error} if the wrapped key encoding is invalid or decryption fails (wrong keypair)
- */
-export async function unwrapCircleKey(
-  wrappedB64: string,
-  myPrivKey: CryptoKey,
-  theirPubBytes: Uint8Array,
-): Promise<CryptoKey> {
-  const wrappingKey = await deriveWrappingKey(myPrivKey, theirPubBytes)
-  const decoded = decodeB64(wrappedB64)
-  if (!decoded) throw new Error('Invalid wrapped key encoding')
-  const rawCircleKey = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: decoded.iv as unknown as BufferSource }, wrappingKey, decoded.data as unknown as BufferSource)
-  return crypto.subtle.importKey('raw', rawCircleKey, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
+function decodeRawB64(value: string): Uint8Array {
+  const raw = Uint8Array.from(atob(value), char => char.charCodeAt(0))
+  if (raw.length !== 32) throw new Error('Invalid circle key package')
+  return raw
+}
+
+export async function createNip44CircleKeyEvent(circleId: string, recipientPubkey: string): Promise<VerifiedEvent> {
+  if (!/^[0-9a-f]{64}$/i.test(recipientPubkey)) throw new Error('Invalid recipient public key')
+  const rawKey = await loadVaultCircleKey(circleId)
+  if (!rawKey) throw new Error('Circle key is not available in the encrypted vault')
+  const keypair = getCachedKeypair()
+  try {
+    const plaintext = JSON.stringify({
+      version: 1,
+      type: CIRCLE_KEY_EVENT_TYPE,
+      circle_id: circleId,
+      algorithm: 'AES-256-GCM',
+      key: rawB64(rawKey),
+    } satisfies CircleKeyPackageV1)
+    const conversationKey = nip44.v2.utils.getConversationKey(keypair.secretKey, recipientPubkey)
+    try {
+      const content = nip44.v2.encrypt(plaintext, conversationKey)
+      return finalizeEvent({
+        kind: CIRCLE_KEY_EVENT_KIND,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [['d', CIRCLE_KEY_EVENT_TYPE], ['circle', circleId], ['p', recipientPubkey.toLowerCase()]],
+        content,
+      }, keypair.secretKey)
+    } finally {
+      conversationKey.fill(0)
+    }
+  } finally {
+    rawKey.fill(0)
+  }
+}
+
+export async function unwrapNip44CircleKey(
+  circleId: string,
+  ownerPubkey: string,
+  ciphertext: string,
+): Promise<void> {
+  const keypair = getCachedKeypair()
+  if (!/^[0-9a-f]{64}$/.test(ownerPubkey)) throw new Error('Circle owner key is unavailable')
+  const conversationKey = nip44.v2.utils.getConversationKey(keypair.secretKey, ownerPubkey)
+  let rawKey: Uint8Array | null = null
+  try {
+    const plaintext = nip44.v2.decrypt(ciphertext, conversationKey)
+    const value = JSON.parse(plaintext) as Partial<CircleKeyPackageV1>
+    if (value.version !== 1 || value.type !== CIRCLE_KEY_EVENT_TYPE
+      || value.circle_id !== circleId || value.algorithm !== 'AES-256-GCM'
+      || typeof value.key !== 'string') throw new Error('Invalid circle key package')
+    rawKey = decodeRawB64(value.key)
+    await saveCircleKeyWithBackup(circleId, rawKey)
+  } catch {
+    throw new Error('Invalid circle key envelope')
+  } finally {
+    conversationKey.fill(0)
+    rawKey?.fill(0)
+  }
 }
 
 /** AES-GCM encrypt a UTF-8 string under the circle key (random 12-byte IV). */

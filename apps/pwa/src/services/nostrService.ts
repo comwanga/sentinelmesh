@@ -182,7 +182,7 @@ export async function signNip98AuthEvent(
   method: string,
   payloadHash?: string,
 ): Promise<SignedReportEvent> {
-  const tags: string[][] = [['u', url], ['method', method]]
+  const tags: string[][] = [['u', url], ['method', method], ['nonce', crypto.randomUUID()]]
   // NIP-98 body binding: include sha256(body) so the signature covers the payload.
   if (payloadHash) tags.push(['payload', payloadHash])
   return signEventAsync({
@@ -199,7 +199,7 @@ export function signLocalNip98AuthEvent(
   method: string,
   payloadHash?: string,
 ): SignedReportEvent {
-  const tags: string[][] = [['u', url], ['method', method]]
+  const tags: string[][] = [['u', url], ['method', method], ['nonce', crypto.randomUUID()]]
   if (payloadHash) tags.push(['payload', payloadHash])
   return finalizeEvent({
     kind: 27235,

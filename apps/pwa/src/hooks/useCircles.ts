@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
 import { useAppDispatch } from '../store'
 import { circleLoaded } from '../store/circlesSlice'
-import { signAuthEvent } from '../services/nostrService'
+import { signLocalNip98AuthEvent, sha256Hex } from '../services/nostrService'
 import { getCircleIds } from '../services/circleIdStore'
-import { loadCircleKey, decryptString, encryptString } from '../services/e2eeService'
+import { loadCircleKey, decryptString, encryptString, unwrapNip44CircleKey } from '../services/e2eeService'
+import { getCircleOwnerKey } from '../services/circleIdStore'
 import type { Circle, CircleMember } from '../../../../shared/types'
 
 const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
@@ -24,12 +25,21 @@ interface RawMember {
   alert_severity: string | null
   joined_at: string
 }
-interface RawCircleDetail extends RawCircle { members: RawMember[] }
+interface RawCircleDetail extends RawCircle {
+  members: RawMember[]
+  my_key_wrap?: { version: number; ciphertext: string } | null
+}
 
 async function toCircleAndMembers(
   detail: RawCircleDetail,
 ): Promise<{ circle: Circle; members: CircleMember[] }> {
-  const key = await loadCircleKey(detail.id)
+  let key = await loadCircleKey(detail.id)
+  if (!key && detail.my_key_wrap?.version === 2) {
+    const ownerPubkey = getCircleOwnerKey(detail.id)
+    if (!ownerPubkey) throw new Error('Circle owner key is unavailable')
+    await unwrapNip44CircleKey(detail.id, ownerPubkey, detail.my_key_wrap.ciphertext)
+    key = await loadCircleKey(detail.id)
+  }
 
   // Decrypt circle name
   let displayName: string | null | undefined
@@ -85,17 +95,21 @@ export function useCircles(): void {
 
   useEffect(() => {
     async function load() {
-      const authEvent = await signAuthEvent()
-      const headers = {
-        'Content-Type': 'application/json',
-        'X-Nostr-Auth': JSON.stringify(authEvent),
+      const headers = async (url: string, method: string, body?: string) => {
+        const absoluteUrl = new URL(url, window.location.origin).toString()
+        const hash = body === undefined ? undefined : await sha256Hex(body)
+        return {
+          'Content-Type': 'application/json',
+          'X-Nostr-Auth': JSON.stringify(signLocalNip98AuthEvent(absoluteUrl, method, hash)),
+        }
       }
 
       const ids = getCircleIds()
       if (ids.length === 0) return
       let circles: RawCircle[]
       try {
-        const res = await fetch(`${API_BASE}/api/circles?ids=${ids.join(',')}`, { headers, signal: AbortSignal.timeout(15_000) })
+        const listUrl = `${API_BASE}/api/circles?ids=${ids.join(',')}`
+        const res = await fetch(listUrl, { headers: await headers(listUrl, 'GET'), signal: AbortSignal.timeout(15_000) })
         if (!res.ok) return
         circles = await res.json() as RawCircle[]
       } catch {
@@ -104,7 +118,8 @@ export function useCircles(): void {
 
       for (const c of circles) {
         try {
-          const res = await fetch(`${API_BASE}/api/circles/${c.id}`, { headers, signal: AbortSignal.timeout(15_000) })
+          const detailUrl = `${API_BASE}/api/circles/${c.id}`
+          const res = await fetch(detailUrl, { headers: await headers(detailUrl, 'GET'), signal: AbortSignal.timeout(15_000) })
           if (!res.ok) continue
           const detail = await res.json() as RawCircleDetail
           const { circle, members } = await toCircleAndMembers(detail)
@@ -120,11 +135,13 @@ export function useCircles(): void {
               // Names migrate now; member labels are NOT auto-migrated (the owner
               // cannot reverse a member_token to a pubkey) — they fill in as members
               // are (re-)added via add_member. Send an empty member_labels list.
-              await fetch(`${API_BASE}/api/circles/${detail.id}/encryption`, {
+              const encryptionUrl = `${API_BASE}/api/circles/${detail.id}/encryption`
+              const body = JSON.stringify({ name_ciphertext: nameCiphertext, member_labels: [] })
+              await fetch(encryptionUrl, {
                 method: 'PUT',
-                headers,
+                headers: await headers(encryptionUrl, 'PUT', body),
                 signal: AbortSignal.timeout(15_000),
-                body: JSON.stringify({ name_ciphertext: nameCiphertext, member_labels: [] }),
+                body,
               }).catch(() => { /* best-effort; retried on next load */ })
             }
           }

@@ -178,6 +178,13 @@ describe('signLocalNip98AuthEvent', () => {
     expect(result.pubkey).toBe(getCachedKeypair().publicKey)
     expect(result.tags).toContainEqual(['payload', 'abc'])
   })
+
+  test('produces distinct event ids for same-second repeated requests', async () => {
+    const { signLocalNip98AuthEvent } = await import('../services/nostrService')
+    const first = signLocalNip98AuthEvent('https://api.example.com/api/circles', 'POST', 'abc')
+    const second = signLocalNip98AuthEvent('https://api.example.com/api/circles', 'POST', 'abc')
+    expect(first.id).not.toBe(second.id)
+  })
 })
 
 describe('clearStoredKey', () => {

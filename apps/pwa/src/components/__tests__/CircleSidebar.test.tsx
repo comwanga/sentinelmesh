@@ -67,6 +67,6 @@ describe('CircleSidebar', () => {
 
   it('shows E2EE indicator text', () => {
     render(<CircleSidebar circle={circle} members={members} memberStatuses={statuses} onInvite={vi.fn()} onLeave={vi.fn()} onAddMember={noopAddMember} />)
-    expect(screen.getByText(/X25519 Encryption Active/i)).toBeInTheDocument()
+    expect(screen.getByText(/NIP-44 Keys · AES-256-GCM Content/i)).toBeInTheDocument()
   })
 })

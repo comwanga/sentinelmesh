@@ -45,7 +45,7 @@ make prod-config
 7. Check `https://alerts.example.org/live`, `/ready`, `/`, and `/api/events?limit=1`.
 8. Confirm the external uptime monitor receives HTTP 200 from `/ready`.
 
-The one-shot migrator serializes with a PostgreSQL advisory lock, validates immutable migration checksums, and records each applied version. Gateway startup requires exactly schema version 5. A migration failure prevents the gateway from starting.
+The one-shot migrator serializes with a PostgreSQL advisory lock, validates immutable migration checksums, and records each applied version. Gateway startup requires exactly schema version 6. A migration failure prevents the gateway from starting.
 
 Applied migrations are immutable. Never edit a released file under `infra/postgres/migrations-v2`; add the next numbered migration instead. Database rollback is restore or a reviewed forward fix, not an ad hoc down migration.
 
