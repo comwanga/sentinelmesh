@@ -7,8 +7,8 @@
 //!      every active cluster from the staged `nlp_signals`,
 //!   3. promotes the linked `safety_events.trust_state` monotonically via
 //!      `contract::decide`, and
-//!   4. on the transition into `confirmed` — and only then — fires push
-//!      notifications and broadcasts the confirmed event to the map.
+//!   4. on the transition into `confirmed` — and only then — durably enqueues
+//!      targeted push deliveries and broadcasts the confirmed event to the map.
 //!
 //! Heuristic and corroborating events are visible on the map (labeled) but never
 //! trigger push or feed reputation. That gating is the core of H-5.
@@ -35,14 +35,6 @@ const TICK_MS: u64 = 5_000;
 const HEURISTIC_TTL_SECS: i64 = 30 * 60;
 /// TTL for a CORROBORATING detection that never reached CONFIRMED.
 const CORROBORATING_TTL_SECS: i64 = 2 * 60 * 60;
-
-/// Config the worker needs to fire push on confirm. Cloned in from `Config` so
-/// the worker does not depend on the whole `AppState`.
-#[derive(Clone)]
-pub struct PushConfig {
-    pub vapid_private_key: Option<String>,
-    pub vapid_subject: Option<String>,
-}
 
 #[derive(Default)]
 struct TickSummary {
@@ -72,7 +64,6 @@ impl ClusterStats {
 pub async fn run(
     pool: PgPool,
     enabled: bool,
-    push: PushConfig,
     event_tx: Arc<tokio::sync::broadcast::Sender<crate::ws::ViewportEvent>>,
 ) {
     if !enabled {
@@ -83,7 +74,7 @@ pub async fn run(
 
     loop {
         let start = std::time::Instant::now();
-        match tick(&pool, &push, &event_tx).await {
+        match tick(&pool, &event_tx).await {
             Ok(summary) => {
                 tracing::info!(
                     cycle_ms = start.elapsed().as_millis() as u64,
@@ -106,7 +97,6 @@ pub async fn run(
 #[allow(clippy::field_reassign_with_default)]
 async fn tick(
     pool: &PgPool,
-    push: &PushConfig,
     event_tx: &Arc<tokio::sync::broadcast::Sender<crate::ws::ViewportEvent>>,
 ) -> Result<TickSummary> {
     let mut summary = TickSummary::default();
@@ -117,7 +107,7 @@ async fn tick(
     summary.clusters_evaluated = clusters.len();
 
     for (event_id, stats) in clusters {
-        match promote_cluster(pool, push, event_tx, event_id, stats).await {
+        match promote_cluster(pool, event_tx, event_id, stats).await {
             Ok(Promotion::Corroborated) => summary.promoted_to_corroborating += 1,
             Ok(Promotion::Confirmed) => summary.promoted_to_confirmed += 1,
             Ok(Promotion::Unchanged) => {}
@@ -209,19 +199,20 @@ enum Promotion {
 
 async fn promote_cluster(
     pool: &PgPool,
-    push: &PushConfig,
     event_tx: &Arc<tokio::sync::broadcast::Sender<crate::ws::ViewportEvent>>,
     event_id: Uuid,
     stats: ClusterStats,
 ) -> Result<Promotion> {
     // Read the event's current tier + the fields needed for a confirm broadcast.
+    let mut tx = pool.begin().await?;
     let Some(row) = sqlx::query(
         "SELECT trust_state, severity, title, event_type, lat, lng, started_at
            FROM safety_events
-          WHERE id = $1 AND is_active = true",
+          WHERE id = $1 AND is_active = true
+          FOR UPDATE",
     )
     .bind(event_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?
     else {
         // Event was expired/removed between the stats query and now — skip.
@@ -258,18 +249,22 @@ async fn promote_cluster(
     .bind(stats.distinct_channels as i32)
     .bind(stats.total_signals as i32)
     .bind(&breakdown)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     if target == current {
+        tx.commit().await?;
         return Ok(Promotion::Unchanged);
     }
 
     if should_confirm(current, target) {
-        on_confirm(pool, push, event_tx, event_id, &row).await?;
+        enqueue_push_deliveries(&mut tx, event_id, &row).await?;
+        tx.commit().await?;
+        on_confirm(event_tx, event_id, &row)?;
         return Ok(Promotion::Confirmed);
     }
 
+    tx.commit().await?;
     Ok(Promotion::Corroborated)
 }
 
@@ -287,12 +282,9 @@ fn source_breakdown(stats: &ClusterStats) -> serde_json::Value {
     })
 }
 
-/// Side effects gated to the confirm transition: push notification + map
-/// broadcast. Failure to push is logged, not fatal — the trust_state is already
-/// committed, so a later tick will not re-push (it is no longer a transition).
-async fn on_confirm(
-    pool: &PgPool,
-    push: &PushConfig,
+/// Map side effect gated to the committed confirm transition. Push intent is
+/// already durable before this function runs.
+fn on_confirm(
     event_tx: &Arc<tokio::sync::broadcast::Sender<crate::ws::ViewportEvent>>,
     event_id: Uuid,
     row: &sqlx::postgres::PgRow,
@@ -324,29 +316,41 @@ async fn on_confirm(
         event_json: ws_json.to_string().into(),
     });
 
-    // Push only for HIGH/CRITICAL confirmed events, and only if VAPID is configured.
-    if matches!(severity.as_str(), "HIGH" | "CRITICAL") {
-        match (&push.vapid_private_key, &push.vapid_subject) {
-            (Some(key), Some(subject)) => {
-                crate::routes::push::broadcast_push(
-                    pool,
-                    key,
-                    subject,
-                    &title,
-                    &format!("Confirmed {event_type} nearby"),
-                    &event_id.to_string(),
-                )
-                .await;
-            }
-            _ => {
-                tracing::warn!(
-                    %event_id,
-                    "NLP synthesis: event confirmed but VAPID keys unset — push skipped"
-                );
-            }
-        }
-    }
+    Ok(())
+}
 
+async fn enqueue_push_deliveries(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    event_id: Uuid,
+    row: &sqlx::postgres::PgRow,
+) -> Result<()> {
+    let severity: String = row.try_get("severity")?;
+    let title: String = row.try_get("title")?;
+    let event_type: String = row.try_get("event_type")?;
+    let lat: f64 = row.try_get("lat")?;
+    let lng: f64 = row.try_get("lng")?;
+    let payload = serde_json::json!({
+        "title": title,
+        "body": format!("Confirmed {} in your alert area", event_type.replace('_', " ").to_lowercase()),
+        "severity": severity,
+        "event_id": event_id,
+        "url": format!("/map?event={event_id}"),
+    });
+    sqlx::query(
+        "INSERT INTO push_deliveries (event_id, subscription_id, payload)
+         SELECT $1, ps.id, $2
+           FROM push_subscriptions ps
+          WHERE ps.center_geog IS NOT NULL
+            AND CASE $3
+                  WHEN 'LOW' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'HIGH' THEN 3 WHEN 'CRITICAL' THEN 4
+                END >= CASE ps.min_severity
+                  WHEN 'LOW' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'HIGH' THEN 3 WHEN 'CRITICAL' THEN 4
+                END
+            AND ST_DWithin(ps.center_geog, ST_SetSRID(ST_MakePoint($5, $4), 4326)::geography, ps.radius_km * 1000)
+         ON CONFLICT (event_id, subscription_id) DO NOTHING",
+    )
+    .bind(event_id).bind(payload).bind(severity).bind(lat).bind(lng)
+    .execute(&mut **tx).await?;
     Ok(())
 }
 

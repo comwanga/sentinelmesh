@@ -9,9 +9,8 @@ The V2 release supports four user-visible capabilities:
 1. Browse loaded incidents on a map and alert list.
 2. Submit a location-based community report signed by a local Nostr identity.
 3. Confirm or deny community reports.
-4. Manage and back up the local cryptographic identity, with an optional NIP-05 label verified against the local public key.
-
-Push notifications will return after delivery is moved to a durable outbox and permission is explicitly requested by the user.
+4. Manage and back up the local cryptographic identity, with an optional NIP-05 label verified against the active public key.
+5. Explicitly enable geographically targeted notifications for confirmed incidents through a durable delivery outbox.
 
 ## Experimental Capabilities
 

@@ -54,9 +54,11 @@ function buildClusters(events: SafetyEvent[], zoom: number): Cluster[] {
 interface Props {
   zoom?: number  // override for tests; defaults to live map zoom
   onEventClick?: (event: SafetyEvent) => void
+  events?: SafetyEvent[]
+  selectedEventId?: string | null
 }
 
-export function EventClusterLayer({ zoom: zoomProp, onEventClick }: Props) {
+export function EventClusterLayer({ zoom: zoomProp, onEventClick, events, selectedEventId }: Props) {
   const { current: map } = useMap()
   const [mapZoom, setMapZoom] = useState<number>(map?.getZoom() ?? 2)
 
@@ -69,7 +71,8 @@ export function EventClusterLayer({ zoom: zoomProp, onEventClick }: Props) {
 
   const zoom = zoomProp ?? mapZoom
 
-  const allEvents = useAppSelector(selectViewportEventItems)
+  const storeEvents = useAppSelector(selectViewportEventItems)
+  const allEvents = events ?? storeEvents
 
   const activeEvents = useMemo(() => allEvents.filter(e => e.is_active), [allEvents])
 
@@ -97,7 +100,7 @@ export function EventClusterLayer({ zoom: zoomProp, onEventClick }: Props) {
       <>
         {activeEvents.map(event => (
           <Marker key={event.id} longitude={event.lng} latitude={event.lat} anchor="center">
-            <EventMarker event={event} onClick={onEventClick ?? noop} />
+            <EventMarker event={event} onClick={onEventClick ?? noop} selected={event.id === selectedEventId} />
           </Marker>
         ))}
       </>
@@ -109,7 +112,7 @@ export function EventClusterLayer({ zoom: zoomProp, onEventClick }: Props) {
       {clusters.map(cluster => (
         <Marker key={cluster.id} longitude={cluster.lng} latitude={cluster.lat} anchor="center">
           {cluster.totalCount === 1
-            ? <EventMarker event={cluster.events[0]} onClick={onEventClick ?? noop} />
+            ? <EventMarker event={cluster.events[0]} onClick={onEventClick ?? noop} selected={cluster.events[0].id === selectedEventId} />
             : (
               <ClusterMarker
                 clusterId={cluster.id}
@@ -118,6 +121,7 @@ export function EventClusterLayer({ zoom: zoomProp, onEventClick }: Props) {
                 mediumCount={cluster.mediumCount}
                 lowCount={cluster.lowCount}
                 totalCount={cluster.totalCount}
+                onClick={() => onEventClick?.(cluster.events[0])}
               />
             )
           }

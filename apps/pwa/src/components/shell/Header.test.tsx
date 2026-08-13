@@ -31,17 +31,17 @@ function wrap(s: ReturnType<typeof makeStore>) {
 describe('Header', () => {
   it('renders SentinelMesh brand', () => {
     render(<Header />, { wrapper: wrap(makeStore()) })
-    expect(screen.getByText('SentinelMesh')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /SentinelMesh live map/i })).toBeInTheDocument()
   })
 
   it('shows Live when WS connected', () => {
     render(<Header />, { wrapper: wrap(makeStore({ connected: true })) })
-    expect(screen.getByText('Live')).toBeInTheDocument()
+    expect(screen.getByText('Network live')).toBeInTheDocument()
   })
 
   it('shows Offline when WS disconnected', () => {
     render(<Header />, { wrapper: wrap(makeStore({ connected: false })) })
-    expect(screen.getByText('Offline')).toBeInTheDocument()
+    expect(screen.getByText('Reconnecting')).toBeInTheDocument()
   })
 
   it('shows active event count in notification badge', () => {

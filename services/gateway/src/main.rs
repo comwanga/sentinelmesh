@@ -129,17 +129,29 @@ async fn main() -> anyhow::Result<()> {
     // push only on the confirm transition). H-5 Phase 2B-ii.
     if config.nlp_synthesis_enabled {
         let pool_nlp = db.clone();
-        let push = subscribers::nlp_synthesis_worker::PushConfig {
-            vapid_private_key: config.vapid_private_key.clone(),
-            vapid_subject: config.vapid_subject.clone(),
-        };
         let tx_nlp = event_tx.clone();
         let workers_ok = workers_healthy.clone();
         tokio::spawn(async move {
-            subscribers::nlp_synthesis_worker::run(pool_nlp, true, push, tx_nlp).await;
+            subscribers::nlp_synthesis_worker::run(pool_nlp, true, tx_nlp).await;
             workers_ok.store(false, Ordering::Relaxed);
             tracing::error!(worker = "nlp_synthesis", "critical worker exited");
         });
+    }
+
+    match (
+        config.vapid_private_key.clone(),
+        config.vapid_subject.clone(),
+    ) {
+        (Some(key), Some(subject)) if !key.is_empty() && !subject.is_empty() => {
+            let pool_push = db.clone();
+            let workers_ok = workers_healthy.clone();
+            tokio::spawn(async move {
+                subscribers::push_outbox_worker::run(pool_push, key, subject).await;
+                workers_ok.store(false, Ordering::Relaxed);
+                tracing::error!(worker = "push_outbox", "critical worker exited");
+            });
+        }
+        _ => tracing::warn!("push outbox worker disabled: VAPID configuration incomplete"),
     }
 
     // Spawn trust-hygiene worker (C-1b-1): periodic metrics snapshot (always) +

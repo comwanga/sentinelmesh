@@ -8,6 +8,9 @@ export interface AlertCardProps {
   timestamp: number
   status: 'CONFIRMED' | 'UNVERIFIED'
   trustState: TrustState
+  severity?: string
+  onClick?: () => void
+  selected?: boolean
 }
 
 export function safetyEventToCardProps(
@@ -21,6 +24,7 @@ export function safetyEventToCardProps(
     timestamp:  new Date(e.created_at).getTime(),
     status:     trustState === 'confirmed' ? 'CONFIRMED' : 'UNVERIFIED',
     trustState,
+    severity: e.severity,
   }
 }
 
@@ -45,13 +49,13 @@ function timeAgo(ts: number): string {
 
 export function AlertCard({
   eventType, title, location, timestamp,
-  status, trustState,
+  status, trustState, severity, onClick, selected,
 }: AlertCardProps) {
   const accent = typeColor[eventType] ?? '#4a5568'
   const trust = trustStyle({ trust_state: trustState })
 
   return (
-    <div style={{
+    <button type="button" onClick={onClick} className={`atlas-alert-card ${selected ? 'selected' : ''}`} style={{
       background: '#0d1118', border: '1px solid #1a2035', borderRadius: 8,
       padding: '10px 12px', marginBottom: 8, borderLeft: `3px solid ${accent}`,
     }}>
@@ -64,7 +68,7 @@ export function AlertCard({
             {title}
           </div>
           <div style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: '#94a3b8' }}>
-            {location}
+            {location} {severity ? `· ${severity}` : ''}
           </div>
         </div>
       </div>
@@ -96,6 +100,6 @@ export function AlertCard({
         )}
 
       </div>
-    </div>
+    </button>
   )
 }

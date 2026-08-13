@@ -7,6 +7,7 @@ import type { VaultPayload } from '../services/identityStore'
 import { Nip05IdentitySection } from '../components/Nip05IdentitySection'
 import { useActiveIdentity } from '../hooks/useActiveIdentity'
 import { connectBunker, disconnectBunker, reconnectBunker, refreshLocalIdentity } from '../services/signerService'
+import { AlertPerimeter } from '../components/AlertPerimeter'
 
 export function SettingsPage() {
   const [keypair, setKeypair] = useState<NostrKeypair | null>(null)
@@ -172,6 +173,8 @@ export function SettingsPage() {
           Settings
         </h1>
       </div>
+
+      <AlertPerimeter />
 
       <section style={{ padding: '20px', borderBottom: '1px solid #1a2035' }}>
         <h2 style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#BB86FC', letterSpacing: '0.1em', margin: '0 0 8px' }}>

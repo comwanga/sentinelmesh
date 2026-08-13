@@ -3,7 +3,6 @@ import { Outlet } from 'react-router-dom'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { useSafetyDataSync } from '../../hooks/useSafetyDataSync'
 import { useCircles } from '../../hooks/useCircles'
-import { usePushSubscription } from '../../hooks/usePushSubscription'
 import { useAppSelector } from '../../store'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
@@ -13,7 +12,6 @@ export function AppShell() {
   useSafetyDataSync()
   // Acoustic detection is opt-in — started only when user activates the overlay
   useCircles()
-  usePushSubscription()
   const { layout } = useBreakpoint()
   const proximityAlerts = useAppSelector(s => s.circles.proximityAlerts)
   const [announcement, setAnnouncement] = useState('')
@@ -25,12 +23,12 @@ export function AppShell() {
   }, [proximityAlerts])
 
   return (
-    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', background: '#0B0E14' }}>
+    <div className="atlas-shell">
       <a href="#main-content" className="skip-link">Skip to main content</a>
       <Header />
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div className="atlas-shell-body">
         {layout === 'desktop' && <Sidebar />}
-        <main id="main-content" style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+        <main id="main-content" className="atlas-main">
           <Outlet />
         </main>
       </div>

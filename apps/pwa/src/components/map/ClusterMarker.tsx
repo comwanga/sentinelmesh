@@ -49,7 +49,7 @@ function ClusterMarkerBase({
   const cy = outerR
 
   return (
-    <div onClick={onClick} style={{ cursor: 'pointer', width: outerR * 2, height: outerR * 2, position: 'relative' }}>
+    <button type="button" aria-label={`Open cluster of ${totalCount} incidents`} onClick={onClick} style={{ cursor: 'pointer', width: outerR * 2, height: outerR * 2, position: 'relative', border: 0, padding: 0, background: 'none' }}>
       <svg width={outerR * 2} height={outerR * 2} viewBox={`0 0 ${outerR * 2} ${outerR * 2}`}>
         {/* Dark donut hole */}
         <circle cx={cx} cy={cy} r={outerR - 4} fill="#0B0E14" />
@@ -103,7 +103,7 @@ function ClusterMarkerBase({
           {totalCount > 99 ? '99+' : totalCount}
         </text>
       </svg>
-    </div>
+    </button>
   )
 }
 

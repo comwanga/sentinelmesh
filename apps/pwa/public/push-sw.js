@@ -3,6 +3,7 @@ self.addEventListener('push', event => {
   const title = data.title ?? 'SentinelMesh Alert'
   const options = {
     body: data.body ?? '',
+    requireInteraction: data.severity === 'CRITICAL',
     icon: '/icon.svg',
     badge: '/icon.svg',
     tag: data.event_id ?? 'sentinel-alert',
@@ -14,7 +15,7 @@ self.addEventListener('push', event => {
 
 self.addEventListener('notificationclick', event => {
   event.notification.close()
-  const url = event.notification.data?.url ?? '/'
+  const url = new URL(event.notification.data?.url ?? '/', self.location.origin).href
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
       const match = windowClients.find(w => w.url === url && 'focus' in w)
