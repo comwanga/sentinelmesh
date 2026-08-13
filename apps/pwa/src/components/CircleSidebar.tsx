@@ -158,7 +158,7 @@ export function CircleSidebar({ circle, members, memberStatuses, onInvite, onLea
         <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#00E5FF', flexShrink: 0 }} />
         <div>
           <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#00E5FF' }}>
-            X25519 Encryption Active
+            NIP-44 Keys · AES-256-GCM Content
           </div>
           <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#2d4a5a', marginTop: 1 }}>
             Server sees 0 coordinates

@@ -224,6 +224,13 @@ export async function upsertCircleKey(circleId: string, rawKey: Uint8Array): Pro
   })
 }
 
+/** Return a copy of a raw circle key from the encrypted vault for key distribution. */
+export async function loadVaultCircleKey(circleId: string): Promise<Uint8Array | null> {
+  const vault = await loadVault()
+  const entry = vault?.circles.find(circle => circle.id === circleId)
+  return entry ? new Uint8Array(entry.key) : null
+}
+
 /** Remove a circle entry from the vault. */
 export async function removeVaultCircle(circleId: string): Promise<void> {
   return withInitLock(async () => {

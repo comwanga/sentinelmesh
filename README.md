@@ -50,7 +50,8 @@ The throughline: **trust is earned through independent corroboration**, and the 
 Be precise about this — overclaiming privacy is a safety risk for the people who rely on it.
 
 **Protected:**
-- **Family-circle coordinates** are encrypted on-device with AES-256-GCM. The server stores a blob whose contents it cannot read.
+- **Family-circle keys** are delivered pairwise through signed NIP-44 v2 envelopes. Circle names, labels, and coordinates remain encrypted on-device with the shared AES-256-GCM circle key; the server stores ciphertext it cannot read.
+- **Legacy circle keys** that were previously migrated into non-extractable storage without a vault copy remain usable for decryption but cannot be distributed. Restore a backup containing the key or create a new circle; the client will not rotate them destructively.
 - **Family-circle social graph** is tokenized at rest: membership/owner/recipient identifiers are stored as per-circle keyed tokens (no plaintext pubkeys), and circle names and member labels are encrypted under the circle key. A database leak cannot reconstruct who belongs to which circle, or read circle/member names.
 - **Community-report locations** are coarsened to a ~100 m cell, and the reporter's identity (pubkey/signature) is stored in a separate access-controlled table behind a restricted database role. A database leak cannot link a precise location trail to a person.
 - **Audio** never leaves the device. Acoustic detection sends only a label, confidence, and location.

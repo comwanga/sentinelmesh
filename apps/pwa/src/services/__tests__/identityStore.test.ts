@@ -3,7 +3,7 @@ import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { saveSecretKey, loadSecretKey, clearSecretKey, loadOrCreateSecretKey, loadVault, saveVault, encodeVaultPayload, decodeVaultPayload, type VaultPayload, __writeLegacyV1ForTests } from '../identityStore'
 import {
-  upsertCircleKey, removeVaultCircle, loadVaultMeta, saveVaultMeta,
+  upsertCircleKey, removeVaultCircle, loadVaultCircleKey, loadVaultMeta, saveVaultMeta,
   fingerprintPayload, vaultFingerprint, formatVaultId,
 } from '../identityStore'
 
@@ -174,6 +174,14 @@ describe('identityStore circle helpers + fingerprint', () => {
     const c1 = v!.circles.find(c => c.id === 'c-1')!
     expect(Array.from(c1.key)).toEqual(Array.from(sk(9)))
     expect(Array.from(v!.identitySk)).toEqual(Array.from(sk(1)))
+  })
+
+  it('returns an isolated copy of a raw circle key', async () => {
+    await saveSecretKey(sk(1))
+    await upsertCircleKey('copy', sk(2))
+    const copy = await loadVaultCircleKey('copy')
+    copy![0] = 255
+    expect((await loadVaultCircleKey('copy'))![0]).toBe(sk(2)[0])
   })
 
   it('removeVaultCircle drops the entry', async () => {

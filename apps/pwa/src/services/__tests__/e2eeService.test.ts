@@ -9,14 +9,15 @@ import {
   rotateCircleKey,
   encryptLocation,
   decryptLocation,
-  generateEphemeralKeypair,
-  wrapCircleKey,
-  unwrapCircleKey,
+  createNip44CircleKeyEvent,
+  unwrapNip44CircleKey,
   encryptString,
   decryptString,
   saveCircleKeyWithBackup,
 } from '../e2eeService'
 import { loadVault, saveSecretKey } from '../identityStore'
+import { __resetIdentityCacheForTests, loadIdentity } from '../nostrService'
+import { generateSecretKey, getPublicKey } from 'nostr-tools'
 
 function rawKey(n: number): Uint8Array {
   const k = new Uint8Array(32); for (let i = 0; i < 32; i++) k[i] = (i + n) & 0xff; return k
@@ -105,20 +106,45 @@ describe('encryptLocation / decryptLocation', () => {
   })
 })
 
-describe('wrapCircleKey / unwrapCircleKey', () => {
-  it('round-trips a circle key through X25519 wrapping', async () => {
-    const circleKey = await generateCircleKey()
-    const inviter = await generateEphemeralKeypair()
-    const recipient = await generateEphemeralKeypair()
+describe('NIP-44 circle key distribution', () => {
+  it('lets the intended member import a key that decrypts existing AES content', async () => {
+    const owner = rawKey(11)
+    const recipient = rawKey(44)
+    await saveSecretKey(owner)
+    __resetIdentityCacheForTests()
+    await loadIdentity()
+    await saveCircleKeyWithBackup('circle-nip44', rawKey(7))
+    const ownerKey = await loadCircleKey('circle-nip44')
+    const ciphertext = await encryptLocation(ownerKey!, -1.0, 36.0)
+    const event = await createNip44CircleKeyEvent('circle-nip44', getPublicKey(recipient))
+    expect(event.content).not.toContain(rawKey(7).toString())
 
-    const wrapped = await wrapCircleKey(circleKey, inviter.privateKey, recipient.publicKey)
-    const unwrapped = await unwrapCircleKey(wrapped, recipient.privateKey, inviter.publicKey)
+    await clearCircleKey('circle-nip44')
+    await saveSecretKey(recipient)
+    __resetIdentityCacheForTests()
+    await loadIdentity()
+    await unwrapNip44CircleKey('circle-nip44', event.pubkey, event.content)
+    const imported = await loadCircleKey('circle-nip44')
+    expect((await decryptLocation(imported!, ciphertext))!.lat).toBeCloseTo(-1.0)
+  })
 
-    // Verify the unwrapped key can decrypt what the original encrypted
-    const ciphertext = await encryptLocation(circleKey, -1.0, 36.0)
-    const result = await decryptLocation(unwrapped, ciphertext)
-    expect(result).not.toBeNull()
-    expect(result!.lat).toBeCloseTo(-1.0)
+  it('rejects the wrong circle and recipient', async () => {
+    const owner = rawKey(12)
+    const recipient = rawKey(45)
+    await saveSecretKey(owner)
+    __resetIdentityCacheForTests()
+    await loadIdentity()
+    await saveCircleKeyWithBackup('circle-bound', rawKey(8))
+    const event = await createNip44CircleKeyEvent('circle-bound', getPublicKey(recipient))
+    await saveSecretKey(recipient)
+    __resetIdentityCacheForTests()
+    await loadIdentity()
+    await expect(unwrapNip44CircleKey('other-circle', event.pubkey, event.content)).rejects.toThrow('Invalid circle key envelope')
+
+    await saveSecretKey(generateSecretKey())
+    __resetIdentityCacheForTests()
+    await loadIdentity()
+    await expect(unwrapNip44CircleKey('circle-bound', event.pubkey, event.content)).rejects.toThrow('Invalid circle key envelope')
   })
 })
 

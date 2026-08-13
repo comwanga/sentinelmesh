@@ -11,22 +11,24 @@ pub async fn create_pool(database_url: &str, max_connections: u32) -> Result<PgP
 }
 
 pub async fn assert_schema_version(pool: &PgPool) -> Result<()> {
-    const REQUIRED_SCHEMA_VERSION: i32 = 5;
+    const REQUIRED_SCHEMA_VERSION: i32 = 6;
     let compatible: bool = sqlx::query_scalar(
         "SELECT
-           (SELECT array_agg(version ORDER BY version) FROM schema_versions) = ARRAY[2, 3, 4, 5]
-           AND (SELECT array_agg(version ORDER BY version) FROM schema_migrations) = ARRAY[3, 4, 5]
+           (SELECT array_agg(version ORDER BY version) FROM schema_versions) = ARRAY[2, 3, 4, 5, 6]
+           AND (SELECT array_agg(version ORDER BY version) FROM schema_migrations) = ARRAY[3, 4, 5, 6]
            AND (SELECT array_agg(name ORDER BY version) FROM schema_migrations) =
                  ARRAY[
                    '003_protect_migration_history.sql',
                    '004_simplify_runtime_schema.sql',
-                   '005_add_nip05_identity.sql'
+                   '005_add_nip05_identity.sql',
+                   '006_add_nip44_circle_key_wrap.sql'
                  ]
            AND (SELECT array_agg(checksum ORDER BY version) FROM schema_migrations) =
                  ARRAY[
                    'd7c41d110fdbb68f38586a2f57804c4567444946be29c988eba1c467cacfdce9',
                    'e7e3b94079424215c60b88675e045eeebaf3bd1b4d21256b926858945270c1a0',
-                   '77fe3e26e02b444dc5c673af5453f67affe7bd2106d7235778a50f7c1fca1c91'
+                   '77fe3e26e02b444dc5c673af5453f67affe7bd2106d7235778a50f7c1fca1c91',
+                   '98085254ae48e12db57e13459ec2a6a425f29f919568475f0597a8a2186b93cb'
                  ]",
     )
     .fetch_one(pool)

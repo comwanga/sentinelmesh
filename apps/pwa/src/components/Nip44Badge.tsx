@@ -1,4 +1,4 @@
-export function X25519Badge() {
+export function Nip44Badge() {
   return (
     <div style={{
       position: 'absolute', bottom: 12, right: 12,
@@ -10,10 +10,10 @@ export function X25519Badge() {
     }}>
       <div style={{
         width: 6, height: 6, borderRadius: '50%', background: '#00E5FF',
-        animation: 'x25519-pulse 2s ease-in-out infinite',
+        animation: 'nip44-pulse 2s ease-in-out infinite',
       }} />
       <style>{`
-        @keyframes x25519-pulse {
+        @keyframes nip44-pulse {
           0%, 100% { box-shadow: 0 0 0 0 rgba(0,229,255,0.4); }
           50% { box-shadow: 0 0 0 5px rgba(0,229,255,0); }
         }
@@ -22,7 +22,7 @@ export function X25519Badge() {
         fontFamily: "'Courier New', monospace", fontSize: 10,
         color: '#00E5FF', letterSpacing: '0.1em', textTransform: 'uppercase',
       }}>
-        X25519 Active
+        NIP-44 Key Distribution
       </span>
     </div>
   )

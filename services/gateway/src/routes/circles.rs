@@ -1,4 +1,5 @@
 use axum::{
+    body::Bytes,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
@@ -7,6 +8,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
@@ -32,6 +34,12 @@ pub struct CircleMember {
     pub joined_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct CircleMemberKeyWrap {
+    key_wrap_version: i16,
+    key_wrap_ciphertext: String,
+}
+
 #[derive(Deserialize)]
 struct CreateCircleBody {
     name_ciphertext: String,
@@ -43,6 +51,67 @@ struct AddMemberBody {
     member_label_ciphertext: String,
     alert_radius_km: Option<f64>,
     alert_severity: Option<String>,
+    key_wrap_version: i16,
+    key_wrap_event: serde_json::Value,
+}
+
+const CIRCLE_KEY_EVENT_KIND: u16 = 30079;
+const MAX_KEY_WRAP_CONTENT_LEN: usize = 4096;
+
+fn verify_payload_binding(auth: &NostrAuth, body: &[u8]) -> Result<(), AppError> {
+    let expected = hex::encode(Sha256::digest(body));
+    match auth.payload.as_deref() {
+        Some(value) if value.eq_ignore_ascii_case(&expected) => Ok(()),
+        _ => Err(AppError::BadRequest(
+            "missing or invalid NIP-98 payload binding".into(),
+        )),
+    }
+}
+
+fn single_tag(event: &nostr_sdk::Event, name: &str) -> Option<String> {
+    let matching: Vec<_> = event
+        .tags
+        .iter()
+        .filter(|tag| {
+            let values = tag.as_slice();
+            values.first().map(String::as_str) == Some(name)
+        })
+        .collect();
+    (matching.len() == 1)
+        .then(|| matching[0].as_slice().get(1).cloned())
+        .flatten()
+}
+
+fn validate_key_wrap(
+    owner_pubkey: &str,
+    member_pubkey: &str,
+    circle_id: Uuid,
+    version: i16,
+    value: &serde_json::Value,
+) -> Result<(), AppError> {
+    if version != 2 {
+        return Err(AppError::BadRequest(
+            "only NIP-44 v2 circle key envelopes are supported".into(),
+        ));
+    }
+    let event: nostr_sdk::Event = serde_json::from_value(value.clone())
+        .map_err(|_| AppError::BadRequest("invalid circle key event".into()))?;
+    event
+        .verify()
+        .map_err(|_| AppError::BadRequest("invalid circle key event".into()))?;
+    if event.pubkey.to_hex() != owner_pubkey
+        || event.kind != nostr_sdk::Kind::Custom(CIRCLE_KEY_EVENT_KIND)
+        || event.content.is_empty()
+        || event.content.len() > MAX_KEY_WRAP_CONTENT_LEN
+        || single_tag(&event, "d").as_deref() != Some("sentinelmesh-circle-key-v1")
+        || single_tag(&event, "circle").as_deref() != Some(circle_id.to_string().as_str())
+        || single_tag(&event, "p").as_deref() != Some(member_pubkey)
+    {
+        return Err(AppError::BadRequest(
+            "circle key event is not bound to this member and circle".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -120,8 +189,11 @@ async fn list_circles(
 async fn create_circle(
     State(state): State<AppState>,
     auth: NostrAuth,
-    Json(body): Json<CreateCircleBody>,
+    body: Bytes,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    verify_payload_binding(&auth, &body)?;
+    let body: CreateCircleBody = serde_json::from_slice(&body)
+        .map_err(|_| AppError::BadRequest("invalid JSON body".into()))?;
     let id = Uuid::new_v4();
     let owner_token = circle_token(&state.config.circle_token_secret, id, &auth.pubkey);
     let circle = sqlx::query_as::<_, Circle>(
@@ -174,11 +246,25 @@ async fn get_circle(
         }
     }
 
-    let members =
-        sqlx::query_as::<_, CircleMember>("SELECT * FROM circle_members WHERE circle_id = $1")
-            .bind(id)
-            .fetch_all(&state.db)
-            .await?;
+    let members = sqlx::query_as::<_, CircleMember>(
+        "SELECT circle_id, member_token, member_label_ciphertext, alert_radius_km, \
+         alert_severity, joined_at FROM circle_members WHERE circle_id = $1",
+    )
+    .bind(id)
+    .fetch_all(&state.db)
+    .await?;
+    let my_key_wrap = if is_owner {
+        None
+    } else {
+        sqlx::query_as::<_, CircleMemberKeyWrap>(
+            "SELECT key_wrap_version, key_wrap_ciphertext FROM circle_members \
+             WHERE circle_id = $1 AND member_token = $2 AND key_wrap_version IS NOT NULL",
+        )
+        .bind(id)
+        .bind(&my_token)
+        .fetch_optional(&state.db)
+        .await?
+    };
 
     Ok(Json(serde_json::json!({
         "id": circle.id,
@@ -187,6 +273,10 @@ async fn get_circle(
         "created_at": circle.created_at,
         "is_owner": is_owner,
         "members": members,
+        "my_key_wrap": my_key_wrap.map(|wrap| serde_json::json!({
+            "version": wrap.key_wrap_version,
+            "ciphertext": wrap.key_wrap_ciphertext,
+        })),
     })))
 }
 
@@ -194,8 +284,11 @@ async fn add_member(
     State(state): State<AppState>,
     auth: NostrAuth,
     Path(id): Path<Uuid>,
-    Json(body): Json<AddMemberBody>,
+    body: Bytes,
 ) -> Result<(StatusCode, Json<CircleMember>), AppError> {
+    verify_payload_binding(&auth, &body)?;
+    let body: AddMemberBody = serde_json::from_slice(&body)
+        .map_err(|_| AppError::BadRequest("invalid JSON body".into()))?;
     let owner_token: Option<String> =
         sqlx::query_scalar("SELECT owner_token FROM circles WHERE id = $1")
             .bind(id)
@@ -205,23 +298,51 @@ async fn add_member(
     if owner_token.as_deref() != Some(my_token.as_str()) {
         return Err(AppError::Forbidden);
     }
+    if body.member_pubkey.len() != 64
+        || !body
+            .member_pubkey
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(AppError::BadRequest(
+            "member_pubkey must be a 64-character hex Nostr key".into(),
+        ));
+    }
+    validate_key_wrap(
+        &auth.pubkey,
+        &body.member_pubkey.to_ascii_lowercase(),
+        id,
+        body.key_wrap_version,
+        &body.key_wrap_event,
+    )?;
 
-    let member_token = circle_token(&state.config.circle_token_secret, id, &body.member_pubkey);
+    let member_pubkey = body.member_pubkey.to_ascii_lowercase();
+    let member_token = circle_token(&state.config.circle_token_secret, id, &member_pubkey);
     let member = sqlx::query_as::<_, CircleMember>(
         "INSERT INTO circle_members
-           (circle_id, member_token, member_label_ciphertext, alert_radius_km, alert_severity)
-         VALUES ($1, $2, $3, $4, $5)
+           (circle_id, member_token, member_label_ciphertext, alert_radius_km, alert_severity,
+            key_wrap_version, key_wrap_ciphertext)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (circle_id, member_token) DO UPDATE
            SET member_label_ciphertext = EXCLUDED.member_label_ciphertext,
                alert_radius_km         = EXCLUDED.alert_radius_km,
-               alert_severity          = EXCLUDED.alert_severity
-         RETURNING *",
+                alert_severity          = EXCLUDED.alert_severity,
+                key_wrap_version        = EXCLUDED.key_wrap_version,
+                key_wrap_ciphertext     = EXCLUDED.key_wrap_ciphertext
+         RETURNING circle_id, member_token, member_label_ciphertext, alert_radius_km,
+                   alert_severity, joined_at",
     )
     .bind(id)
     .bind(&member_token)
     .bind(&body.member_label_ciphertext)
     .bind(body.alert_radius_km)
     .bind(&body.alert_severity)
+    .bind(body.key_wrap_version)
+    .bind(
+        serde_json::from_value::<nostr_sdk::Event>(body.key_wrap_event.clone())
+            .map_err(|_| AppError::BadRequest("invalid circle key event".into()))?
+            .content,
+    )
     .fetch_one(&state.db)
     .await?;
 
@@ -261,8 +382,11 @@ async fn set_encryption(
     State(state): State<AppState>,
     auth: NostrAuth,
     Path(id): Path<Uuid>,
-    Json(body): Json<SetEncryptionBody>,
+    body: Bytes,
 ) -> Result<StatusCode, AppError> {
+    verify_payload_binding(&auth, &body)?;
+    let body: SetEncryptionBody = serde_json::from_slice(&body)
+        .map_err(|_| AppError::BadRequest("invalid JSON body".into()))?;
     let owner_token: Option<String> =
         sqlx::query_scalar("SELECT owner_token FROM circles WHERE id = $1")
             .bind(id)
@@ -348,6 +472,7 @@ impl From<CircleMember> for sentinel_core::CircleMember {
 mod tests {
     use super::*;
     use chrono::Utc;
+    use nostr_sdk::{EventBuilder, Keys, Kind, Tag};
     use uuid::Uuid;
 
     #[test]
@@ -414,5 +539,64 @@ mod tests {
     fn set_encryption_body_defaults_empty_labels() {
         let b: SetEncryptionBody = serde_json::from_str(r#"{"name_ciphertext":"ct"}"#).unwrap();
         assert!(b.member_labels.is_empty());
+    }
+
+    #[test]
+    fn key_wrap_requires_owner_signature_and_exact_bindings() {
+        let owner = Keys::generate();
+        let member = Keys::generate();
+        let circle = Uuid::new_v4();
+        let event = EventBuilder::new(Kind::Custom(CIRCLE_KEY_EVENT_KIND), "nip44-payload")
+            .tags(vec![
+                Tag::parse(["d", "sentinelmesh-circle-key-v1"]).unwrap(),
+                Tag::parse(["circle", &circle.to_string()]).unwrap(),
+                Tag::parse(["p", &member.public_key().to_hex()]).unwrap(),
+            ])
+            .sign_with_keys(&owner)
+            .unwrap();
+        let value = serde_json::to_value(event).unwrap();
+        assert!(validate_key_wrap(
+            &owner.public_key().to_hex(),
+            &member.public_key().to_hex(),
+            circle,
+            2,
+            &value,
+        )
+        .is_ok());
+        assert!(validate_key_wrap(
+            &member.public_key().to_hex(),
+            &member.public_key().to_hex(),
+            circle,
+            2,
+            &value,
+        )
+        .is_err());
+        assert!(validate_key_wrap(
+            &owner.public_key().to_hex(),
+            &member.public_key().to_hex(),
+            Uuid::new_v4(),
+            2,
+            &value,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn payload_binding_is_required_for_circle_mutations() {
+        let body = br#"{"name_ciphertext":"cipher"}"#;
+        let hash = hex::encode(Sha256::digest(body));
+        let valid = NostrAuth {
+            pubkey: "a".repeat(64),
+            payload: Some(hash),
+        };
+        assert!(verify_payload_binding(&valid, body).is_ok());
+        assert!(verify_payload_binding(
+            &NostrAuth {
+                pubkey: "a".repeat(64),
+                payload: None,
+            },
+            body,
+        )
+        .is_err());
     }
 }

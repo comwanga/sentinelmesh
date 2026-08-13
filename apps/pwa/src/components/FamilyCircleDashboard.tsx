@@ -1,15 +1,16 @@
 import { useCallback, useState } from 'react'
 import { useAppSelector, useAppDispatch } from '../store'
 import { activeAlertDismissed, circleLeft, circleLoaded } from '../store/circlesSlice'
-import { getCachedKeypair, signAuthEvent, toNpub, hexFromNpubOrHex } from '../services/nostrService'
-import { addCircleId } from '../services/circleIdStore'
-import { generateCircleKey, saveCircleKeyWithBackup, loadCircleKey, encryptString } from '../services/e2eeService'
+import { getCachedKeypair, signLocalNip98AuthEvent, sha256Hex, toNpub, hexFromNpubOrHex } from '../services/nostrService'
+import { addCircleId, saveCircleOwnerKey } from '../services/circleIdStore'
+import { generateCircleKey, saveCircleKeyWithBackup, loadCircleKey, encryptString, createNip44CircleKeyEvent } from '../services/e2eeService'
+import { loadVaultCircleKey } from '../services/identityStore'
 import { CircleSidebar } from './CircleSidebar'
 import { CircleMapLayer } from './CircleMapLayer'
 import { AlertBanner } from './AlertBanner'
 import { ProximityAlertLog } from './ProximityAlertLog'
 import { InviteModal } from './InviteModal'
-import { X25519Badge } from './X25519Badge'
+import { Nip44Badge } from './Nip44Badge'
 import { MapCanvas } from './map/MapCanvas'
 import { useCircleWsConnection } from '../services/circleWebSocket'
 import { useProximityAlerts } from '../hooks/useProximityAlerts'
@@ -20,11 +21,11 @@ const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
 
 const EMPTY_MEMBERS: never[] = []
 
-interface RawCircle { id: string; name: string; created_at: string; is_owner?: boolean }
+interface RawCircle { id: string; name_ciphertext?: string | null; name_version?: number; created_at: string; is_owner?: boolean }
 interface RawMember { circle_id: string; member_token: string; alert_radius_km: number | null; alert_severity: string | null; joined_at: string }
 
-function toCircle(raw: RawCircle): Circle {
-  return { circle_id: raw.id, name: raw.name, created_at: raw.created_at, is_owner: raw.is_owner ?? false }
+function toCircle(raw: RawCircle, displayName?: string): Circle {
+  return { circle_id: raw.id, name: displayName ?? '(locked)', name_ciphertext: raw.name_ciphertext, name_version: raw.name_version, created_at: raw.created_at, is_owner: raw.is_owner ?? false }
 }
 
 function toMember(raw: RawMember): CircleMember {
@@ -37,8 +38,9 @@ function toMember(raw: RawMember): CircleMember {
   }
 }
 
-async function makeAuthHeaders() {
-  const authEvent = await signAuthEvent()
+async function makeAuthHeaders(url: string, method: string, body?: string) {
+  const hash = body === undefined ? undefined : await sha256Hex(body)
+  const authEvent = signLocalNip98AuthEvent(new URL(url, window.location.origin).toString(), method, hash)
   return {
     'Content-Type': 'application/json',
     'X-Nostr-Auth': JSON.stringify(authEvent),
@@ -66,12 +68,11 @@ function parseInviteString(raw: string): ParsedInvite | null {
   // new format: sm:circle:{id}:{ownerPubkey}:{name}
   const newMatch = trimmed.match(/^sm:circle:([0-9a-f-]{36}):([0-9a-f]{64}):(.+)$/)
   if (newMatch) {
-    return { circleId: newMatch[1]!, ownerPubkey: newMatch[2]!, circleName: decodeURIComponent(newMatch[3]!) }
-  }
-  // legacy format: sentinelmesh:invite:{id}:{timestamp}
-  const legacyMatch = trimmed.match(/^sentinelmesh:invite:([0-9a-f-]{36}):/)
-  if (legacyMatch) {
-    return { circleId: legacyMatch[1]!, ownerPubkey: '', circleName: 'Shared Circle' }
+    try {
+      return { circleId: newMatch[1]!, ownerPubkey: newMatch[2]!, circleName: decodeURIComponent(newMatch[3]!) }
+    } catch {
+      return null
+    }
   }
   return null
 }
@@ -101,10 +102,12 @@ function EmptyState() {
     try {
       const circleKey = await generateCircleKey()
       const nameCiphertext = await encryptString(circleKey, effectiveCircleName)
-      const headers = await makeAuthHeaders()
-      const res = await fetch(`${API_BASE}/api/circles`, {
+      const createUrl = `${API_BASE}/api/circles`
+      const body = JSON.stringify({ name_ciphertext: nameCiphertext })
+      const headers = await makeAuthHeaders(createUrl, 'POST', body)
+      const res = await fetch(createUrl, {
         method: 'POST', headers,
-        body: JSON.stringify({ name_ciphertext: nameCiphertext }),
+        body,
         signal: AbortSignal.timeout(15_000),
       })
       if (!res.ok) { setCreateError(`Server error (${res.status})`); return }
@@ -112,10 +115,11 @@ function EmptyState() {
       const rawCircleKey = new Uint8Array(await crypto.subtle.exportKey('raw', circleKey))
       await saveCircleKeyWithBackup(raw.id, rawCircleKey)
       addCircleId(raw.id)
-      const circle = toCircle(raw)
+      const circle = toCircle(raw, effectiveCircleName)
       let members: CircleMember[] = []
       try {
-        const detailRes = await fetch(`${API_BASE}/api/circles/${raw.id}`, { headers, signal: AbortSignal.timeout(10_000) })
+        const detailUrl = `${API_BASE}/api/circles/${raw.id}`
+        const detailRes = await fetch(detailUrl, { headers: await makeAuthHeaders(detailUrl, 'GET'), signal: AbortSignal.timeout(10_000) })
         if (detailRes.ok) {
           const detail = await detailRes.json() as RawCircle & { members: RawMember[] }
           members = detail.members.map(toMember)
@@ -300,7 +304,11 @@ function EmptyState() {
                 </button>
               </div>
               <button
-                onClick={() => { addCircleId(parsedInvite.circleId); setJoinError(null) }}
+                onClick={() => {
+                  addCircleId(parsedInvite.circleId)
+                  if (parsedInvite.ownerPubkey) saveCircleOwnerKey(parsedInvite.circleId, parsedInvite.ownerPubkey)
+                  setJoinError(null)
+                }}
                 style={{
                   marginTop: 10, width: '100%', background: '#1B5E20', border: '1px solid #4CAF50',
                   borderRadius: 4, color: '#4CAF50', fontFamily: "'Courier New', monospace",
@@ -361,7 +369,7 @@ export function FamilyCircleDashboard() {
   }, [activeCircleId, activeCircle])
 
   const handleLeave = useCallback(() => {
-    if (window.confirm('Leave this circle? Your local circle key will be removed.')) {
+    if (window.confirm('Hide this circle on this device? Existing local key material is retained until explicit secure removal is implemented.')) {
       dispatch(circleLeft())
     }
   }, [dispatch])
@@ -369,14 +377,25 @@ export function FamilyCircleDashboard() {
   const handleAddMember = useCallback(async (npubOrHex: string) => {
     const hex = hexFromNpubOrHex(npubOrHex)
     if (!hex || !activeCircleId) return 'Invalid key format'
-    const key = await loadCircleKey(activeCircleId)
+    let key = await loadCircleKey(activeCircleId)
     if (!key) return 'Circle key not found — cannot encrypt member label'
+    if (!(await loadVaultCircleKey(activeCircleId))) {
+      return 'This legacy circle key cannot be distributed safely. Restore a backup containing the circle key or create a new circle.'
+    }
     const labelCiphertext = await encryptString(key, JSON.stringify({ pubkey: hex, name: hex.slice(0, 8) }))
     try {
-      const headers = await makeAuthHeaders()
-      const res = await fetch(`${API_BASE}/api/circles/${activeCircleId}/members`, {
+      const keyWrapEvent = await createNip44CircleKeyEvent(activeCircleId, hex)
+      const memberUrl = `${API_BASE}/api/circles/${activeCircleId}/members`
+      const body = JSON.stringify({
+        member_pubkey: hex,
+        member_label_ciphertext: labelCiphertext,
+        key_wrap_version: 2,
+        key_wrap_event: keyWrapEvent,
+      })
+      const headers = await makeAuthHeaders(memberUrl, 'POST', body)
+      const res = await fetch(memberUrl, {
         method: 'POST', headers,
-        body: JSON.stringify({ member_pubkey: hex, member_label_ciphertext: labelCiphertext }),
+        body,
         signal: AbortSignal.timeout(10_000),
       })
       if (res.status === 403) return 'Only the circle owner can add members'
@@ -385,7 +404,7 @@ export function FamilyCircleDashboard() {
       const updatedMembers = [...members, toMember(raw)]
       dispatch(circleLoaded({ circle: activeCircle!, members: updatedMembers }))
       return null
-    } catch { return 'Network error' }
+    } catch (error) { return (error as Error).message || 'Network error' }
   }, [activeCircleId, activeCircle, members, dispatch])
 
   const handleDismissAlert = useCallback(() => dispatch(activeAlertDismissed()), [dispatch])
@@ -430,7 +449,7 @@ export function FamilyCircleDashboard() {
             <MapCanvas initialViewState={{ longitude: 36.8219, latitude: -1.2921, zoom: 12 }}>
               <CircleMapLayer decryptedLocations={decryptedLocations} memberStatuses={memberStatuses} />
             </MapCanvas>
-            <X25519Badge />
+            <Nip44Badge />
           </div>
           <ProximityAlertLog alerts={proximityAlerts} />
         </div>
