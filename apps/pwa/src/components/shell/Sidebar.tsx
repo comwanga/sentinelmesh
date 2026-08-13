@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAppDispatch } from '../../store'
 import { setOverlayIntent } from '../../store/uiSlice'
 import { experimentalFeatures } from '../../config/features'
+import { useActiveIdentity } from '../../hooks/useActiveIdentity'
 
 type OverlayName = 'routes' | 'acoustic'
 
@@ -32,6 +33,7 @@ export function Sidebar() {
   const [expanded, setExpanded] = useState(false)
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
+  const activeIdentity = useActiveIdentity()
 
   function handleOverlay(name: OverlayName) {
     dispatch(setOverlayIntent({ name }))
@@ -49,7 +51,7 @@ export function Sidebar() {
       onMouseLeave={() => setExpanded(false)}
     >
       {/* Nav items */}
-      {routeItems.map(item => (
+      {routeItems.filter(item => item.path !== '/circles' || activeIdentity.mode === 'local').map(item => (
         <NavLink
           key={item.path}
           to={item.path}

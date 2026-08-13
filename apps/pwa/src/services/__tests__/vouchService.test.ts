@@ -2,10 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { issueVouch, revokeVouch } from '../vouchService'
 
 vi.mock('../nostrService', () => ({
-  getCachedKeypair: () => ({ publicKey: 'voucherpk', secretKey: new Uint8Array(32) }),
   vouchBindingContent: (v: string) => `sentinelmesh:vouch:v1:${v}`,
   vouchRevokeBindingContent: (v: string) => `sentinelmesh:vouch-revoke:v1:${v}`,
-  signReport: () => ({ id: 'ev1', pubkey: 'voucherpk', created_at: 1, kind: 30078, tags: [], content: 'x', sig: 's' }),
+  signBoundEvent: (content: string) => Promise.resolve({ id: 'ev1', pubkey: 'voucherpk', created_at: 1, kind: 30078, tags: [], content, sig: 's' }),
 }))
 
 describe('vouchService', () => {

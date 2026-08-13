@@ -5,6 +5,8 @@ import { exportBackup, decryptBackup, applyRestore, currentVaultId, type Restore
 import { vaultFingerprint, loadVaultMeta } from '../services/identityStore'
 import type { VaultPayload } from '../services/identityStore'
 import { Nip05IdentitySection } from '../components/Nip05IdentitySection'
+import { useActiveIdentity } from '../hooks/useActiveIdentity'
+import { connectBunker, disconnectBunker, reconnectBunker, refreshLocalIdentity } from '../services/signerService'
 
 export function SettingsPage() {
   const [keypair, setKeypair] = useState<NostrKeypair | null>(null)
@@ -19,6 +21,9 @@ export function SettingsPage() {
   const [shownVaultId, setShownVaultId] = useState<string | null>(null)
   const [backupMsg, setBackupMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [pendingPayload, setPendingPayload] = useState<{ payload: VaultPayload; vaultId: string } | null>(null)
+  const [bunkerInput, setBunkerInput] = useState('')
+  const [signerMsg, setSignerMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const activeIdentity = useActiveIdentity()
 
   // The persisted identity loads asynchronously from the encrypted vault.
   useEffect(() => { loadIdentity().then(setKeypair) }, [])
@@ -52,6 +57,7 @@ export function SettingsPage() {
     const imported = await importFromNsec(trimmed)
     if (imported) {
       setKeypair(imported)
+      refreshLocalIdentity()
       setNsecInput('')
       setImportMsg({ text: 'Key imported and saved on this device.', ok: true })
     } else {
@@ -64,6 +70,7 @@ export function SettingsPage() {
     if (!window.confirm('Generate a new Nostr key? Your current identity (and any circles tied to it) will be replaced. Make sure you have backed up your current key first.')) return
     const fresh = await generateNewIdentity()
     setKeypair(fresh)
+    refreshLocalIdentity()
     setImportMsg({ text: 'New key generated and saved.', ok: true })
     setTimeout(() => setImportMsg(null), 3000)
   }, [])
@@ -118,6 +125,7 @@ export function SettingsPage() {
       const result: RestoreResult = await applyRestore(pendingPayload.payload)
       setPendingPayload(null)
       setKeypair(await loadIdentity())
+      refreshLocalIdentity()
       const failed = result.circlesFailed.length
       setBackupMsg({
         text: `Restored your identity and ${result.circlesRestored} circle(s)` + (failed ? `; ${failed} could not be restored.` : '.'),
@@ -129,6 +137,34 @@ export function SettingsPage() {
     }
   }, [pendingPayload, refreshStaleness])
 
+  const handleConnectBunker = useCallback(async () => {
+    if (!bunkerInput.trim()) return
+    setSignerMsg(null)
+    try {
+      await connectBunker(bunkerInput)
+      setBunkerInput('')
+      setSignerMsg({ text: 'Remote signer connected. Signing now uses the remote identity.', ok: true })
+    } catch (error) {
+      setSignerMsg({ text: (error as Error).message, ok: false })
+    }
+  }, [bunkerInput])
+
+  const handleReconnectBunker = useCallback(async () => {
+    setSignerMsg(null)
+    try {
+      await reconnectBunker()
+      setSignerMsg({ text: 'Remote signer reconnected.', ok: true })
+    } catch (error) {
+      setSignerMsg({ text: (error as Error).message, ok: false })
+    }
+  }, [])
+
+  const handleDisconnectBunker = useCallback(async () => {
+    if (!window.confirm('Disconnect this remote signer and return to the local identity?')) return
+    await disconnectBunker()
+    setSignerMsg({ text: 'Remote signer removed. Signing now uses the local identity.', ok: true })
+  }, [])
+
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: '#0B0E14' }}>
       <div style={{ padding: '16px 20px', borderBottom: '1px solid #1a2035' }}>
@@ -136,6 +172,46 @@ export function SettingsPage() {
           Settings
         </h1>
       </div>
+
+      <section style={{ padding: '20px', borderBottom: '1px solid #1a2035' }}>
+        <h2 style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#BB86FC', letterSpacing: '0.1em', margin: '0 0 8px' }}>
+          ACTIVE SIGNER
+        </h2>
+        <p style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', margin: '0 0 12px', lineHeight: 1.5 }}>
+          Local signing is the default. Connect a NIP-46 bunker to use one remote identity for reports, votes, vouches, NIP-05, and request authentication.
+        </p>
+        <div style={{ background: '#0d1118', border: `1px solid ${activeIdentity.mode === 'bunker' ? '#BB86FC' : '#1a2035'}`, borderRadius: 6, padding: '10px 12px', marginBottom: 12 }}>
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: activeIdentity.status === 'ready' ? '#4CAF50' : '#FF8C00', marginBottom: 5 }}>
+            {activeIdentity.mode.toUpperCase()} / {activeIdentity.status.toUpperCase().replace('-', ' ')}
+          </div>
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#94a3b8', wordBreak: 'break-all' }}>
+            {activeIdentity.pubkey || 'Identity pending'}
+          </div>
+          {activeIdentity.error && <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#FF2D2D', marginTop: 7 }}>{activeIdentity.error}</div>}
+          {activeIdentity.approvalUrl && activeIdentity.status !== 'ready' && (
+            <a href={activeIdentity.approvalUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-block', fontFamily: "'Courier New', monospace", fontSize: 10, color: '#00E5FF', marginTop: 8 }}>
+              Open signer authorization
+            </a>
+          )}
+        </div>
+        {activeIdentity.mode === 'local' ? (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input value={bunkerInput} onChange={event => setBunkerInput(event.target.value)} placeholder="bunker://..." aria-label="Bunker connection URI" disabled={activeIdentity.status === 'connecting'}
+              style={{ flex: '1 1 320px', minWidth: 0, background: '#0d1118', border: '1px solid #1a2035', borderRadius: 4, color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 11, padding: '7px 10px' }} />
+            <button onClick={handleConnectBunker} disabled={!bunkerInput.trim() || activeIdentity.status === 'connecting'} style={{ background: '#241834', border: '1px solid #BB86FC', borderRadius: 4, color: '#BB86FC', fontFamily: "'Courier New', monospace", fontSize: 10, padding: '7px 14px', cursor: bunkerInput.trim() ? 'pointer' : 'not-allowed' }}>
+              Connect bunker
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {activeIdentity.status !== 'ready' && <button onClick={handleReconnectBunker} disabled={activeIdentity.status === 'connecting'} style={{ background: '#241834', border: '1px solid #BB86FC', borderRadius: 4, color: '#BB86FC', fontFamily: "'Courier New', monospace", fontSize: 10, padding: '7px 14px', cursor: 'pointer' }}>Reconnect</button>}
+            <button onClick={handleDisconnectBunker} style={{ background: 'none', border: '1px solid #FF8C00', borderRadius: 4, color: '#FF8C00', fontFamily: "'Courier New', monospace", fontSize: 10, padding: '7px 14px', cursor: 'pointer' }}>Disconnect and use local</button>
+          </div>
+        )}
+        {activeIdentity.mode === 'bunker' && <p style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#FF8C00', margin: '10px 0 0' }}>Circles are disabled in remote mode because their NIP-44 keys belong to the local identity.</p>}
+        {signerMsg && <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: signerMsg.ok ? '#4CAF50' : '#FF2D2D', marginTop: 9 }}>{signerMsg.text}</div>}
+        {activeIdentity.pubkey && <Nip05IdentitySection pubkey={activeIdentity.pubkey} />}
+      </section>
 
       {/* ── Identity ─────────────────────────────── */}
       <section style={{ padding: '20px', borderBottom: '1px solid #1a2035' }}>
@@ -171,8 +247,6 @@ export function SettingsPage() {
             {copiedNpub ? 'Copied!' : 'Copy'}
           </button>
         </div>
-
-        {keypair && <Nip05IdentitySection pubkey={keypair.publicKey} />}
 
         {/* nsec reveal */}
         <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', marginBottom: 4, letterSpacing: '0.06em' }}>

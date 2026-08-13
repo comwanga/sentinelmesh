@@ -1,4 +1,4 @@
-import { sha256Hex, signLocalNip98AuthEvent } from './nostrService'
+import { sha256Hex, signNip98AuthEvent } from './nostrService'
 
 export interface Nip05Status {
   identifier: string
@@ -30,7 +30,7 @@ function parseResponse(value: unknown): Nip05Status | null {
 async function request(method: string, body?: string): Promise<Response> {
   const url = endpoint()
   const hash = body === undefined ? undefined : await sha256Hex(body)
-  const auth = signLocalNip98AuthEvent(url, method, hash)
+  const auth = await signNip98AuthEvent(url, method, hash)
   return fetch(url, {
     method,
     headers: {

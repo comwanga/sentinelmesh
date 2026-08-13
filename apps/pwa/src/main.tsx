@@ -7,15 +7,15 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { store } from './store'
 import { router } from './router'
 import { loadIdentity } from './services/nostrService'
+import { initializeActiveSigner } from './services/signerService'
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {/* non-fatal */})
 }
 
-// Load the persisted identity before mounting so the synchronous getCachedKeypair()
-// call sites have a populated cache. loadIdentity never rejects (it degrades
-// internally), but .finally guards against any unexpected throw still rendering.
-loadIdentity().finally(() => {
+// Load local and active signer state before mounting so the initial identity mode
+// is coherent across every signing call site.
+loadIdentity().then(initializeActiveSigner).finally(() => {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <Provider store={store}>

@@ -113,14 +113,13 @@ describe('hasNip07', () => {
 })
 
 describe('signAuthEvent', () => {
-  test('uses NIP-07 when available', async () => {
-    const fakeEvent = { id: 'abc', pubkey: 'xyz', created_at: 1, kind: 27235, tags: [], content: '', sig: 'sig' }
-    const signEvent = vi.fn().mockResolvedValue(fakeEvent)
+  test('does not let NIP-07 override the selected local identity', async () => {
+    const signEvent = vi.fn()
     ;(window as unknown as Record<string, unknown>).nostr = { signEvent, getPublicKey: vi.fn() }
 
     const result = await signAuthEvent()
-    expect(signEvent).toHaveBeenCalledOnce()
-    expect(result).toBe(fakeEvent)
+    expect(signEvent).not.toHaveBeenCalled()
+    expect(result.id).toMatch(/^[0-9a-f]{64}$/)
   })
 
   test('falls back to in-memory key when NIP-07 absent', async () => {
@@ -152,13 +151,12 @@ describe('signNip98AuthEvent', () => {
     expect(methodTag![1]).toBe('POST')
   })
 
-  test('uses NIP-07 when available', async () => {
-    const fakeEvent = { id: 'abc', pubkey: 'xyz', created_at: 1, kind: 27235, tags: [['u', 'x'], ['method', 'POST']], content: '', sig: 'sig' }
-    const signEvent = vi.fn().mockResolvedValue(fakeEvent)
+  test('does not let NIP-07 override the selected local identity', async () => {
+    const signEvent = vi.fn()
     ;(window as unknown as Record<string, unknown>).nostr = { signEvent, getPublicKey: vi.fn() }
     const result = await signNip98AuthEvent('https://api.example.com/api/acoustic/signals', 'POST')
-    expect(signEvent).toHaveBeenCalledOnce()
-    expect(result).toBe(fakeEvent)
+    expect(signEvent).not.toHaveBeenCalled()
+    expect(result.id).toMatch(/^[0-9a-f]{64}$/)
   })
 
   test('falls back to ephemeral key when NIP-07 absent', async () => {

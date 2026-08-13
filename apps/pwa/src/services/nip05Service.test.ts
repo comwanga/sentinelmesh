@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-const { signLocal, sha256 } = vi.hoisted(() => ({
-  signLocal: vi.fn(() => ({ id: 'event', pubkey: 'local', sig: 'sig' })),
+const { signActive, sha256 } = vi.hoisted(() => ({
+  signActive: vi.fn(async () => ({ id: 'event', pubkey: 'active', sig: 'sig' })),
   sha256: vi.fn(async () => 'body-hash'),
 }))
 
 vi.mock('./nostrService', () => ({
-  signLocalNip98AuthEvent: signLocal,
+  signNip98AuthEvent: signActive,
   sha256Hex: sha256,
 }))
 
@@ -32,7 +32,7 @@ describe('nip05Service', () => {
     await expect(verifyNip05Identity('alice@example.com')).resolves.toEqual(status)
     const body = JSON.stringify({ identifier: 'alice@example.com' })
     expect(sha256).toHaveBeenCalledWith(body)
-    expect(signLocal).toHaveBeenCalledWith(
+    expect(signActive).toHaveBeenCalledWith(
       new URL('/api/identity/nip05', window.location.origin).toString(),
       'PUT',
       'body-hash',
@@ -42,13 +42,13 @@ describe('nip05Service', () => {
 
   test('loads the authenticated local identity', async () => {
     await expect(getNip05Identity()).resolves.toEqual(status)
-    expect(signLocal).toHaveBeenCalledWith(expect.any(String), 'GET', undefined)
+    expect(signActive).toHaveBeenCalledWith(expect.any(String), 'GET', undefined)
   })
 
   test('removes the authenticated local identity', async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, status: 204 })
     await expect(removeNip05Identity()).resolves.toBeUndefined()
-    expect(signLocal).toHaveBeenCalledWith(expect.any(String), 'DELETE', undefined)
+    expect(signActive).toHaveBeenCalledWith(expect.any(String), 'DELETE', undefined)
   })
 
   test('surfaces a safe server verification message', async () => {
