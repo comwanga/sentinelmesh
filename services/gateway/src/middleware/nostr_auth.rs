@@ -43,6 +43,7 @@ pub enum AuthError {
     DuplicateUrlTag,
     MissingMethodTag,
     DuplicateMethodTag,
+    DuplicatePayloadTag,
     UrlMismatch { expected: String, got: String },
     MethodMismatch { expected: String, got: String },
     ReplayDetected,
@@ -63,6 +64,7 @@ impl AuthError {
             Self::DuplicateUrlTag => "AUTH_DUPLICATE_URL_TAG",
             Self::MissingMethodTag => "AUTH_MISSING_METHOD_TAG",
             Self::DuplicateMethodTag => "AUTH_DUPLICATE_METHOD_TAG",
+            Self::DuplicatePayloadTag => "AUTH_DUPLICATE_PAYLOAD_TAG",
             Self::UrlMismatch { .. } => "AUTH_URL_MISMATCH",
             Self::MethodMismatch { .. } => "AUTH_METHOD_MISMATCH",
             Self::ReplayDetected => "AUTH_REPLAY_DETECTED",
@@ -243,9 +245,12 @@ pub async fn validate_nip98_request(
     };
 
     // Step 8b: optional NIP-98 payload tag (sha256 hex of the request body).
-    // Surfaced for handlers that enforce body binding; first value wins (a
-    // mismatching duplicate is harmless since the body-hash check must still pass).
-    let payload = tag_values(event, "payload").into_iter().next();
+    let payload_tags = tag_values(event, "payload");
+    let payload = match payload_tags.len() {
+        0 => None,
+        1 => payload_tags.into_iter().next(),
+        _ => return Err(AuthError::DuplicatePayloadTag),
+    };
 
     // Step 9: Canonical URL
     let canonical = canonical_url(parts, &state.config);
@@ -432,6 +437,7 @@ mod tests {
             AuthError::DuplicateUrlTag,
             AuthError::MissingMethodTag,
             AuthError::DuplicateMethodTag,
+            AuthError::DuplicatePayloadTag,
             AuthError::UrlMismatch {
                 expected: "a".into(),
                 got: "b".into(),
@@ -465,6 +471,7 @@ mod tests {
             (AuthError::DuplicateUrlTag, "AUTH_DUPLICATE_URL_TAG"),
             (AuthError::MissingMethodTag, "AUTH_MISSING_METHOD_TAG"),
             (AuthError::DuplicateMethodTag, "AUTH_DUPLICATE_METHOD_TAG"),
+            (AuthError::DuplicatePayloadTag, "AUTH_DUPLICATE_PAYLOAD_TAG"),
             (
                 AuthError::UrlMismatch {
                     expected: "a".into(),
@@ -648,6 +655,28 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, AuthError::DuplicateMethodTag), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn duplicate_payload_tag_rejected() {
+        let state = make_state().await;
+        let keys = Keys::generate();
+        let ts = Timestamp::from(chrono::Utc::now().timestamp() as u64);
+        let event = EventBuilder::new(Kind::Custom(27235), "")
+            .tags(vec![
+                Tag::parse(["u", &format!("{BASE}{ROUTE}")]).unwrap(),
+                Tag::parse(["method", "POST"]).unwrap(),
+                Tag::parse(["payload", "a"]).unwrap(),
+                Tag::parse(["payload", "b"]).unwrap(),
+            ])
+            .custom_created_at(ts)
+            .sign_with_keys(&keys)
+            .unwrap();
+        let parts = make_parts("POST", ROUTE);
+        let err = validate_nip98_request(&parts, &state, &event)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AuthError::DuplicatePayloadTag), "got {err:?}");
     }
 
     #[tokio::test]

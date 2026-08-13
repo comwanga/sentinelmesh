@@ -4,6 +4,7 @@ import { issueVouch } from '../services/vouchService'
 import { exportBackup, decryptBackup, applyRestore, currentVaultId, type RestoreResult } from '../services/backupService'
 import { vaultFingerprint, loadVaultMeta } from '../services/identityStore'
 import type { VaultPayload } from '../services/identityStore'
+import { Nip05IdentitySection } from '../components/Nip05IdentitySection'
 
 export function SettingsPage() {
   const [keypair, setKeypair] = useState<NostrKeypair | null>(null)
@@ -170,6 +171,8 @@ export function SettingsPage() {
             {copiedNpub ? 'Copied!' : 'Copy'}
           </button>
         </div>
+
+        {keypair && <Nip05IdentitySection pubkey={keypair.publicKey} />}
 
         {/* nsec reveal */}
         <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', marginBottom: 4, letterSpacing: '0.06em' }}>
@@ -381,7 +384,7 @@ export function SettingsPage() {
           Current Data Handling
         </h2>
         {[
-          'No name, email, or phone number is required.',
+          'No name, email, or phone number is required; an optional NIP-05 name@domain label is stored when you verify one.',
           'Incident locations are sent to provide map and report features.',
           'All reports signed with your Nostr key.',
           'Experimental features are disabled in this release.',
