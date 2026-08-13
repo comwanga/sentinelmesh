@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { Map, Bell, FileText, Users, Settings, type LucideIcon } from 'lucide-react'
 import { experimentalFeatures } from '../../config/features'
+import { useActiveIdentity } from '../../hooks/useActiveIdentity'
 
 const tabs: Array<{ path: string; label: string; Icon: LucideIcon }> = [
   { path: '/map',      label: 'Map',     Icon: Map },
@@ -11,6 +12,7 @@ const tabs: Array<{ path: string; label: string; Icon: LucideIcon }> = [
 ]
 
 export function BottomNav() {
+  const activeIdentity = useActiveIdentity()
   return (
     <nav
       role="navigation"
@@ -21,7 +23,7 @@ export function BottomNav() {
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
-      {tabs.map(tab => (
+      {tabs.filter(tab => tab.path !== '/circles' || activeIdentity.mode === 'local').map(tab => (
         <NavLink
           key={tab.path}
           to={tab.path}

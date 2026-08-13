@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import { useAppDispatch, useAppSelector } from '../store'
 import { reportReceived } from '../store/reportSlice'
 import { parseReport } from '../services/safetyDataApi'
-import { getCachedKeypair, signReport, voteBindingContent } from '../services/nostrService'
+import { signBoundEvent, voteBindingContent } from '../services/nostrService'
 import type { CommunityReport } from '../../../../shared/types'
 
 const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
@@ -21,26 +21,24 @@ export function ReportList() {
   const dispatch = useAppDispatch()
 
   const castVote = useCallback(async (report: CommunityReport, vote: 'CONFIRM' | 'DENY') => {
-    const keypair = getCachedKeypair()
-    const voteEvent = signReport(voteBindingContent(vote, report.id), keypair.secretKey)
-
-    let lat: number | null = null
-    let lng: number | null = null
     try {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
-      )
-      lat = pos.coords.latitude
-      lng = pos.coords.longitude
-    } catch { /* vote without location */ }
+      const voteEvent = await signBoundEvent(voteBindingContent(vote, report.id))
+      let lat: number | null = null
+      let lng: number | null = null
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+        )
+        lat = pos.coords.latitude
+        lng = pos.coords.longitude
+      } catch { /* vote without location */ }
 
-    try {
       const res = await fetch(`${API_BASE}/api/reports/${report.id}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({
-          voter_pubkey: keypair.publicKey,
+          voter_pubkey: voteEvent.pubkey,
           vote,
           voter_nostr_event: voteEvent,
           voter_lat: lat,
@@ -53,7 +51,7 @@ export function ReportList() {
         if (updated) dispatch(reportReceived(updated))
       }
     } catch (err) {
-      console.error('[vote] network error', err)
+      console.error('[vote] signing or network error', err)
     }
   }, [dispatch])
 

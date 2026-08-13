@@ -43,7 +43,7 @@ export function Nip05IdentitySection({ pubkey }: Props) {
       const result = await verifyNip05Identity(identifier.trim())
       setIdentity(result)
       setIdentifier(result.identifier)
-      setMessage({ text: 'NIP-05 identity verified for this local key.', ok: true })
+      setMessage({ text: 'NIP-05 identity verified for the active key.', ok: true })
     } catch (error) {
       setMessage({ text: (error as Error).message, ok: false })
     } finally {
@@ -59,7 +59,7 @@ export function Nip05IdentitySection({ pubkey }: Props) {
       await removeNip05Identity()
       setIdentity(null)
       setIdentifier('')
-      setMessage({ text: 'NIP-05 identity removed. Your local key is unchanged.', ok: true })
+      setMessage({ text: 'NIP-05 identity removed. Your signing key is unchanged.', ok: true })
     } catch (error) {
       setMessage({ text: (error as Error).message, ok: false })
     } finally {
@@ -73,7 +73,7 @@ export function Nip05IdentitySection({ pubkey }: Props) {
         OPTIONAL NIP-05 IDENTITY
       </label>
       <p style={{ ...textStyle, color: '#4a5568', margin: '0 0 8px', lineHeight: 1.5 }}>
-        Verify a name@domain label that already maps to this public key. Your local key remains your signing identity, and this label is not used for reputation.
+        Verify a name@domain label that already maps to the active public key. This label is not used for reputation.
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         <input

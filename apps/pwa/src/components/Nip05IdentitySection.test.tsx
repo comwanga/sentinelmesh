@@ -30,15 +30,15 @@ beforeEach(() => {
 })
 
 describe('Nip05IdentitySection', () => {
-  test('verifies an identifier and explains local-key authority', async () => {
+  test('verifies an identifier for the active signer', async () => {
     render(<Nip05IdentitySection pubkey="local-key" />)
-    expect(screen.getByText(/local key remains your signing identity/i)).toBeInTheDocument()
+    expect(screen.getByText(/active public key/i)).toBeInTheDocument()
     const input = screen.getByLabelText(/optional nip-05 identity/i)
     await waitFor(() => expect(input).toBeEnabled())
     fireEvent.change(input, { target: { value: 'alice@example.com' } })
     fireEvent.click(screen.getByRole('button', { name: 'Verify' }))
     await waitFor(() => expect(verifyIdentity).toHaveBeenCalledWith('alice@example.com'))
-    expect(await screen.findByText(/identity verified for this local key/i)).toBeInTheDocument()
+    expect(await screen.findByText(/identity verified for the active key/i)).toBeInTheDocument()
   })
 
   test('rejects malformed identifiers before a request', async () => {
@@ -58,7 +58,7 @@ describe('Nip05IdentitySection', () => {
     expect(await screen.findByDisplayValue('alice@example.com')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
     await waitFor(() => expect(removeIdentity).toHaveBeenCalledOnce())
-    expect(await screen.findByText(/local key is unchanged/i)).toBeInTheDocument()
+    expect(await screen.findByText(/signing key is unchanged/i)).toBeInTheDocument()
   })
 
   test('ignores an old-key response after the local key changes', async () => {

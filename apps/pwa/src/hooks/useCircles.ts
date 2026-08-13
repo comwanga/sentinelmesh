@@ -6,6 +6,7 @@ import { getCircleIds } from '../services/circleIdStore'
 import { loadCircleKey, decryptString, encryptString, unwrapNip44CircleKey } from '../services/e2eeService'
 import { getCircleOwnerKey } from '../services/circleIdStore'
 import type { Circle, CircleMember } from '../../../../shared/types'
+import { useActiveIdentity } from './useActiveIdentity'
 
 const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
 
@@ -92,8 +93,12 @@ async function toCircleAndMembers(
 
 export function useCircles(): void {
   const dispatch = useAppDispatch()
+  const activeIdentity = useActiveIdentity()
 
   useEffect(() => {
+    if (activeIdentity.mode !== 'local') return
+    const controller = new AbortController()
+    const requestSignal = () => AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)])
     async function load() {
       const headers = async (url: string, method: string, body?: string) => {
         const absoluteUrl = new URL(url, window.location.origin).toString()
@@ -109,7 +114,7 @@ export function useCircles(): void {
       let circles: RawCircle[]
       try {
         const listUrl = `${API_BASE}/api/circles?ids=${ids.join(',')}`
-        const res = await fetch(listUrl, { headers: await headers(listUrl, 'GET'), signal: AbortSignal.timeout(15_000) })
+        const res = await fetch(listUrl, { headers: await headers(listUrl, 'GET'), signal: requestSignal() })
         if (!res.ok) return
         circles = await res.json() as RawCircle[]
       } catch {
@@ -119,7 +124,7 @@ export function useCircles(): void {
       for (const c of circles) {
         try {
           const detailUrl = `${API_BASE}/api/circles/${c.id}`
-          const res = await fetch(detailUrl, { headers: await headers(detailUrl, 'GET'), signal: AbortSignal.timeout(15_000) })
+          const res = await fetch(detailUrl, { headers: await headers(detailUrl, 'GET'), signal: requestSignal() })
           if (!res.ok) continue
           const detail = await res.json() as RawCircleDetail
           const { circle, members } = await toCircleAndMembers(detail)
@@ -140,13 +145,13 @@ export function useCircles(): void {
               await fetch(encryptionUrl, {
                 method: 'PUT',
                 headers: await headers(encryptionUrl, 'PUT', body),
-                signal: AbortSignal.timeout(15_000),
+                signal: requestSignal(),
                 body,
               }).catch(() => { /* best-effort; retried on next load */ })
             }
           }
 
-          dispatch(circleLoaded({ circle, members }))
+          if (!controller.signal.aborted) dispatch(circleLoaded({ circle, members }))
         } catch {
           // skip failed circles
         }
@@ -154,5 +159,6 @@ export function useCircles(): void {
     }
 
     load()
-  }, [dispatch])
+    return () => controller.abort()
+  }, [dispatch, activeIdentity.mode])
 }

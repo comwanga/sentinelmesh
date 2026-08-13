@@ -152,12 +152,8 @@ export async function signEventAsync(template: {
   tags: string[][]
   content: string
 }): Promise<SignedReportEvent> {
-  if (hasNip07()) {
-    const ext = (window as unknown as { nostr: { signEvent: (e: unknown) => Promise<SignedReportEvent> } }).nostr
-    return ext.signEvent(template)
-  }
-  const keypair = getCachedKeypair()
-  return finalizeEvent(template, keypair.secretKey) as SignedReportEvent
+  const { signWithActiveIdentity } = await import('./signerService')
+  return signWithActiveIdentity(template)
 }
 
 /**
@@ -207,6 +203,10 @@ export function signLocalNip98AuthEvent(
     tags,
     content: '',
   }, getCachedKeypair().secretKey) as SignedReportEvent
+}
+
+export async function signBoundEvent(content: string): Promise<SignedReportEvent> {
+  return signEventAsync({ kind: 30078, created_at: Math.floor(Date.now() / 1000), tags: [], content })
 }
 
 /** Lowercase hex sha256 of a UTF-8 string (for NIP-98 payload binding). */

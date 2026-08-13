@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import { getCachedKeypair, signReport, reportBindingContent } from '../services/nostrService'
+import { signBoundEvent, reportBindingContent } from '../services/nostrService'
 import { compressAndStrip, blurFaces, uploadToIPFS } from '../services/photoService'
 import { experimentalFeatures } from '../config/features'
 import { parseReport } from '../services/safetyDataApi'
@@ -69,7 +69,6 @@ export function ReportSubmit({ onClose, linkedEventId }: Props) {
       }
     }
 
-    const keypair = getCachedKeypair()
     const postBody = {
       report_type: reportType,
       description: description || null,
@@ -77,19 +76,15 @@ export function ReportSubmit({ onClose, linkedEventId }: Props) {
       photo_ipfs_cid: photoCid,
       linked_event_id: linkedEventId ?? null,
     }
-    const nostrEvent = signReport(
-      reportBindingContent(reportType, lat, lng, description || null),
-      keypair.secretKey,
-    )
-
     try {
+      const nostrEvent = await signBoundEvent(reportBindingContent(reportType, lat, lng, description || null))
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(15_000),
         body: JSON.stringify({
           ...postBody,
-          nostr_pubkey: keypair.publicKey,
+          nostr_pubkey: nostrEvent.pubkey,
           nostr_event: nostrEvent,
         }),
       })
@@ -101,9 +96,9 @@ export function ReportSubmit({ onClose, linkedEventId }: Props) {
       const report = parseReport(await res.json())
       if (report) dispatch(reportReceived(report))
       onClose()
-    } catch {
+    } catch (error) {
       setSubmitState('error')
-      setErrorMsg('Network error — please try again')
+      setErrorMsg(error instanceof Error ? error.message : 'Network error — please try again')
     }
   }, [reportType, description, linkedEventId, onClose, dispatch])
 
