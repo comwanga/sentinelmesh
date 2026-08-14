@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+  readonly VITE_MAP_TILE_URL?: string
   readonly VITE_ENABLE_EXPERIMENTAL_ACOUSTIC?: string
   readonly VITE_ENABLE_EXPERIMENTAL_CIRCLES?: string
   readonly VITE_ENABLE_EXPERIMENTAL_INSIGHTS?: string

@@ -1,7 +1,7 @@
 # SentinelMesh — Global Map Architecture Design
 
 **Date:** 2026-05-17
-**Status:** Approved for implementation planning
+**Status:** Superseded in part by `docs/adr/002-managed-osm-provider.md`
 **Scope:** Rendering layer, tile pipeline, provider abstraction, realtime overlays, privacy architecture, migration phasing
 
 ---

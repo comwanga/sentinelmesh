@@ -79,14 +79,13 @@ mod tests {
     async fn make_state(secret: &str) -> AppState {
         use crate::{
             config::Config,
-            maps::{MapProvider, MapboxAdapter},
+            maps::{DisabledMapProvider, MapProvider},
             ws::{circle_hub::CircleHub, hub::WsHub},
         };
         use governor::{Quota, RateLimiter};
         use std::num::NonZeroU32;
         let http_client = reqwest::Client::new();
-        let map_provider: Arc<dyn MapProvider> =
-            Arc::new(MapboxAdapter::new(http_client.clone(), String::new()));
+        let map_provider: Arc<dyn MapProvider> = Arc::new(DisabledMapProvider);
         let acoustic_limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
             NonZeroU32::new(5).unwrap(),
         )));
@@ -106,6 +105,8 @@ mod tests {
                 circle_token_secret: "test-circle-secret".into(),
                 trust_proxy: false,
                 max_db_connections: 5,
+                map_api_enabled: false,
+                stadia_api_key: None,
                 mapbox_token: None,
                 vapid_private_key: None,
                 vapid_public_key: None,

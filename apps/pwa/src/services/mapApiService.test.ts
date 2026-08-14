@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { searchAddress, getRoute, reverseGeocode } from './mapApiService'
+import { searchAddress, getRoute, MapSearchError, reverseGeocode } from './mapApiService'
 
 const mockFetch = vi.fn()
 globalThis.fetch = mockFetch
@@ -12,8 +12,8 @@ describe('searchAddress', () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({
-        features: [
-          { label: 'Nairobi, Kenya', lat: -1.2921, lng: 36.8219 },
+        results: [
+          { id: 'place-1', label: 'Nairobi, Kenya', kind: 'locality', lat: -1.2921, lng: 36.8219 },
         ],
       }),
     })
@@ -26,20 +26,20 @@ describe('searchAddress', () => {
   })
 
   test('includes proximity params when provided', async () => {
-    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ features: [] }) })
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ results: [] }) })
     await searchAddress('park', { lat: -1.28, lng: 36.82 })
     expect(mockFetch.mock.calls[0][0]).toContain('lat=-1.28')
   })
 
-  test('returns empty array on non-ok response', async () => {
-    mockFetch.mockResolvedValue({ ok: false })
-    expect(await searchAddress('xyz')).toEqual([])
+  test('distinguishes a non-ok response from no results', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 503 })
+    await expect(searchAddress('xyz')).rejects.toBeInstanceOf(MapSearchError)
   })
 
-  test('returns empty array on network error', async () => {
+  test('distinguishes a network error from no results', async () => {
     const error = new Error('network')
     mockFetch.mockRejectedValue(error)
-    expect(await searchAddress('xyz')).toEqual([])
+    await expect(searchAddress('xyz')).rejects.toBeInstanceOf(MapSearchError)
   })
 })
 
@@ -48,15 +48,30 @@ describe('getRoute', () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({
-        coordinates: [[36.82, -1.29], [36.83, -1.28]],
-        distance: 2100,
-        duration: 1500,
+        routes: [{
+          id: 'route-1',
+          coordinates: [[36.82, -1.29], [36.83, -1.28]],
+          distance_m: 2100,
+          duration_s: 1500,
+          warnings: [],
+          degraded: false,
+        }],
       }),
     })
     const routes = await getRoute({ lat: -1.29, lng: 36.82 }, { lat: -1.28, lng: 36.83 })
     expect(routes).toHaveLength(1)
     expect(routes[0].distance).toBe(2100)
     expect(routes[0].coordinates).toHaveLength(2)
+    expect(mockFetch).toHaveBeenCalledWith('/api/maps/route', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        from: { lat: -1.29, lng: 36.82 },
+        to: { lat: -1.28, lng: 36.83 },
+        mode: 'walking',
+        alternatives: true,
+      }),
+    }))
+    expect(mockFetch.mock.calls[0][0]).not.toContain('36.82')
   })
 
   test('returns empty array on failure', async () => {
@@ -69,7 +84,9 @@ describe('reverseGeocode', () => {
   test('returns label on success', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ label: 'Westlands, Nairobi' }),
+      json: async () => ({
+        result: { id: 'place-1', label: 'Westlands, Nairobi', kind: 'locality', lat: -1.28, lng: 36.82 },
+      }),
     })
     expect(await reverseGeocode(-1.28, 36.82)).toBe('Westlands, Nairobi')
   })

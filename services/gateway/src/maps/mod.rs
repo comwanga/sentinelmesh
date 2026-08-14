@@ -1,7 +1,6 @@
-mod mapbox_adapter;
 mod provider;
+mod stadia_adapter;
 pub mod types;
 
-pub use mapbox_adapter::MapboxAdapter;
-pub use provider::MapProvider;
-pub use types::SearchResult;
+pub use provider::{DisabledMapProvider, MapProvider, MapProviderError};
+pub use stadia_adapter::StadiaAdapter;

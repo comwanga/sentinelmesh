@@ -12,7 +12,7 @@ The default product supports the safety map, alert list, signed community report
 
 | Capability | Status | Description |
 |---|---|---|
-| **Safety map and alerts** | Core | Uses MapLibre with OpenStreetMap-derived OpenFreeMap data. Displays each incident's stored trust state; missing trust data is unverified. |
+| **Safety map and alerts** | Core | Uses MapLibre with Stadia's OpenStreetMap-derived OpenMapTiles data. Displays each incident's stored trust state; missing trust data is unverified. |
 | **Community reports** | Core | Submits location-based reports signed by the user's local Nostr key and supports community confirmation or denial. |
 | **Nostr identity** | Core | Generates an encrypted local identity or connects a NIP-46 remote signer, with backup, restore, NIP-19 key handling, and optional NIP-05 verification. |
 | **Push notifications** | Core | User-enabled alert perimeters deliver confirmed incidents through durable, geographically targeted queues. |
@@ -69,7 +69,7 @@ Be precise about this — overclaiming privacy is a safety risk for the people w
 - **Community-report locations** are coarsened to a ~100 m cell, and the reporter's identity (pubkey/signature) is stored in a separate access-controlled table behind a restricted database role. A database leak cannot link a precise location trail to a person.
 - **Audio** never leaves the device. Acoustic detection sends only a label, confidence, and location.
 - **No name/email/phone is required.** If a user opts into NIP-05 verification, the canonical `name@domain` label and its 24-hour verification window are stored with the public key. The user can remove it explicitly; otherwise it remains as expired history until that public key verifies again or another key reclaims the label.
-- **Map browsing uses open data.** The default PWA renders OpenStreetMap-derived OpenFreeMap vector data with MapLibre. No Mapbox browser token is required.
+- **Map browsing uses open data.** The default PWA renders Stadia-hosted, OpenStreetMap-derived OpenMapTiles vector data with MapLibre. Localhost needs no credentials; production uses registered-domain authentication.
 - **Photos** are EXIF-stripped and face-blurred on-device before upload (face blur is best-effort, frontal faces only).
 
 **Threat model.** The community-report and family-circle protections above defend against a **stolen database or leaked read access without the application's secrets**. They do **not** hide data from the running server operator (who holds the keying secrets) — that is a deliberate, documented scope boundary, to be narrowed by later work.
@@ -129,7 +129,7 @@ Two things flow through the gateway continuously and are worth calling out, beca
 
 - Docker 24+ and Docker Compose v2
 - Rust toolchain (stable) — [install via rustup](https://rustup.rs)
-- Internet access to OpenFreeMap for default vector map data, or a compatible self-hosted tile source
+- Internet access to Stadia Maps for default vector map data, or a compatible OpenMapTiles TileJSON source
 - A Mapbox secret token only if optional Mapbox-backed proxy routes are enabled
 - Node.js 20+ for local PWA development
 
@@ -222,12 +222,14 @@ All variables go in the root `.env` file. Copy `.env.example` to get started.
 | `INTERNAL_SERVICE_SECRET` | Random string for service-to-service auth (required in production; fails closed if unset) |
 | `CIRCLE_TOKEN_SECRET` | Random string used to derive the per-circle membership tokens (required in production; **stable** — rotating it invalidates existing circle tokens) |
 | `PUBLIC_BASE_URL` | Canonical external origin used by NIP-98 validation |
-| `MAPBOX_TOKEN` | Optional Mapbox secret token used only by optional server-side proxy routes; not required by the default map |
 
 ### Optional
 
 | Variable | Description |
 |---|---|
+| `MAP_API_ENABLED` | Enables gateway map search, reverse geocoding, and routing. Defaults to `false`. |
+| `STADIA_API_KEY` | Server-side Stadia Maps API key. Required when map APIs are enabled in production; never expose as a `VITE_*` value. |
+| `MAPBOX_TOKEN` | Legacy server-side tile proxy token only; not used for map search or routing. |
 | `PINATA_JWT` | Server-side Pinata JWT for the IPFS photo proxy (`/api/photos/pin`). |
 | `TWITTER_BEARER_TOKEN` | For pulling Twitter/X signals. Skipped if empty. |
 | `SENTRY_DSN` | Sentry error tracking URL. Optional in dev, recommended in production. |
@@ -237,6 +239,8 @@ All variables go in the root `.env` file. Copy `.env.example` to get started.
 | `VAPID_PRIVATE_KEY` | Base64url-encoded VAPID private key for Web Push. Push is disabled if unset. |
 | `VAPID_PUBLIC_KEY` | Base64url-encoded VAPID public key (also set as `VITE_VAPID_PUBLIC_KEY` for the PWA) |
 | `VAPID_SUBJECT` | `mailto:` or HTTPS URL identifying the push sender (e.g. `mailto:ops@example.com`) |
+
+Map search uses Stadia's autocomplete endpoint for interactive suggestions. A separate submitted-query refinement through the full search endpoint can be added later without changing the public result contract.
 
 To generate VAPID keys:
 ```bash

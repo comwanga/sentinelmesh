@@ -1,9 +1,6 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { Map, useMap } from 'react-map-gl/maplibre'
-import type { StyleSpecification } from 'maplibre-gl'
-import { loadMapStyle, WORLD_CENTER } from '../../config/mapConfig'
-
-const FALLBACK_STYLE = 'https://demotiles.maplibre.org/style.json'
+import { MAP_STYLE, WORLD_CENTER } from '../../config/mapConfig'
 import { persistViewport } from '../../hooks/useInitialViewport'
 import type { ViewportBounds } from '../../hooks/useViewportWs'
 import styles from './MapCanvas.module.css'
@@ -14,11 +11,37 @@ interface ViewState {
   zoom: number
 }
 
+export type CameraCommand =
+  | { id: number; center: [number, number]; zoom?: number; padding?: number | { top: number; right: number; bottom: number; left: number } }
+  | { id: number; bounds: [number, number, number, number]; padding?: number | { top: number; right: number; bottom: number; left: number } }
+
 interface Props {
   initialViewState?: ViewState
   children?: React.ReactNode
   onMapLoad?: () => void
   onBoundsChange?: (bounds: ViewportBounds, zoom: number) => void
+  cameraCommand?: CameraCommand | null
+}
+
+function CameraController({ command }: { command: CameraCommand }) {
+  const { current: map } = useMap()
+
+  useEffect(() => {
+    if (!map) return
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    const options = { padding: command.padding, duration: reducedMotion ? 0 : 700 }
+    if ('bounds' in command) {
+      map.fitBounds([[command.bounds[0], command.bounds[1]], [command.bounds[2], command.bounds[3]]], options)
+    } else {
+      map.easeTo({
+        ...options,
+        center: command.center,
+        zoom: Math.max(map.getZoom(), command.zoom ?? 15),
+      })
+    }
+  }, [command, map])
+
+  return null
 }
 
 interface ViewportReporterProps {
@@ -45,38 +68,24 @@ function ViewportReporter({ onBoundsChange }: ViewportReporterProps) {
   return null
 }
 
-export function MapCanvas({ initialViewState = WORLD_CENTER, children, onMapLoad, onBoundsChange }: Props = {}) {
-  const [viewState, setViewState] = useState<ViewState>(initialViewState)
-  const [mapStyle, setMapStyle] = useState<StyleSpecification | string | undefined>(undefined)
-
-  useEffect(() => {
-    loadMapStyle()
-      .then(style => setMapStyle(style as StyleSpecification))
-      .catch(err => {
-        console.error('Map style load failed, using fallback:', err)
-        setMapStyle(FALLBACK_STYLE)
-      })
-  }, [])
-
-  const handleMove = useCallback((evt: { viewState: ViewState }) => {
-    setViewState(evt.viewState)
+export function MapCanvas({ initialViewState = WORLD_CENTER, children, onMapLoad, onBoundsChange, cameraCommand }: Props = {}) {
+  const handleMoveEnd = useCallback((evt: { viewState: ViewState }) => {
     persistViewport(evt.viewState)
   }, [])
 
   return (
     <div className={styles.container}>
-      {mapStyle && (
-        <Map
-          {...viewState}
-          onMove={handleMove}
-          onLoad={onMapLoad}
-          style={{ width: '100%', height: '100%' }}
-          mapStyle={mapStyle}
-        >
-          {onBoundsChange && <ViewportReporter onBoundsChange={onBoundsChange} />}
-          {children}
-        </Map>
-      )}
+      <Map
+        initialViewState={initialViewState}
+        onMoveEnd={handleMoveEnd}
+        onLoad={onMapLoad}
+        style={{ width: '100%', height: '100%' }}
+        mapStyle={MAP_STYLE}
+      >
+        {onBoundsChange && <ViewportReporter onBoundsChange={onBoundsChange} />}
+        {cameraCommand && <CameraController command={cameraCommand} />}
+        {children}
+      </Map>
     </div>
   )
 }
