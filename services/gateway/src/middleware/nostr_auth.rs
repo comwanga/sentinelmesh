@@ -357,7 +357,7 @@ mod tests {
     async fn make_state() -> AppState {
         use crate::{
             config::Config,
-            maps::{MapProvider, MapboxAdapter},
+            maps::{DisabledMapProvider, MapProvider},
             ws::{circle_hub::CircleHub, hub::WsHub},
         };
         use governor::{Quota, RateLimiter};
@@ -367,7 +367,7 @@ mod tests {
         };
         let http_client = reqwest::Client::new();
         let map_provider: std::sync::Arc<dyn MapProvider> =
-            std::sync::Arc::new(MapboxAdapter::new(http_client.clone(), String::new()));
+            std::sync::Arc::new(DisabledMapProvider);
         let acoustic_limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
             NonZeroU32::new(5).unwrap(),
         )));
@@ -387,6 +387,8 @@ mod tests {
                 circle_token_secret: "test-circle-secret".into(),
                 trust_proxy: false,
                 max_db_connections: 5,
+                map_api_enabled: false,
+                stadia_api_key: None,
                 mapbox_token: None,
                 vapid_private_key: None,
                 vapid_public_key: None,
@@ -738,7 +740,7 @@ mod tests {
     async fn redis_unavailable_returns_503() {
         use crate::{
             config::Config,
-            maps::{MapProvider, MapboxAdapter},
+            maps::{DisabledMapProvider, MapProvider},
             ws::{circle_hub::CircleHub, hub::WsHub},
         };
         use governor::{Quota, RateLimiter};
@@ -765,7 +767,7 @@ mod tests {
 
         let http_client = reqwest::Client::new();
         let map_provider: std::sync::Arc<dyn MapProvider> =
-            std::sync::Arc::new(MapboxAdapter::new(http_client.clone(), String::new()));
+            std::sync::Arc::new(DisabledMapProvider);
         let acoustic_limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
             NonZeroU32::new(5).unwrap(),
         )));
@@ -781,6 +783,8 @@ mod tests {
                 circle_token_secret: "test-circle-secret".into(),
                 trust_proxy: false,
                 max_db_connections: 5,
+                map_api_enabled: false,
+                stadia_api_key: None,
                 mapbox_token: None,
                 vapid_private_key: None,
                 vapid_public_key: None,
@@ -840,7 +844,7 @@ mod tests {
     async fn canonical_url_host_header_port_stripping() {
         use crate::{
             config::Config,
-            maps::{MapProvider, MapboxAdapter},
+            maps::{DisabledMapProvider, MapProvider},
             ws::{circle_hub::CircleHub, hub::WsHub},
         };
         use governor::{Quota, RateLimiter};
@@ -855,7 +859,7 @@ mod tests {
             .expect("Redis required");
         let http_client = reqwest::Client::new();
         let map_provider: std::sync::Arc<dyn MapProvider> =
-            std::sync::Arc::new(MapboxAdapter::new(http_client.clone(), String::new()));
+            std::sync::Arc::new(DisabledMapProvider);
         let acoustic_limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
             NonZeroU32::new(5).unwrap(),
         )));
@@ -872,6 +876,8 @@ mod tests {
                 circle_token_secret: "test-circle-secret".into(),
                 trust_proxy: false,
                 max_db_connections: 5,
+                map_api_enabled: false,
+                stadia_api_key: None,
                 mapbox_token: None,
                 vapid_private_key: None,
                 vapid_public_key: None,

@@ -9,7 +9,16 @@ beforeEach(() => { mockFetch.mockReset() })
 function mockRouteResponse(coordinates: [number, number][], distance = 3200, duration = 800) {
   return {
     ok: true,
-    json: async () => ({ coordinates, distance, duration }),
+    json: async () => ({
+      routes: [{
+        id: 'route-1',
+        coordinates,
+        distance_m: distance,
+        duration_s: duration,
+        warnings: [],
+        degraded: false,
+      }],
+    }),
   }
 }
 
