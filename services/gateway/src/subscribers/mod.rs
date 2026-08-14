@@ -1,3 +1,4 @@
+pub mod chat_push_worker;
 pub mod event_subscriber;
 pub mod nlp_synthesis_worker;
 pub mod push_outbox_worker;

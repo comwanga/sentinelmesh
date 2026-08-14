@@ -98,3 +98,23 @@ Docker logs are bounded to five 10 MB files per core service. During incidents u
 ## Destructive Commands
 
 `make down-clean` deletes local volumes and all PostgreSQL/Redis data. It is development-only and must never be used on a production host.
+
+## Chat Operations (experimental)
+
+Chat stays off unless `VITE_ENABLE_CHAT` and `CHAT_PUSH_ENABLED` are explicitly set.
+See `docs/operations/relay-conformance.md` for the required relay pinning and
+conformance checks before enabling it.
+
+- `RELAY_WEBHOOK_SECRET` is a distinct, strong secret shared only with the inbox
+  relay. `RELAY_WEBHOOK_ALLOWED_SOURCE` optionally pins the `X-Relay-Source` header.
+- Back up the community and inbox relay databases and their private keys separately;
+  losing the community relay key breaks NIP-29 state verification for clients.
+- Enforce the decided gift-wrap retention (default 90 days) at the inbox relay and
+  public history at the community relay.
+- Monitor accepted/rejected writes, AUTH failures, subscription counts, webhook lag,
+  and `chat_push_deliveries` dead letters.
+- The gateway never decrypts DMs; push notifications carry only "New encrypted
+  message" and never sender, recipient, ciphertext, or participant lists.
+- Abuse workflow: operator moderation of public channels is relay-side (NIP-29);
+  DM abuse is mitigated locally by the client (block/mute/quarantine). Operator
+  escalation of private evidence requires explicit user consent.

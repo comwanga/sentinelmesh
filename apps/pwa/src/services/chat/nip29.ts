@@ -12,6 +12,34 @@ export const NIP29_KIND_MEMBERS = 39002
 export const NIP29_KIND_ROLES = 39003
 export const NIP29_STATE_KINDS = new Set<number>([NIP29_KIND_METADATA, NIP29_KIND_ADMINS, NIP29_KIND_MEMBERS, NIP29_KIND_ROLES])
 
+// NIP-29 management kinds.
+export const NIP29_KIND_ADD_USER = 9000
+export const NIP29_KIND_REMOVE_USER = 9001
+export const NIP29_KIND_SET_METADATA = 9002
+export const NIP29_KIND_DELETE_EVENT = 9005
+export const NIP29_KIND_PIN = 9010
+
+/** Build a NIP-29 management event template bound to exactly one `h` group tag. */
+export function buildManagementTemplate(kind: number, groupId: string, tags: string[][], content = ''): EventTemplate {
+  return { kind, created_at: Math.floor(Date.now() / 1000), tags: [['h', groupId], ...tags], content }
+}
+
+export function deleteMessageTemplate(groupId: string, eventId: string): EventTemplate {
+  return buildManagementTemplate(NIP29_KIND_DELETE_EVENT, groupId, [['e', eventId]])
+}
+
+export function removeUserTemplate(groupId: string, pubkey: string): EventTemplate {
+  return buildManagementTemplate(NIP29_KIND_REMOVE_USER, groupId, [['p', pubkey.toLowerCase()]])
+}
+
+export function setMetadataTemplate(groupId: string, metadata: Record<string, unknown>): EventTemplate {
+  return buildManagementTemplate(NIP29_KIND_SET_METADATA, groupId, [], JSON.stringify(metadata))
+}
+
+export function pinMessageTemplate(groupId: string, eventId: string): EventTemplate {
+  return buildManagementTemplate(NIP29_KIND_PIN, groupId, [['e', eventId]])
+}
+
 export interface ChannelMessage {
   groupId: string
   template: EventTemplate

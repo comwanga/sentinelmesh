@@ -170,6 +170,28 @@ async fn main() -> anyhow::Result<()> {
         _ => tracing::warn!("push outbox worker disabled: VAPID configuration incomplete"),
     }
 
+    // Chat notification push worker: independent of the safety-event outbox. Only
+    // enabled when both the flag and VAPID are configured.
+    if config.chat_push_enabled {
+        match (
+            config.vapid_private_key.clone(),
+            config.vapid_subject.clone(),
+        ) {
+            (Some(key), Some(subject)) if !key.is_empty() && !subject.is_empty() => {
+                let pool_chat = db.clone();
+                let workers_ok = workers_healthy.clone();
+                tokio::spawn(async move {
+                    subscribers::chat_push_worker::run(pool_chat, key, subject).await;
+                    workers_ok.store(false, Ordering::Relaxed);
+                    tracing::error!(worker = "chat_push_outbox", "critical worker exited");
+                });
+            }
+            _ => tracing::warn!(
+                "chat push worker disabled: CHAT_PUSH_ENABLED set but VAPID incomplete"
+            ),
+        }
+    }
+
     // Spawn trust-hygiene worker (C-1b-1): periodic metrics snapshot (always) +
     // gated reputation decay. Snapshots run even when decay is dark-launched.
     {
