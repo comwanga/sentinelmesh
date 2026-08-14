@@ -206,6 +206,10 @@ export async function listMessages(conversationId: string, opts: { limit?: numbe
 
 // ── Gift-wrap deduplication ──────────────────────────────────────────────────
 
+export async function hasGiftWrap(outerId: string): Promise<boolean> {
+  return (await get(STORE_GIFT_WRAPS, outerId)) !== null
+}
+
 export async function markGiftWrapSeen(outerId: string): Promise<boolean> {
   const existing = await get(STORE_GIFT_WRAPS, outerId)
   if (existing) return false
