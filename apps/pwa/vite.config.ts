@@ -83,8 +83,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:3000',
-      '/ws': { target: 'ws://localhost:3000', ws: true, changeOrigin: true },
+      '/api': process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:3000',
+      '/ws': { target: process.env.VITE_WS_PROXY_TARGET ?? 'ws://localhost:3000', ws: true, changeOrigin: true },
     },
   },
   test: {
