@@ -13,3 +13,7 @@ export const experimentalFeatures = Object.freeze({
 // Independent of the broad circles experiment: location stays dark unless this
 // dedicated build-time gate is explicitly enabled.
 export const safeCircleLocationEnabled = enabled(import.meta.env.VITE_ENABLE_SAFE_CIRCLE_LOCATION)
+
+// Chat (NIP-29 public channels + NIP-17/NIP-59 encrypted DMs and Circle rooms).
+// Disabled by default; enables the chat foundation modules and future UI.
+export const chatEnabled = enabled(import.meta.env.VITE_ENABLE_CHAT)
