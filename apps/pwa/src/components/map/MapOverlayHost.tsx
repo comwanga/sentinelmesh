@@ -1,16 +1,14 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useAppSelector, useAppDispatch } from '../../store'
-import { consumeOverlayIntent, safeRoutesSet, safeRoutesCleared } from '../../store/uiSlice'
+import { consumeOverlayIntent, safeRoutesCleared } from '../../store/uiSlice'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { AcousticAlert } from '../AcousticAlert'
 import { HomeRoutePanel } from '../HomeRoutePanel'
-import { fetchSafeRoutes } from '../../services/routingService'
 
 export function MapOverlayHost() {
   const dispatch = useAppDispatch()
   const uiIntent = useAppSelector(s => s.ui.uiIntent)
-  const events = useAppSelector(s => s.events.items)
   const { layout } = useBreakpoint()
 
   const [overlay, setOverlay] = useState<'routes' | 'acoustic' | 'home-route' | null>(null)
@@ -21,31 +19,6 @@ export function MapOverlayHost() {
       dispatch(consumeOverlayIntent())
     }
   }, [uiIntent.name, dispatch])
-
-  useEffect(() => {
-    if (overlay !== 'routes') return
-    dispatch(safeRoutesCleared())
-
-    const activeEvent = events.find(e => e.is_active && (e.severity === 'CRITICAL' || e.severity === 'HIGH'))
-      ?? events.find(e => e.is_active)
-    if (!activeEvent) return
-
-    let mounted = true
-    navigator.geolocation?.getCurrentPosition(async (pos) => {
-      if (!mounted) return
-      const userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude }
-      const eventLocation = { lat: activeEvent.lat, lng: activeEvent.lng }
-      const radiusKm = (Number((activeEvent as unknown as Record<string, unknown>).radius_meters) || 500) / 1000
-      try {
-        const result = await fetchSafeRoutes(userLocation, eventLocation, radiusKm)
-        if (!mounted) return
-        dispatch(safeRoutesSet(result.map((r, i) => ({ id: `r${i}`, coordinates: r.coordinates }))))
-      } catch {
-        // Leave routes empty — overlay shows "no routes" state
-      }
-    })
-    return () => { mounted = false }
-  }, [overlay, events, dispatch])
 
   const portalRoot = typeof document !== 'undefined'
     ? document.getElementById('map-overlay-portal')
@@ -77,7 +50,7 @@ export function MapOverlayHost() {
         zIndex: 200,
         pointerEvents: 'all',
       }}>
-        <HomeRoutePanel onClose={() => setOverlay(null)} />
+        <HomeRoutePanel location={null} locationStatus="idle" onClose={() => setOverlay(null)} />
       </div>
     )
   } else {

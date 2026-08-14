@@ -67,14 +67,14 @@ describe('fetchRouteToHome', () => {
       [],
     )
     expect(routes).toHaveLength(1)
+    expect(routes[0].id).toBe('route-1')
     expect(routes[0].distanceKm).toBe(1.5)
     expect(routes[0].durationMin).toBe(15)
     expect(routes[0].warnings).toEqual([])
   })
-  test('returns empty array when fetch returns non-ok', async () => {
-    mockFetch.mockResolvedValue({ ok: false })
-    const routes = await fetchRouteToHome({ lat: 0, lng: 0 }, { lat: 1, lng: 1 }, [])
-    expect(routes).toEqual([])
+  test('propagates route provider failure', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 503 })
+    await expect(fetchRouteToHome({ lat: 0, lng: 0 }, { lat: 1, lng: 1 }, [])).rejects.toThrow('Route request failed')
   })
   test('adds warning when route passes through danger zone', async () => {
     const coords: [number, number][] = [[36.8219, -1.3200]]
@@ -82,5 +82,12 @@ describe('fetchRouteToHome', () => {
     const dangerZones = [{ lat: -1.32, lng: 36.8219, radiusKm: 0.5 }]
     const routes = await fetchRouteToHome(userLocation, eventLocation, dangerZones)
     expect(routes[0].warnings.length).toBeGreaterThan(0)
+  })
+  test('detects a segment crossing an alert area when no vertex is inside it', async () => {
+    const coords: [number, number][] = [[36.81, -1.32], [36.84, -1.32]]
+    mockFetch.mockResolvedValue(mockRouteResponse(coords))
+    const routes = await fetchRouteToHome(userLocation, eventLocation, [{ lat: -1.32, lng: 36.825, radiusKm: 0.2 }])
+    expect(routes[0].alertIntersections).toBe(1)
+    expect(routes[0].warnings).toEqual(['Route intersects an alert area'])
   })
 })

@@ -29,6 +29,7 @@ export function destinationPoint(origin: LatLng, distanceKm: number, bearingDeg:
 }
 
 export function pointToLineDistance(point: LatLng, lineCoords: [number, number][]): number {
+  if (lineCoords.length === 1) return haversineKm(point, { lng: lineCoords[0]![0], lat: lineCoords[0]![1] })
   let minDist = Infinity
   for (let i = 0; i < lineCoords.length - 1; i++) {
     const a: LatLng = { lat: lineCoords[i]![1],     lng: lineCoords[i]![0] }

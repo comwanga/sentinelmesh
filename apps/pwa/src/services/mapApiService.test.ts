@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { searchAddress, getRoute, MapSearchError, reverseGeocode } from './mapApiService'
+import { searchAddress, getRoute, MapRouteError, MapSearchError, reverseGeocode } from './mapApiService'
 
 const mockFetch = vi.fn()
 globalThis.fetch = mockFetch
@@ -74,9 +74,28 @@ describe('getRoute', () => {
     expect(mockFetch.mock.calls[0][0]).not.toContain('36.82')
   })
 
-  test('returns empty array on failure', async () => {
-    mockFetch.mockResolvedValue({ ok: false })
-    expect(await getRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 })).toEqual([])
+  test('returns empty only for a valid empty route envelope', async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ routes: [] }) })
+    await expect(getRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 })).resolves.toEqual([])
+  })
+
+  test.each([
+    [{ ok: false, status: 503 }, 'non-ok response'],
+    [{ ok: true, json: async () => ({ nope: [] }) }, 'malformed envelope'],
+  ])('throws MapRouteError for $1', async (response, _description) => {
+    mockFetch.mockResolvedValue(response)
+    await expect(getRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 })).rejects.toBeInstanceOf(MapRouteError)
+  })
+
+  test('throws MapRouteError for a network failure', async () => {
+    mockFetch.mockRejectedValue(new Error('offline'))
+    await expect(getRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 })).rejects.toBeInstanceOf(MapRouteError)
+  })
+
+  test('preserves AbortError', async () => {
+    const abort = new DOMException('Aborted', 'AbortError')
+    mockFetch.mockRejectedValue(abort)
+    await expect(getRoute({ lat: 0, lng: 0 }, { lat: 1, lng: 1 })).rejects.toBe(abort)
   })
 })
 

@@ -7,12 +7,14 @@ const ESCAPE_DISTANCE_KM = 2.0
 const SAFETY_BUFFER_KM = 0.2
 
 export interface HomeRoute {
+  id: string
   coordinates: [number, number][]
   distanceKm: number
   durationMin: number
   warnings: string[]
   label: string
   mode: TravelMode
+  alertIntersections: number
 }
 
 export interface SafeRoute {
@@ -35,22 +37,21 @@ export async function fetchRouteToHome(
 
   return results.slice(0, 3).map((result, i) => {
     const coords = result.coordinates
-    const warnings: string[] = []
+    let alertIntersections = 0
     for (const zone of dangerZones) {
-      const passes = coords.some(([lng, lat]) => {
-        const dx = lat - zone.lat
-        const dy = lng - zone.lng
-        return Math.sqrt(dx * dx + dy * dy) * 111 < zone.radiusKm
-      })
-      if (passes) warnings.push('Route passes near a danger zone')
+      const passes = pointToLineDistance({ lat: zone.lat, lng: zone.lng }, coords) <= zone.radiusKm
+      if (passes) alertIntersections++
     }
+    const warnings = alertIntersections ? ['Route intersects an alert area'] : []
     return {
+      id: result.id,
       coordinates: coords,
       distanceKm: Math.round(result.distance / 100) / 10,
       durationMin: Math.round(result.duration / 60),
       warnings: [...new Set(warnings)],
       label: ROUTE_LABELS[i] ?? `Route ${i + 1}`,
       mode,
+      alertIntersections,
     }
   })
 }

@@ -22,6 +22,7 @@ export interface VaultCircle { id: string; key: Uint8Array }      // raw 32-byte
 export interface VaultPayload { identitySk: Uint8Array; circles: VaultCircle[] }
 
 interface VaultRecord { version: number; blob: Uint8Array } // blob = IV || AES-GCM(wrapKey, serialized payload)
+interface ScopedVaultRecord { version: 1; blob: Uint8Array }
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -243,6 +244,40 @@ export async function removeVaultCircle(circleId: string): Promise<void> {
 /** Read/write the separate, non-secret export-metadata record. */
 export async function loadVaultMeta(): Promise<VaultMeta | null> { return idbGet<VaultMeta>(META_ID) }
 export async function saveVaultMeta(meta: VaultMeta): Promise<void> { await idbPut(META_ID, meta) }
+
+/** Encrypt an application-scoped record under the device's non-extractable key. */
+export async function saveScopedDeviceRecord(scope: 'home-location', plaintext: Uint8Array): Promise<void> {
+  await withInitLock(async () => {
+    const key = await getOrCreateWrapKey()
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    const additionalData = new TextEncoder().encode(scope)
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv, additionalData }, key, plaintext as unknown as BufferSource,
+    )
+    const blob = new Uint8Array(iv.byteLength + ciphertext.byteLength)
+    blob.set(iv)
+    blob.set(new Uint8Array(ciphertext), iv.byteLength)
+    await idbPut(`scoped:${scope}`, { version: 1, blob } satisfies ScopedVaultRecord)
+  })
+}
+
+/** Decrypt an application-scoped record without exposing the device key. */
+export async function loadScopedDeviceRecord(scope: 'home-location'): Promise<Uint8Array | null> {
+  const key = await idbGet<CryptoKey>(WRAP_KEY_ID)
+  const record = await idbGet<ScopedVaultRecord>(`scoped:${scope}`)
+  if (!key || !record || record.version !== 1 || !(record.blob instanceof Uint8Array) || record.blob.byteLength < 29) return null
+  const iv = record.blob.slice(0, 12)
+  const ciphertext = record.blob.slice(12)
+  const additionalData = new TextEncoder().encode(scope)
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv, additionalData }, key, ciphertext as unknown as BufferSource,
+  )
+  return new Uint8Array(plaintext)
+}
+
+export async function clearScopedDeviceRecord(scope: 'home-location'): Promise<void> {
+  await idbDelete(`scoped:${scope}`)
+}
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const d = await crypto.subtle.digest('SHA-256', bytes as unknown as BufferSource)
