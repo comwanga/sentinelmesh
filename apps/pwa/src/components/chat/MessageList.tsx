@@ -1,5 +1,11 @@
 import { toNpub } from '../../services/nostrService'
-import type { ChatMessage } from '../../store/chatSlice'
+
+interface MessageLike {
+  id: string
+  sender_pubkey: string
+  created_at: number
+  content: string
+}
 
 function senderLabel(pubkey: string): string {
   try {
@@ -9,7 +15,7 @@ function senderLabel(pubkey: string): string {
   }
 }
 
-export function MessageList({ messages, emptyText }: { messages: ChatMessage[]; emptyText: string }) {
+export function MessageList({ messages, emptyText }: { messages: MessageLike[]; emptyText: string }) {
   if (messages.length === 0) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4a5568', fontFamily: "'Courier New', monospace", fontSize: 11, fontStyle: 'italic' }}>

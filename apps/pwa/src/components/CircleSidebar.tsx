@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { MemberChip } from './MemberChip'
+import { chatEnabled } from '../config/features'
 import type { Circle, CircleMember, MemberStatus } from '../../../../shared/types'
 
 interface CircleSidebarProps {
@@ -181,6 +182,19 @@ export function CircleSidebar({ circle, members, memberStatuses, onInvite, onLea
           <span>⚡</span>
           <span>Generate Invite</span>
         </button>
+        {chatEnabled && (
+          <a
+            href={`/circles/${circle.circle_id}/chat`}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              background: 'rgba(187,134,252,0.07)', border: '1px solid rgba(187,134,252,0.2)',
+              borderRadius: 6, padding: '7px 0', color: '#BB86FC', textDecoration: 'none',
+              fontFamily: "'Courier New', monospace", fontSize: 11, cursor: 'pointer', width: '100%',
+            }}
+          >
+            ◐ Circle chat
+          </a>
+        )}
         <button
           onClick={onLeave}
           style={{
