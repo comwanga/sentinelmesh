@@ -52,6 +52,8 @@ pub struct Config {
     pub quality_min_sample: u32,
     /// Days of metrics snapshots to retain. Default 180.
     pub observatory_snapshot_retention_days: u32,
+    /// Dedicated fail-closed gate for the v1 opaque circle-location protocol.
+    pub safe_circle_location_enabled: bool,
 }
 
 impl Config {
@@ -104,6 +106,7 @@ impl Config {
                 std::env::var("OBSERVATORY_SNAPSHOT_RETENTION_DAYS").ok(),
                 180,
             ),
+            safe_circle_location_enabled: env_flag("SAFE_CIRCLE_LOCATION_ENABLED", false),
             internal_service_secret,
             circle_token_secret,
             trust_proxy: std::env::var("TRUST_PROXY")
@@ -402,6 +405,13 @@ mod tests {
             .unwrap_or(false);
         std::env::remove_var("SYNTHESIS_ENABLED");
         assert!(result);
+    }
+
+    #[test]
+    fn safe_circle_location_flag_defaults_off() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("SAFE_CIRCLE_LOCATION_ENABLED");
+        assert!(!env_flag("SAFE_CIRCLE_LOCATION_ENABLED", false));
     }
 
     #[test]

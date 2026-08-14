@@ -19,6 +19,8 @@ pub enum AppError {
     Forbidden,
     #[error("rate limited")]
     RateLimited,
+    #[error("safe circle location is unavailable")]
+    Unavailable,
     #[error("{0}")]
     Conflict(String),
     #[error("{0}")]
@@ -35,6 +37,7 @@ impl IntoResponse for AppError {
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", false),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "FORBIDDEN", false),
             AppError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED", true),
+            AppError::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE", true),
             AppError::Conflict(_) => (StatusCode::CONFLICT, "CONFLICT", false),
             AppError::Unprocessable(_) => (
                 StatusCode::UNPROCESSABLE_ENTITY,

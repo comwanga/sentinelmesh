@@ -1,4 +1,8 @@
-# Family Location Circles Implementation Plan
+# Family Location Circles Implementation Plan (Superseded Location Transport)
+
+> The location transport/authentication portions are superseded by the default-off
+> `CircleLocationEnvelopeV1` foundation introduced with V2 migration 009. This
+> historical plan must not be used to enable continuous sharing or rendering.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

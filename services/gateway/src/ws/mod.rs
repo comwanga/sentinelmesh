@@ -163,10 +163,13 @@ async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
         }
     };
 
-    // Send snapshot of current blobs
-    if let Ok(blobs) = fetch_blob_snapshot(&state.db, circle_id).await {
-        let payload = serde_json::json!({ "type": "CIRCLE_SNAPSHOT", "payload": blobs });
-        let _ = socket.send(Message::Text(payload.to_string())).await;
+    // Location transport is independently dark unless explicitly enabled.
+    if state.config.safe_circle_location_enabled {
+        if let Ok(blobs) = fetch_blob_snapshot(&state.db, circle_id).await {
+            let payload =
+                serde_json::json!({ "type": "CIRCLE_LOCATION_SNAPSHOT", "payload": blobs });
+            let _ = socket.send(Message::Text(payload.to_string())).await;
+        }
     }
 
     let mut rx = state.circle_hub.subscribe(circle_id);
@@ -189,13 +192,17 @@ async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
                                 }))).await;
                                 return;
                             }
+                            // Internal token-targeted control message; never expose it to clients.
+                            if v["type"] == "MEMBER_REMOVED" { continue; }
                         }
                         if socket.send(Message::Text(text)).await.is_err() { break; }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                        if let Ok(blobs) = fetch_blob_snapshot(&state.db, circle_id).await {
-                            let payload = serde_json::json!({ "type": "CIRCLE_SNAPSHOT", "payload": blobs });
-                            if socket.send(Message::Text(payload.to_string())).await.is_err() { break; }
+                        if state.config.safe_circle_location_enabled {
+                            if let Ok(blobs) = fetch_blob_snapshot(&state.db, circle_id).await {
+                                let payload = serde_json::json!({ "type": "CIRCLE_LOCATION_SNAPSHOT", "payload": blobs });
+                                if socket.send(Message::Text(payload.to_string())).await.is_err() { break; }
+                            }
                         }
                         rx = state.circle_hub.subscribe(circle_id);
                     }
@@ -230,8 +237,18 @@ async fn fetch_blob_snapshot(
     pool: &sqlx::PgPool,
     circle_id: Uuid,
 ) -> anyhow::Result<Vec<serde_json::Value>> {
-    let rows = sqlx::query_as::<_, (Uuid, String, String, chrono::DateTime<chrono::Utc>)>(
-        "SELECT id, sender_ephemeral_pubkey, encrypted_payload, expires_at
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            i16,
+            i32,
+            String,
+            chrono::DateTime<chrono::Utc>,
+            chrono::DateTime<chrono::Utc>,
+        ),
+    >(
+        "SELECT id, protocol_version, key_epoch, ciphertext, created_at, expires_at
          FROM location_blobs WHERE circle_id = $1 AND expires_at > NOW()",
     )
     .bind(circle_id)
@@ -240,10 +257,13 @@ async fn fetch_blob_snapshot(
 
     Ok(rows
         .into_iter()
-        .map(|(id, sender, payload, exp)| {
-            serde_json::json!({
-                "id": id, "sender_ephemeral_pubkey": sender, "encrypted_payload": payload, "expires_at": exp
-            })
-        })
+        .map(
+            |(id, version, key_epoch, ciphertext, created_at, expires_at)| {
+                serde_json::json!({
+                    "id": id, "version": version, "circle_id": circle_id, "key_epoch": key_epoch,
+                    "ciphertext": ciphertext, "created_at": created_at, "expires_at": expires_at
+                })
+            },
+        )
         .collect())
 }

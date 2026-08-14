@@ -69,6 +69,10 @@ async fn run_once(pool: &PgPool) -> anyhow::Result<()> {
     .execute(pool)
     .await?;
 
+    let locations = sqlx::query("DELETE FROM location_blobs WHERE expires_at <= now()")
+        .execute(pool)
+        .await?;
+
     sqlx::query(
         "DELETE FROM push_deliveries
           WHERE (status = 'sent' AND sent_at < now() - interval '30 days')
@@ -82,11 +86,13 @@ async fn run_once(pool: &PgPool) -> anyhow::Result<()> {
         cells.rows_affected(),
         expired.rows_affected(),
     );
-    if c > 0 || h > 0 || e > 0 {
+    let l = locations.rows_affected();
+    if c > 0 || h > 0 || e > 0 || l > 0 {
         tracing::info!(
             coords_nulled = c,
             h3r9_nulled = h,
             events_expired = e,
+            location_envelopes_deleted = l,
             "retention pass applied"
         );
     }

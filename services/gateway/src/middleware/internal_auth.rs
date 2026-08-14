@@ -128,6 +128,7 @@ mod tests {
                 reputation_decay_floor: 0,
                 quality_min_sample: 5,
                 observatory_snapshot_retention_days: 180,
+                safe_circle_location_enabled: false,
             }),
             http_client,
             hub: Arc::new(WsHub::new()),

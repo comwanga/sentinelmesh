@@ -9,3 +9,7 @@ export const experimentalFeatures = Object.freeze({
   photos: enabled(import.meta.env.VITE_ENABLE_EXPERIMENTAL_PHOTOS),
   routing: enabled(import.meta.env.VITE_ENABLE_EXPERIMENTAL_ROUTING),
 })
+
+// Independent of the broad circles experiment: location stays dark unless this
+// dedicated build-time gate is explicitly enabled.
+export const safeCircleLocationEnabled = enabled(import.meta.env.VITE_ENABLE_SAFE_CIRCLE_LOCATION)
