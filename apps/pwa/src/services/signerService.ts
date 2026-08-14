@@ -4,7 +4,7 @@ import { SimplePool } from 'nostr-tools/pool'
 import { getCachedKeypair } from './nostrService'
 import { clearBunkerConnection, loadBunkerConnection, saveBunkerConnection, type StoredBunkerConnection } from './bunkerStore'
 
-export type SignerMode = 'local' | 'bunker'
+export type SignerMode = 'local' | 'bunker' | 'nip07'
 export type SignerStatus = 'ready' | 'connecting' | 'offline' | 'authorization-required' | 'error'
 export interface ActiveIdentity { mode: SignerMode; pubkey: string; status: SignerStatus; approvalUrl?: string; error?: string }
 
@@ -36,6 +36,16 @@ export async function initializeActiveSigner(): Promise<void> {
 
 export function refreshLocalIdentity(): void {
   if (identity.mode === 'local') publish({ mode: 'local', pubkey: getCachedKeypair().publicKey, status: 'ready' })
+}
+
+/** Explicitly switch the active identity to a NIP-07 browser extension. */
+export async function activateNip07Signer(): Promise<ActiveIdentity> {
+  const ext = nostr07Extension()
+  if (!ext) throw new Error('NIP-07 extension is not available')
+  const pubkey = await ext.getPublicKey()
+  if (!/^[0-9a-f]{64}$/.test(pubkey)) throw new Error('NIP-07 extension returned an invalid identity')
+  publish({ mode: 'nip07', pubkey, status: 'ready' })
+  return getActiveIdentity()
 }
 
 function parsePointer(input: string): BunkerPointer {
@@ -152,6 +162,15 @@ function sameTemplate(template: EventTemplate, event: VerifiedEvent): boolean {
 export async function signWithActiveIdentity(template: EventTemplate): Promise<VerifiedEvent> {
   const active = getActiveIdentity()
   if (active.mode === 'local') return finalizeEvent(template, getCachedKeypair().secretKey)
+  if (active.mode === 'nip07') {
+    const ext = nostr07Extension()
+    if (!ext) throw new Error('NIP-07 extension is unavailable')
+    const event = await deadline(ext.signEvent(template), 30_000, 'NIP-07 signing')
+    if (!verifyEvent(event) || event.pubkey !== active.pubkey || !sameTemplate(template, event)) {
+      throw new Error('NIP-07 extension altered the requested event')
+    }
+    return event
+  }
   if (active.status !== 'ready' || !remote) throw new Error('Remote signer is offline')
   const current = remote
   try {
@@ -266,6 +285,11 @@ function nip07NostrSigner(ext: Nostr07Extension): NostrSigner {
 export function getNostrSigner(): NostrSigner {
   const active = getActiveIdentity()
   if (active.mode === 'bunker') return bunkerNostrSigner()
+  if (active.mode === 'nip07') {
+    const ext = nostr07Extension()
+    if (!ext) throw new Error('NIP-07 extension is unavailable')
+    return nip07NostrSigner(ext)
+  }
   return localNostrSigner()
 }
 

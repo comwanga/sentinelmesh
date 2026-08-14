@@ -1,10 +1,16 @@
-.PHONY: up dev up-signal up-ml down down-clean logs install fmt lint test test-rust test-gateway test-pwa test-signal build-pwa config smoke seed migrate prod-config prod-up backup restore-verify watchdog test-operations
+.PHONY: up dev dev-pwa up-signal up-ml down down-clean logs install fmt lint test test-rust test-gateway test-pwa test-signal build-pwa config smoke seed migrate prod-config prod-up backup restore-verify watchdog test-operations
 
 up:
 	docker compose up --build
 
+# Live-reload dev: postgres/redis/gateway(cargo-watch)/PWA(Vite HMR on :5173).
 dev:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+# Fastest PWA HMR: run Vite on the host against a dockerized backend (`make dev`
+# or at least `docker compose up -d postgres redis gateway-rs migrate`).
+dev-pwa:
+	cd apps/pwa && npm run dev
 
 up-signal:
 	docker compose --profile signal up --build

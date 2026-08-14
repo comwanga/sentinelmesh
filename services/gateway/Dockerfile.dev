@@ -1,10 +1,14 @@
-# Debug build of the Rust gateway — faster compile, no optimisations.
+# Dev gateway with cargo-watch: rebuilds + restarts on source changes. Source is
+# live-mounted at /workspace/{gateway,sentinel-core}/src; the target dir lives on
+# a named volume so incremental compilation persists across restarts.
 # Build context must be the workspace root (services/).
 FROM rust:1.88-slim AS dev
 
 WORKDIR /workspace
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev wget && rm -rf /var/lib/apt/lists/*
+
+RUN cargo install cargo-watch --locked
 
 # Cache workspace dependency builds before copying real source.
 COPY Cargo.toml Cargo.lock ./
@@ -27,4 +31,4 @@ RUN touch sentinel-core/src/lib.rs gateway/src/main.rs && \
 
 EXPOSE 3000
 
-CMD ["/workspace/target/debug/gateway"]
+CMD ["cargo", "watch", "-x", "run -p gateway"]

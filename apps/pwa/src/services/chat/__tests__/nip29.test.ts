@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, test } from 'vitest'
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools'
-import { createChannelMessage, validateChannelMessage, validateGroupStateEvent } from '../nip29'
+import { createChannelMessage, validateChannelMessage, validateGroupStateEvent, buildManagementTemplate, deleteMessageTemplate, removeUserTemplate } from '../nip29'
 
 describe('nip29', () => {
   test('builds a kind-9 message with exactly one h tag', () => {
@@ -39,5 +39,20 @@ describe('nip29', () => {
     )
     expect(validateGroupStateEvent(event, 'group-1', relayPubkey)).toBe(true)
     expect(validateGroupStateEvent(event, 'group-1', 'f'.repeat(64))).toBe(false)
+  })
+
+  test('builds management templates bound to the group', () => {
+    const del = deleteMessageTemplate('group-1', 'e'.repeat(64))
+    expect(del.kind).toBe(9005)
+    expect(del.tags).toContainEqual(['h', 'group-1'])
+    expect(del.tags).toContainEqual(['e', 'e'.repeat(64)])
+
+    const remove = removeUserTemplate('group-1', 'A'.repeat(64))
+    expect(remove.kind).toBe(9001)
+    expect(remove.tags).toContainEqual(['p', 'a'.repeat(64)])
+
+    const meta = buildManagementTemplate(9002, 'group-1', [], '{"name":"x"}')
+    expect(meta.kind).toBe(9002)
+    expect(meta.content).toBe('{"name":"x"}')
   })
 })

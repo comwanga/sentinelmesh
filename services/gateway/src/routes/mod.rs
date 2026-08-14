@@ -1,4 +1,5 @@
 pub mod acoustic;
+pub mod chat_notifications;
 pub mod circles;
 pub mod events;
 pub mod identity;
@@ -7,6 +8,7 @@ pub mod maps;
 pub mod observatory;
 pub mod photos;
 pub mod push;
+pub mod relay_hooks;
 pub mod reports;
 pub mod tiles;
 pub mod vouches;
@@ -30,4 +32,6 @@ pub fn build_router() -> Router<AppState> {
         .nest("/api/acoustic", acoustic::router())
         .nest("/api/vouches", vouches::router())
         .nest("/api/admin/observatory", observatory::router())
+        .nest("/api/relay-hooks", relay_hooks::router())
+        .nest("/api/chat-notifications", chat_notifications::router())
 }

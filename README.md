@@ -17,6 +17,7 @@ The default product supports the safety map, alert list, signed community report
 | **Nostr identity** | Core | Generates an encrypted local identity or connects a NIP-46 remote signer, with backup, restore, NIP-19 key handling, and optional NIP-05 verification. |
 | **Push notifications** | Core | User-enabled alert perimeters deliver confirmed incidents through durable, geographically targeted queues. |
 | **Family Circles** | Experimental | Circle management is behind `VITE_ENABLE_EXPERIMENTAL_CIRCLES`. Location sharing additionally requires both `SAFE_CIRCLE_LOCATION_ENABLED=true` and `VITE_ENABLE_SAFE_CIRCLE_LOCATION=true`; it is off by default. Membership uses epoch-bound keys and pending/accept, removal revokes a member and forces a rekey, the circle WebSocket requires a fresh bound kind-27235 auth event, and markers render only decrypted, roster-verified locations with explicit user controls. |
+| **Community + encrypted chat** | Experimental | Disabled by default (`VITE_ENABLE_CHAT=false`). Public NIP-29 channels and NIP-17/NIP-59 encrypted DMs and Circle rooms require configured relays; relay webhooks and generic push are gated behind `CHAT_PUSH_ENABLED`. See `docs/operations/relay-conformance.md`. |
 | **Acoustic detection** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ACOUSTIC`; detections are client assertions and cannot independently confirm an event. |
 | **Routing** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ROUTING`; routes are not described as safe or authoritative. |
 | **Photos** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_PHOTOS`; privacy processing is best effort. |
@@ -78,6 +79,7 @@ Be precise about this — overclaiming privacy is a safety risk for the people w
 **NOT protected (known limitations — do not assume otherwise):**
 - **Acoustic-detection locations are stored in plaintext** and linked to a persistent pubkey, with no retention limit yet. Treat acoustic-detection history as an identity-linked location trail.
 - **Family-circle envelope metadata is visible to the server**: it stores short-lived encrypted envelopes plus circle, epoch, keyed sender, replay hash, size, creation, and expiry metadata. Coordinates are not plaintext, but timing and traffic patterns are not hidden.
+- **Encrypted chat uses NIP-44**, which has no forward secrecy, post-compromise security, or post-quantum protection. The inbox relay sees the recipient, connection IP, traffic timing, and payload size; the community relay sees all public authors, content, and membership. A compromised circle key, authenticated member, or gateway can attack availability or traffic analysis.
 - **A Nostr pubkey is a stable pseudonymous identifier.** User-signed events and anything independently published to external relays or storage may be retained by third parties.
 - **An optional NIP-05 label is linkable to the public key.** The server operator, or anyone with access to both profile and restricted report-author records, can correlate that human-readable label with pubkey-linked activity.
 
@@ -189,6 +191,32 @@ Signal ingestion and ML transcription are not part of the default core stack.
 | Signal Service | http://localhost:8000 (optional `signal` profile) |
 | PostgreSQL | localhost:5432 |
 | Redis | localhost:6379 |
+
+### Local development with hot reload
+
+For realtime feedback while editing, use the dev overrides — a Vite dev server with
+HMR for the PWA and a `cargo-watch` gateway that rebuilds on Rust changes:
+
+```bash
+make dev
+```
+
+- **PWA** → http://localhost:5173 (HMR; edits to `apps/pwa/src` apply instantly).
+- **Gateway** → http://localhost:3000 (recompiles + restarts on `services/*/src` edits).
+- Source is live-mounted; Postgres/Redis data and the Rust `target/` dir persist on
+  named volumes, so `docker compose down` (without `-v`) preserves your local state.
+
+Fastest PWA-only iteration (backend still in Docker): leave the backend running and
+run Vite directly on the host:
+
+```bash
+make dev-pwa
+```
+
+The dev server proxies `/api` and `/ws` to the gateway via
+`VITE_API_PROXY_TARGET` / `VITE_WS_PROXY_TARGET` (default `http://localhost:3000`).
+Experimental features (Circles, chat, etc.) remain gated by the `VITE_ENABLE_*`
+values in your `.env`.
 
 ---
 
