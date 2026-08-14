@@ -192,6 +192,32 @@ Signal ingestion and ML transcription are not part of the default core stack.
 | PostgreSQL | localhost:5432 |
 | Redis | localhost:6379 |
 
+### Local development with hot reload
+
+For realtime feedback while editing, use the dev overrides — a Vite dev server with
+HMR for the PWA and a `cargo-watch` gateway that rebuilds on Rust changes:
+
+```bash
+make dev
+```
+
+- **PWA** → http://localhost:5173 (HMR; edits to `apps/pwa/src` apply instantly).
+- **Gateway** → http://localhost:3000 (recompiles + restarts on `services/*/src` edits).
+- Source is live-mounted; Postgres/Redis data and the Rust `target/` dir persist on
+  named volumes, so `docker compose down` (without `-v`) preserves your local state.
+
+Fastest PWA-only iteration (backend still in Docker): leave the backend running and
+run Vite directly on the host:
+
+```bash
+make dev-pwa
+```
+
+The dev server proxies `/api` and `/ws` to the gateway via
+`VITE_API_PROXY_TARGET` / `VITE_WS_PROXY_TARGET` (default `http://localhost:3000`).
+Experimental features (Circles, chat, etc.) remain gated by the `VITE_ENABLE_*`
+values in your `.env`.
+
 ---
 
 ## Running tests

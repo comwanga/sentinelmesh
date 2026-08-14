@@ -1,4 +1,8 @@
-# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Adds a live-reload PWA dev server (Vite HMR on :5173) and a cargo-watch gateway.
+# Source is live-mounted, so edits to apps/pwa/src and services/*/src are picked up
+# immediately; Postgres/Redis data and the Rust target dir persist on named volumes.
 
 services:
   postgres:
@@ -15,9 +19,43 @@ services:
       dockerfile: gateway/Dockerfile.dev
     ports:
       - "3000:3000"
+    volumes:
+      - ./services/gateway/src:/workspace/gateway/src
+      - ./services/sentinel-core/src:/workspace/sentinel-core/src
+      - ./services/event_schema.json:/workspace/event_schema.json
+      - gateway_target:/workspace/target
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ready >/dev/null || exit 1"]
       start_period: 60s
+
+  pwa:
+    build:
+      context: ./apps/pwa
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    environment:
+      VITE_API_PROXY_TARGET: http://gateway-rs:3000
+      VITE_WS_PROXY_TARGET: ws://gateway-rs:3000
+      VITE_MAP_TILE_URL: ${VITE_MAP_TILE_URL:-https://tiles.stadiamaps.com/data/openmaptiles.json}
+      VITE_VAPID_PUBLIC_KEY: ${VITE_VAPID_PUBLIC_KEY:-}
+      VITE_ENABLE_EXPERIMENTAL_ACOUSTIC: ${VITE_ENABLE_EXPERIMENTAL_ACOUSTIC:-false}
+      VITE_ENABLE_EXPERIMENTAL_CIRCLES: ${VITE_ENABLE_EXPERIMENTAL_CIRCLES:-false}
+      VITE_ENABLE_SAFE_CIRCLE_LOCATION: ${VITE_ENABLE_SAFE_CIRCLE_LOCATION:-false}
+      VITE_ENABLE_EXPERIMENTAL_INSIGHTS: ${VITE_ENABLE_EXPERIMENTAL_INSIGHTS:-false}
+      VITE_ENABLE_EXPERIMENTAL_PHOTOS: ${VITE_ENABLE_EXPERIMENTAL_PHOTOS:-false}
+      VITE_ENABLE_EXPERIMENTAL_ROUTING: ${VITE_ENABLE_EXPERIMENTAL_ROUTING:-false}
+      VITE_ENABLE_CHAT: ${VITE_ENABLE_CHAT:-false}
+      VITE_CHAT_INBOX_RELAY_URL: ${VITE_CHAT_INBOX_RELAY_URL:-}
+      VITE_CHAT_COMMUNITY_RELAY_URL: ${VITE_CHAT_COMMUNITY_RELAY_URL:-}
+      VITE_CHAT_DISCOVERY_RELAYS: ${VITE_CHAT_DISCOVERY_RELAYS:-}
+    volumes:
+      - ./apps/pwa/src:/app/src
+      - ./shared:/shared
+    ports:
+      - "5173:5173"
+    depends_on:
+      gateway-rs:
+        condition: service_healthy
 
   signal:
     build:
@@ -42,3 +80,6 @@ services:
     environment:
       WHISPER_MODEL: base
       LOG_LEVEL: DEBUG
+
+volumes:
+  gateway_target:

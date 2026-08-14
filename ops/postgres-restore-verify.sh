@@ -65,7 +65,7 @@ expected_manifest="2|SentinelMesh clean V2 baseline
 8|008_grant_push_outbox_runtime.sql|44bfdd61fafcb1a979853dfed2d2253fa31674b25bac851b2e0def35353bb7ab
 9|009_safe_circle_location_envelopes.sql|6eec445a8da9828c3367263140cf296191733428d17c493fdb8c2e34bf2ac6ea
 10|010_circle_membership_lifecycle.sql|4f33076c65c4c8a9af8c52a461a3364c730ba3856288418c481fc3958575398f
-11|011_add_chat_notifications.sql|645889bfa78545ff70bd47a7de7af694329a4a6323da282712f6d186eb5c2598f"
+11|011_add_chat_notifications.sql|645889bfa78545ff70bd47a7de7af694329a4a6323da282712f6d186eb5c2598"
 test "$manifest" = "$expected_manifest"
 
 docker exec "$container" psql -U postgres -d sentinelmesh_restore -v ON_ERROR_STOP=1 \
