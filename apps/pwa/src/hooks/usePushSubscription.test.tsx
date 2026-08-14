@@ -7,7 +7,7 @@ import { usePushSubscription } from './usePushSubscription'
 
 const subscription = { endpoint: 'https://push.example/sub', toJSON: () => ({ endpoint: 'https://push.example/sub', keys: { p256dh: 'key', auth: 'auth' } }), unsubscribe: vi.fn(async () => true) }
 const requestPermission = vi.fn(async () => 'granted' as NotificationPermission)
-const getSubscription = vi.fn(async () => null)
+const getSubscription = vi.fn(async (): Promise<typeof subscription | null> => null)
 const subscribe = vi.fn(async () => subscription)
 
 beforeEach(() => {
