@@ -26,7 +26,7 @@ export default defineConfig({
       },
       workbox: {
         importScripts: ['/push-sw.js'],
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff2}'],
         runtimeCaching: [
           {
             urlPattern: ({ url }) =>
@@ -40,16 +40,27 @@ export default defineConfig({
           {
             urlPattern: ({ url, request }) =>
               request.method === 'GET' && url.pathname.startsWith('/api/events'),
-            handler: 'StaleWhileRevalidate',
+            handler: 'NetworkFirst',
             options: {
               cacheName: 'sm-api',
+              networkTimeoutSeconds: 3,
               expiration: { maxAgeSeconds: 60 },
+              plugins: [{ handlerDidError: async () => new Response('{"events":[]}', { headers: { 'Content-Type': 'application/json' } }) }],
             },
           },
           {
-            urlPattern: ({ url }) =>
-              url.pathname.endsWith('.json') ||
-              /\.(woff2?)$/.test(url.pathname),
+            urlPattern: ({ url, request }) =>
+              request.method === 'GET' && url.pathname.startsWith('/api/reports'),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'sm-api',
+              networkTimeoutSeconds: 3,
+              expiration: { maxAgeSeconds: 60 },
+              plugins: [{ handlerDidError: async () => new Response('{"reports":[]}', { headers: { 'Content-Type': 'application/json' } }) }],
+            },
+          },
+          {
+            urlPattern: ({ url }) => /\.(woff2?)$/.test(url.pathname),
             handler: 'CacheFirst',
             options: {
               cacheName: 'sm-assets',
