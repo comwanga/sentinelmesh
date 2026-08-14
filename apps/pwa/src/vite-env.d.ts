@@ -8,6 +8,10 @@ interface ImportMetaEnv {
   readonly VITE_ENABLE_EXPERIMENTAL_INSIGHTS?: string
   readonly VITE_ENABLE_EXPERIMENTAL_PHOTOS?: string
   readonly VITE_ENABLE_EXPERIMENTAL_ROUTING?: string
+  readonly VITE_ENABLE_CHAT?: string
+  readonly VITE_CHAT_INBOX_RELAY_URL?: string
+  readonly VITE_CHAT_COMMUNITY_RELAY_URL?: string
+  readonly VITE_CHAT_DISCOVERY_RELAYS?: string
 }
 
 interface ImportMeta {

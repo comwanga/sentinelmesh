@@ -172,24 +172,6 @@ export interface CircleLocationEnvelopeV1 {
   expires_at: string
 }
 
-export interface CircleEpochChange {
-  circle_id: string
-  key_epoch: number
-  rekey_required: boolean
-}
-
-export interface CircleMemberRemoved {
-  circle_id: string
-  key_epoch: number
-  token: string
-}
-
-export type CircleWsMessage =
-  | { type: 'CIRCLE_LOCATION_SNAPSHOT'; payload: CircleLocationEnvelopeV1[] }
-  | { type: 'CIRCLE_LOCATION_ENVELOPE'; payload: CircleLocationEnvelopeV1 }
-  | { type: 'CIRCLE_EPOCH_CHANGED'; payload: CircleEpochChange }
-  | { type: 'CIRCLE_MEMBER_REMOVED'; payload: CircleMemberRemoved }
-
 /** v2 circle key package carried as the content of a signed kind-30079 event. */
 export interface CircleKeyPackageV2 {
   version: 2
@@ -211,4 +193,59 @@ export interface VerifiedMemberLocation {
   event_id: string
   expires_at: number
   captured_at: number
+}
+
+export interface CircleEpochChange {
+  circle_id: string
+  key_epoch: number
+  rekey_required: boolean
+}
+
+export interface CircleMemberRemoved {
+  circle_id: string
+  key_epoch: number
+  token: string
+}
+
+export type CircleWsMessage =
+  | { type: 'CIRCLE_LOCATION_SNAPSHOT'; payload: CircleLocationEnvelopeV1[] }
+  | { type: 'CIRCLE_LOCATION_ENVELOPE'; payload: CircleLocationEnvelopeV1 }
+  | { type: 'CIRCLE_EPOCH_CHANGED'; payload: CircleEpochChange }
+  | { type: 'CIRCLE_MEMBER_REMOVED'; payload: CircleMemberRemoved }
+
+// ── Chat foundation contracts ────────────────────────────────────────────────
+
+export type ChatConversationKind = 'public' | 'dm' | 'circle'
+
+export interface ChatConversationSummary {
+  id: string
+  kind: ChatConversationKind
+  title: string
+  last_activity_at: number
+  unread: number
+  muted: boolean
+}
+
+export type ChatDeliveryState = 'pending' | 'sent' | 'delivered' | 'failed'
+
+export interface LocalChatMessage {
+  id: string
+  conversation_id: string
+  sender_pubkey: string
+  created_at: number
+  kind: number
+  content: string
+  delivery_state: ChatDeliveryState
+}
+
+export interface RelayHealth {
+  url: string
+  connected: boolean
+  last_error?: string | null
+}
+
+export interface RelayPublishResult {
+  url: string
+  ok: boolean
+  message?: string
 }

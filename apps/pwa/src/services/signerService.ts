@@ -1,4 +1,4 @@
-import { finalizeEvent, generateSecretKey, verifyEvent, type EventTemplate, type VerifiedEvent } from 'nostr-tools'
+import { finalizeEvent, generateSecretKey, getPublicKey, nip44, verifyEvent, type EventTemplate, type VerifiedEvent } from 'nostr-tools'
 import { BunkerSigner, type BunkerPointer } from 'nostr-tools/nip46'
 import { SimplePool } from 'nostr-tools/pool'
 import { getCachedKeypair } from './nostrService'
@@ -167,4 +167,110 @@ export async function signWithActiveIdentity(template: EventTemplate): Promise<V
     publish({ mode: 'bunker', pubkey: active.pubkey, status: 'error', error: message })
     throw new Error(message)
   }
+}
+
+// ── Capability-based signer contract (chat foundation) ───────────────────────
+//
+// The signer abstraction below exposes independent signing AND NIP-44 encryption
+// capabilities so that public NIP-29 chat remains usable when encryption is
+// unavailable (e.g. a NIP-07 extension without nip44), while encrypted NIP-17
+// chat requires both. It deliberately never falls back to the local identity
+// when a remote signer is the active mode.
+
+export type NostrSignerMode = 'local' | 'nip07' | 'bunker'
+
+export interface NostrSigner {
+  mode: NostrSignerMode
+  pubkey(): Promise<string>
+  signEvent(template: EventTemplate): Promise<VerifiedEvent>
+  nip44Encrypt(peerPubkey: string, plaintext: string): Promise<string>
+  nip44Decrypt(peerPubkey: string, ciphertext: string): Promise<string>
+}
+
+function localNostrSigner(): NostrSigner {
+  const { publicKey, secretKey } = getCachedKeypair()
+  return createLocalNostrSigner(secretKey, publicKey)
+}
+
+/** Build a local signer from an explicit secret key (public key derived when omitted). */
+export function createLocalNostrSigner(secretKey: Uint8Array, publicKey?: string): NostrSigner {
+  const pubkey = publicKey ?? getPublicKey(secretKey)
+  const conversationKey = (peer: string): Uint8Array =>
+    nip44.v2.utils.getConversationKey(secretKey, peer)
+  return {
+    mode: 'local',
+    async pubkey() { return pubkey },
+    async signEvent(template) { return finalizeEvent(template, secretKey) },
+    async nip44Encrypt(peer, plaintext) {
+      const key = conversationKey(peer)
+      try { return nip44.v2.encrypt(plaintext, key) } finally { key.fill(0) }
+    },
+    async nip44Decrypt(peer, ciphertext) {
+      const key = conversationKey(peer)
+      try { return nip44.v2.decrypt(ciphertext, key) } finally { key.fill(0) }
+    },
+  }
+}
+
+function bunkerNostrSigner(): NostrSigner {
+  if (getActiveIdentity().status !== 'ready' || !remote) throw new Error('Remote signer is offline')
+  const signer = remote.signer
+  return {
+    mode: 'bunker',
+    pubkey: () => signer.getPublicKey(),
+    signEvent: (template) => signer.signEvent(template),
+    nip44Encrypt: (peer, plaintext) => signer.nip44Encrypt(peer, plaintext),
+    nip44Decrypt: (peer, ciphertext) => signer.nip44Decrypt(peer, ciphertext),
+  }
+}
+
+interface Nostr07Extension {
+  getPublicKey: () => Promise<string>
+  signEvent: (template: EventTemplate) => Promise<VerifiedEvent>
+  nip44?: { encrypt: (peer: string, plaintext: string) => Promise<string>; decrypt: (peer: string, ciphertext: string) => Promise<string> }
+}
+
+function nostr07Extension(): Nostr07Extension | null {
+  if (typeof window === 'undefined') return null
+  const ext = (window as unknown as { nostr?: Nostr07Extension }).nostr
+  return ext && typeof ext.getPublicKey === 'function' && typeof ext.signEvent === 'function' ? ext : null
+}
+
+/** True when a usable NIP-07 extension with NIP-44 encryption is present. */
+export function nip07EncryptionAvailable(): boolean {
+  const ext = nostr07Extension()
+  return !!ext?.nip44
+}
+
+function nip07NostrSigner(ext: Nostr07Extension): NostrSigner {
+  return {
+    mode: 'nip07',
+    pubkey: () => ext.getPublicKey(),
+    signEvent: (template) => ext.signEvent(template),
+    nip44Encrypt: (peer, plaintext) => {
+      if (!ext.nip44) throw new Error('NIP-07 extension does not support NIP-44')
+      return ext.nip44.encrypt(peer, plaintext)
+    },
+    nip44Decrypt: (peer, ciphertext) => {
+      if (!ext.nip44) throw new Error('NIP-07 extension does not support NIP-44')
+      return ext.nip44.decrypt(peer, ciphertext)
+    },
+  }
+}
+
+/**
+ * Return the active Nostr signer. Local or bunker only (NIP-07 is not an active
+ * identity mode yet); throws when the bunker is not ready rather than falling
+ * back to the local key.
+ */
+export function getNostrSigner(): NostrSigner {
+  const active = getActiveIdentity()
+  if (active.mode === 'bunker') return bunkerNostrSigner()
+  return localNostrSigner()
+}
+
+/** Return a NIP-07 signer when a usable extension is present, else null. */
+export function getNip07NostrSigner(): NostrSigner | null {
+  const ext = nostr07Extension()
+  return ext ? nip07NostrSigner(ext) : null
 }
