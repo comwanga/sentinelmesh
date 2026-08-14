@@ -128,6 +128,24 @@ async fn create_event(
         body.county.as_deref(),
         serde_json::to_string(&msg).unwrap().into(),
     );
+    let viewport_json = serde_json::json!({
+        "id": event.id,
+        "event_type": event.event_type,
+        "severity": event.severity,
+        "state": event.state,
+        "trust_state": event.trust_state,
+        "title": event.title,
+        "lat": event.lat,
+        "lng": event.lng,
+        "started_at": event.started_at,
+    });
+    let _ = state.event_tx.send(crate::ws::ViewportEvent {
+        id: event.id,
+        lat: event.lat,
+        lng: event.lng,
+        severity: event.severity.clone(),
+        event_json: viewport_json.to_string().into(),
+    });
 
     Ok((StatusCode::CREATED, Json(event)))
 }

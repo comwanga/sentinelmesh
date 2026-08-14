@@ -59,4 +59,25 @@ describe('loadMapStyle injection', () => {
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
   })
+
+  it('converts the bundled style to the light product palette', async () => {
+    vi.stubEnv('VITE_MAP_STYLE_URL', '/sentinelmesh-dark.json')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(JSON.stringify({
+        version: 8,
+        name: 'SentinelMesh Dark',
+        sources: { openmaptiles: { type: 'vector', url: '{TILE_SOURCE}' } },
+        layers: [{ id: 'background', paint: { 'background-color': '#0B0E14' } }],
+      })),
+    }))
+
+    const { loadMapStyle } = await import('./mapConfig')
+    const style = await loadMapStyle() as { name: string; layers: Array<{ paint: Record<string, string> }> }
+    expect(style.name).toBe('SentinelMesh Light')
+    expect(style.layers[0]?.paint['background-color']).toBe('#F4F3EC')
+
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
 })

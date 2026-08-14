@@ -39,10 +39,9 @@ describe('ReportsPage', () => {
     expect(screen.getByTestId('report-list')).toBeInTheDocument()
 
     // Clicking submit button opens the modal
-    fireEvent.click(screen.getByText('+ SUBMIT'))
+    fireEvent.click(screen.getByText('Add report'))
     expect(screen.getByTestId('report-submit')).toBeInTheDocument()
 
-    const container = screen.getByTestId('reports-container')
-    expect(container).toHaveStyle({ flexDirection: 'column' })
+    expect(screen.getByTestId('reports-container')).toHaveClass('page')
   })
 })

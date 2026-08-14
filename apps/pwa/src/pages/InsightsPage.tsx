@@ -32,11 +32,10 @@ export function InsightsPage() {
   }, []).slice(-24)
 
   return (
-    <div data-testid="insights-page" style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#0B0E14' }}>
-      <div style={{ padding: '16px 20px', borderBottom: '1px solid #1a2035', flexShrink: 0 }}>
-        <h1 style={{ fontFamily: "'Courier New', monospace", fontSize: 16, color: '#e2e8f0', margin: 0, letterSpacing: '0.1em' }}>
-          Insights
-        </h1>
+    <div data-testid="insights-page" className="bright-feature page">
+      <div className="page-header">
+        <h1>Community insights</h1>
+        <p>Experimental trend views based on stored events and reports.</p>
       </div>
 
       <div role="tablist" aria-label="Insights sections" style={{ display: 'flex', borderBottom: '1px solid #1a2035', flexShrink: 0, overflowX: 'auto' }}>

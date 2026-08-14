@@ -3,10 +3,9 @@ import { useDispatch } from 'react-redux'
 import { eventReceived, eventResolved, setConnected } from '../store/eventsSlice'
 import { reportReceived } from '../store/reportSlice'
 import { parseEvent, parseReport } from './safetyDataApi'
+import { websocketBaseUrl } from './apiOrigin'
 
-// Always use window.location.host — in dev the Vite proxy forwards /ws to the gateway
-// (Node.js resolves localhost → 127.0.0.1, avoiding the Windows IPv6 pitfall).
-const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws?county=global`
+const WS_URL = `${websocketBaseUrl()}/ws?county=global`
 
 const BACKOFF_BASE_MS = 1000
 const BACKOFF_CAP_MS = 30_000

@@ -10,10 +10,10 @@ import { experimentalFeatures } from './config/features'
 
 function RouteError() {
   return (
-    <div style={{ padding: 32, color: '#ccc', fontFamily: 'sans-serif', textAlign: 'center' }}>
-      <h2 style={{ color: '#FF2D2D' }}>Something went wrong</h2>
+    <div className="route-error">
+      <h2>Something went wrong</h2>
       <p>Reload the page or navigate home.</p>
-      <a href="/" style={{ color: '#00E5FF' }}>Back to map</a>
+      <a href="/">Back to map</a>
     </div>
   )
 }

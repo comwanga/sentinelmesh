@@ -16,12 +16,12 @@ import { RadiusZoneLayer } from '../components/map/RadiusZoneLayer'
 
 type FilterId = 'security' | 'unrest' | 'traffic' | 'environment' | 'response' | 'other'
 const FILTERS: { id: FilterId; label: string; color: string; types: EventType[] }[] = [
-  { id: 'security', label: 'Security', color: '#ff5c57', types: ['SECURITY_INCIDENT'] },
-  { id: 'unrest', label: 'Unrest', color: '#ff9f43', types: ['CIVIL_UNREST'] },
-  { id: 'traffic', label: 'Traffic', color: '#50a7ff', types: ['TRAFFIC_INCIDENT'] },
-  { id: 'environment', label: 'Fire + flood', color: '#29d6c7', types: ['FIRE', 'FLOOD'] },
-  { id: 'response', label: 'Public safety', color: '#d9c27c', types: ['MEDICAL_EMERGENCY', 'INFRASTRUCTURE_FAILURE'] },
-  { id: 'other', label: 'Other', color: '#879499', types: ['FALSE_ALARM'] },
+  { id: 'security', label: 'Security', color: '#d83d3d', types: ['SECURITY_INCIDENT'] },
+  { id: 'unrest', label: 'Unrest', color: '#e27032', types: ['CIVIL_UNREST'] },
+  { id: 'traffic', label: 'Traffic', color: '#2e87a7', types: ['TRAFFIC_INCIDENT'] },
+  { id: 'environment', label: 'Fire + flood', color: '#0b6b61', types: ['FIRE', 'FLOOD'] },
+  { id: 'response', label: 'Public safety', color: '#b38119', types: ['MEDICAL_EMERGENCY', 'INFRASTRUCTURE_FAILURE'] },
+  { id: 'other', label: 'Other', color: '#687c78', types: ['FALSE_ALARM'] },
 ]
 
 export function LiveMapPage() {
@@ -57,7 +57,7 @@ export function LiveMapPage() {
 
   return <div data-testid="live-map-page" className="atlas-workspace">
     <section className="map-stage" aria-label="Live incident atlas">
-      {!loaded && <div className="map-loading"><ScanLine /><span>Calibrating field atlas</span><i /></div>}
+      {!loaded && <div className="map-loading"><ScanLine /><span>Preparing the safety map</span><i /></div>}
       <MapCanvas initialViewState={initialViewport} onMapLoad={() => setLoaded(true)} onBoundsChange={onBoundsChange}>
         {showRadii && <RadiusZoneLayer events={visible} />}
         <EventClusterLayer events={visible} onEventClick={setSelected} selectedEventId={selected?.id} />
@@ -65,10 +65,10 @@ export function LiveMapPage() {
       </MapCanvas>
 
       <div className="map-instrument" aria-label="Viewport status">
-        <div className="instrument-brand"><Radio size={15} /><span>FIELD / {viewport ? `${viewport.zoom.toFixed(1)}Z` : 'SYNC'}</span></div>
-        <div><strong>{visible.length}</strong><span>IN VIEW</span></div>
+        <div className="instrument-brand"><Radio size={15} /><span>MAP / {viewport ? `${viewport.zoom.toFixed(1)}Z` : 'SYNC'}</span></div>
+        <div><strong>{visible.length}</strong><span>IN AREA</span></div>
         <div><strong>{confirmed}</strong><span>CONFIRMED</span></div>
-        <div className="feed-live"><i /><span>LIVE FEED</span></div>
+        <div className="feed-live"><i /><span>LIVE UPDATES</span></div>
       </div>
 
       <div className="atlas-filters" aria-label="Incident filters">

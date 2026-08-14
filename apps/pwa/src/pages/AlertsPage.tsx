@@ -78,37 +78,19 @@ export function AlertsPage() {
   const filtersActive = selectedTypes.size > 0 || statusFilter !== 'ALL' || timeRange !== 'ALL'
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', height: '100%',
-      background: '#0B0E14', overflow: 'hidden',
-    }} data-testid="alerts-page">
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '12px 16px 8px',
-        borderBottom: '1px solid #1a2035',
-      }}>
-        <h1 style={{
-          margin: 0, fontFamily: "'Courier New', monospace", fontSize: 15,
-          fontWeight: 700, color: '#00E5FF', letterSpacing: '0.1em',
-        }}>
-          ACTIVE ALERTS
-        </h1>
+    <div className="page" data-testid="alerts-page">
+      <div className="page-header">
+        <h1>Community alerts
         {filtersActive && (
-          <span style={{
-            background: '#FF2D2D', color: '#fff', borderRadius: 12,
-            fontFamily: "'Courier New', monospace", fontSize: 10,
-            padding: '2px 8px', fontWeight: 700, letterSpacing: '0.05em',
-          }}>
-            {filtered.length} ALERTS
+          <span className="count-badge">
+            {filtered.length} alerts
           </span>
         )}
+        </h1>
+        <p>Review active incidents, evidence status, and recent community updates.</p>
       </div>
 
-      <div style={{
-        display: 'flex', gap: 6, padding: '8px 16px',
-        overflowX: 'auto', borderBottom: '1px solid #1a2035',
-        scrollbarWidth: 'none',
-      }}>
+      <div className="filter-bar">
         {ALL_EVENT_TYPES.map(type => {
           const active = selectedTypes.has(type)
           return (
@@ -116,68 +98,44 @@ export function AlertsPage() {
               key={type}
               onClick={() => toggleType(type)}
               data-testid={`type-chip-${type}`}
-              style={{
-                flexShrink: 0, border: 'none', borderRadius: 12, cursor: 'pointer',
-                fontFamily: "'Courier New', monospace", fontSize: 11, letterSpacing: '0.05em',
-                padding: '4px 8px', whiteSpace: 'nowrap',
-                background: active ? '#00E5FF' : '#1a2035',
-                color: active ? '#0B0E14' : '#4a5568',
-                fontWeight: active ? 700 : 400,
-              }}
+              className={active ? 'active' : ''}
             >
               {TYPE_LABELS[type]}
             </button>
           )
         })}
 
-        <div style={{ width: 1, background: '#1a2035', flexShrink: 0, margin: '0 4px' }} />
+        <div className="filter-divider" />
 
         {(['ALL', 'CONFIRMED', 'UNVERIFIED'] as StatusFilter[]).map(s => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
             data-testid={`status-filter-${s}`}
-            style={{
-              flexShrink: 0, border: 'none', borderRadius: 12, cursor: 'pointer',
-              fontFamily: "'Courier New', monospace", fontSize: 11, letterSpacing: '0.05em',
-              padding: '4px 8px',
-              background: statusFilter === s ? '#00E5FF' : '#1a2035',
-              color: statusFilter === s ? '#0B0E14' : '#4a5568',
-              fontWeight: statusFilter === s ? 700 : 400,
-            }}
+            className={statusFilter === s ? 'active' : ''}
           >
             {s}
           </button>
         ))}
 
-        <div style={{ width: 1, background: '#1a2035', flexShrink: 0, margin: '0 4px' }} />
+        <div className="filter-divider" />
 
         {(['1h', '6h', '24h', 'ALL'] as TimeRange[]).map(t => (
           <button
             key={t}
             onClick={() => setTimeRange(t)}
             data-testid={`time-range-${t}`}
-            style={{
-              flexShrink: 0, border: 'none', borderRadius: 12, cursor: 'pointer',
-              fontFamily: "'Courier New', monospace", fontSize: 11, letterSpacing: '0.05em',
-              padding: '4px 8px',
-              background: timeRange === t ? '#00E5FF' : '#1a2035',
-              color: timeRange === t ? '#0B0E14' : '#4a5568',
-              fontWeight: timeRange === t ? 700 : 400,
-            }}
+            className={timeRange === t ? 'active' : ''}
           >
             {t}
           </button>
         ))}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px' }}>
+      <div className="page-content">
         {filtered.length === 0 ? (
-          <div style={{
-            textAlign: 'center', padding: '40px 0',
-            fontFamily: "'Courier New', monospace", fontSize: 12, color: '#4a5568',
-          }}>
-            NO ALERTS MATCH FILTERS
+          <div className="empty-state">
+            No alerts match these filters.
           </div>
         ) : (
           filtered.map(e => (

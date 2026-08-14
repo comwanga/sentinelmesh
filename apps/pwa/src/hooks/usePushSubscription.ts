@@ -50,9 +50,15 @@ export function usePushSubscription(vapidPublicKey = VAPID_PUBLIC_KEY) {
   useEffect(() => {
     if (!supported) return
     if (Notification.permission === 'denied') { setState('denied'); return }
-    if (!localStorage.getItem(PREFERENCES_KEY)) return
+    const saved = loadPushPreferences()
+    if (!localStorage.getItem(PREFERENCES_KEY) || !saved.center) return
     void navigator.serviceWorker.ready.then(registration => registration.pushManager.getSubscription()).then(subscription => {
-      setState(subscription ? 'enabled' : 'idle')
+      if (!subscription) { setState('idle'); return }
+      const body = JSON.stringify({
+        subscription: subscription.toJSON(), min_severity: saved.minSeverity,
+        center_lat: saved.center!.lat, center_lng: saved.center!.lng, radius_km: saved.radiusKm,
+      })
+      return request('POST', body).then(() => setState('enabled'))
     }).catch(() => setState('error'))
   }, [supported])
 

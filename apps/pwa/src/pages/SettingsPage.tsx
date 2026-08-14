@@ -167,18 +167,18 @@ export function SettingsPage() {
   }, [])
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', background: '#0B0E14' }}>
-      <div style={{ padding: '16px 20px', borderBottom: '1px solid #1a2035' }}>
-        <h1 style={{ fontFamily: "'Courier New', monospace", fontSize: 16, color: '#e2e8f0', margin: 0, letterSpacing: '0.1em' }}>
-          Settings
-        </h1>
+    <div className="page-scroll">
+      <div className="page-header">
+        <h1>Identity and preferences</h1>
+        <p>Manage nearby alerts, signing, identity verification, and encrypted recovery.</p>
       </div>
 
       <AlertPerimeter />
+      <div className="settings-grid">
 
-      <section style={{ padding: '20px', borderBottom: '1px solid #1a2035' }}>
-        <h2 style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#BB86FC', letterSpacing: '0.1em', margin: '0 0 8px' }}>
-          ACTIVE SIGNER
+      <section className="settings-card wide">
+        <h2>
+          Active signer
         </h2>
         <p style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', margin: '0 0 12px', lineHeight: 1.5 }}>
           Local signing is the default. Connect a NIP-46 bunker to use one remote identity for reports, votes, vouches, NIP-05, and request authentication.
@@ -217,8 +217,8 @@ export function SettingsPage() {
       </section>
 
       {/* ── Identity ─────────────────────────────── */}
-      <section style={{ padding: '20px', borderBottom: '1px solid #1a2035' }}>
-        <h2 style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#00E5FF', letterSpacing: '0.1em', margin: '0 0 14px' }}>
+      <section className="settings-card">
+        <h2>
           Nostr Identity
         </h2>
         <p style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', margin: '0 0 12px' }}>
@@ -412,9 +412,9 @@ export function SettingsPage() {
       </section>
 
       {/* ── Vouch for a key ──────────────────────── */}
-      <section style={{ padding: '20px', borderBottom: '1px solid #1a2035' }}>
-        <h2 style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#00E5FF', letterSpacing: '0.1em', margin: '0 0 8px' }}>
-          VOUCH FOR A KEY
+      <section className="settings-card">
+        <h2>
+          Vouch for a key
         </h2>
         <p style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', margin: '0 0 12px', lineHeight: 1.5 }}>
           Vouch for someone you know to be a real person. This is a public attestation.
@@ -456,9 +456,9 @@ export function SettingsPage() {
       </section>
 
       {/* ── Data handling ─────────────────────────── */}
-      <section style={{ padding: '20px', borderBottom: '1px solid #1a2035' }}>
-        <h2 style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#00E5FF', letterSpacing: '0.1em', margin: '0 0 8px' }}>
-          Current Data Handling
+      <section className="settings-card">
+        <h2>
+          Current data handling
         </h2>
         {[
           'No name, email, or phone number is required; an optional NIP-05 name@domain label is stored when you verify one.',
@@ -473,19 +473,18 @@ export function SettingsPage() {
       </section>
 
       {/* ── Open Protocols ───────────────────────── */}
-      <section style={{ padding: '20px' }}>
-        <h2 style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#00E5FF', letterSpacing: '0.1em', margin: '0 0 8px' }}>
-          Built on Open Protocols
+      <section className="settings-card">
+        <h2>
+          Open protocols
         </h2>
-        <div style={{ display: 'flex', gap: 12 }}>
-          {['Nostr'].map(proto => (
-            <span key={proto} style={{
-              fontFamily: "'Courier New', monospace", fontSize: 10, padding: '4px 10px',
-              border: '1px solid #1a2035', borderRadius: 6, color: '#BB86FC',
-            }}>{proto}</span>
+        <p>SentinelMesh uses Nostr for portable keys and signed actions, with open map data for community awareness.</p>
+        <div className="protocol-list">
+          {['NIP-01 signatures', 'NIP-05 identity', 'NIP-19 keys', 'NIP-46 remote signing', 'NIP-98 HTTP auth', 'OpenStreetMap'].map(proto => (
+            <span key={proto} className="protocol-chip">{proto}</span>
           ))}
         </div>
       </section>
+      </div>
     </div>
   )
 }

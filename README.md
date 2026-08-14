@@ -1,25 +1,38 @@
 # SentinelMesh
 
-A community incident-awareness prototype. It shows incidents on a map and lets people submit signed reports without creating a conventional account. Identity is a cryptographic [Nostr](https://nostr.com) keypair created on the device; location and pseudonymous identity data are still processed as described below.
+A privacy-aware community safety network. SentinelMesh combines a live OpenStreetMap-based incident map, signed community reports, durable nearby alerts, and portable [Nostr](https://nostr.com) identity without requiring a conventional account.
 
 The hard part of an app like this isn't drawing dots on a map — it's deciding **which dots to trust**. SentinelMesh's design is built around that question: automated signals start out untrusted and earn trust only through independent corroboration, and the server is built to hold as little readable personal data as possible.
 
-> **V2 scope freeze:** SentinelMesh supports the incident map, alert list, signed community reports, and local identity. Family Circles, acoustic detection, routing, photos, and Insights are experimental and hidden by default. See [`docs/V2_SCOPE.md`](docs/V2_SCOPE.md) for the supported boundary and trust terminology.
+The default product supports the safety map, alert list, signed community reports, local or remote signing, optional NIP-05 identity, encrypted backup and restore, and opt-in push perimeters. Family Circles, acoustic detection, routing, photos, and Insights remain experimental and hidden by default. See [`docs/V2_SCOPE.md`](docs/V2_SCOPE.md) for the supported boundary and trust terminology.
 
 ---
 
 ## What it does
 
-| Capability | V2 status | Description |
+| Capability | Status | Description |
 |---|---|---|
-| **Incident map and alerts** | Core | Displays loaded incidents and their explicit stored trust state. Missing trust data is treated as unverified. |
+| **Safety map and alerts** | Core | Uses MapLibre with OpenStreetMap-derived OpenFreeMap data. Displays each incident's stored trust state; missing trust data is unverified. |
 | **Community reports** | Core | Submits location-based reports signed by the user's local Nostr key and supports community confirmation or denial. |
-| **Local identity** | Core | Generates and stores a cryptographic identity in the browser with backup, restore, and optional NIP-05 verification controls. |
+| **Nostr identity** | Core | Generates an encrypted local identity or connects a NIP-46 remote signer, with backup, restore, NIP-19 key handling, and optional NIP-05 verification. |
 | **Push notifications** | Core | User-enabled alert perimeters deliver confirmed incidents through durable, geographically targeted queues. |
 | **Family Circles** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_CIRCLES`; the current client/server journey is not release-ready. |
 | **Acoustic detection** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ACOUSTIC`; detections are client assertions and cannot independently confirm an event. |
 | **Routing** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ROUTING`; routes are not described as safe or authoritative. |
 | **Photos** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_PHOTOS`; privacy processing is best effort. |
+
+### Nostr protocol support
+
+| NIP | Status | SentinelMesh use |
+|---|---|---|
+| **NIP-01** | Core primitives | Event IDs, secp256k1 signatures, and signature verification for reports, votes, vouches, and authenticated actions. Signed application events are submitted to the gateway; SentinelMesh is not a general relay client. |
+| **NIP-05** | Core | Optional `name@domain` verification for the active public key, with server-side HTTPS resolution and an explicit validity window. |
+| **NIP-19** | Core, scoped | Displays `npub`, imports/exports `nsec`, and accepts `npub` or hex public keys. Other NIP-19 entities are not claimed. |
+| **NIP-44 v2** | Experimental | Pairwise encrypted delivery of Family Circle keys. The cryptographic envelope and persistence paths are implemented; live Circle location sharing remains experimental. |
+| **NIP-46** | Core | Connects a `bunker://` remote signer, verifies returned events, persists encrypted connection state, and never silently falls back to the local key. |
+| **NIP-98** | Core | Authenticates identity, push, and supported mutation requests with signed kind `27235` events, exact URL/method binding, optional payload hashes, and Redis replay protection. |
+
+NIP-07 detection exists only as scaffolding and is not presented as an active signer mode. NIP-49 and NIP-57 are not implemented in the current product.
 
 ---
 
@@ -56,7 +69,7 @@ Be precise about this — overclaiming privacy is a safety risk for the people w
 - **Community-report locations** are coarsened to a ~100 m cell, and the reporter's identity (pubkey/signature) is stored in a separate access-controlled table behind a restricted database role. A database leak cannot link a precise location trail to a person.
 - **Audio** never leaves the device. Acoustic detection sends only a label, confidence, and location.
 - **No name/email/phone is required.** If a user opts into NIP-05 verification, the canonical `name@domain` label and its 24-hour verification window are stored with the public key. The user can remove it explicitly; otherwise it remains as expired history until that public key verifies again or another key reclaims the label.
-- **Mapbox tiles** are proxied through the gateway (`/api/tiles`); the Mapbox token is not exposed to the browser.
+- **Map browsing uses open data.** The default PWA renders OpenStreetMap-derived OpenFreeMap vector data with MapLibre. No Mapbox browser token is required.
 - **Photos** are EXIF-stripped and face-blurred on-device before upload (face blur is best-effort, frontal faces only).
 
 **Threat model.** The community-report and family-circle protections above defend against a **stolen database or leaked read access without the application's secrets**. They do **not** hide data from the running server operator (who holds the keying secrets) — that is a deliberate, documented scope boundary, to be narrowed by later work.
@@ -84,7 +97,7 @@ Remaining gaps are tracked in `docs/audit/` with a remediation plan.
 │          API Gateway              │
 │   Rust + axum 0.7 · sqlx 0.8      │
 │   WebSocket hub · trust workers   │
-│   tile proxy · push               │
+│   push delivery · API             │
 └──────────────┬──────────────┘
                │
         ┌──────┴──────┐
@@ -101,10 +114,10 @@ Two things flow through the gateway continuously and are worth calling out, beca
 
 | Service | Language | Path | What it does |
 |---|---|---|---|
-| API Gateway | Rust + axum | `services/gateway/` | Auth (Nostr NIP-98, kind 27235), REST routes, WebSocket hub, trust-synthesis workers, tile proxy, push, IPFS photo proxy |
+| API Gateway | Rust + axum | `services/gateway/` | Nostr authentication, REST routes, WebSocket hubs, trust-synthesis workers, durable push, and optional media/map proxies |
 | Signal Ingest | Python + FastAPI | `services/signal/` | RSS / Twitter / radio → async NLP (negation-aware classifier) → events via Redis Streams |
 | Shared types | Rust | `services/sentinel-core/` | Domain types shared across Rust services |
-| PWA | React + Vite | `apps/pwa/` | Map, acoustic detection, reports, family circles, push notifications |
+| PWA | React + Vite | `apps/pwa/` | Responsive MapLibre safety map, alerts, reports, Nostr identity, and push preferences |
 | Database | PostgreSQL 16 | `infra/postgres/` | All persistent data (active V2 migrations under `infra/postgres/migrations-v2/`) |
 | Cache / Streams | Redis 7 | Docker service | Real-time event delivery via Redis Streams (XADD/XREADGROUP) |
 
@@ -116,7 +129,8 @@ Two things flow through the gateway continuously and are worth calling out, beca
 
 - Docker 24+ and Docker Compose v2
 - Rust toolchain (stable) — [install via rustup](https://rustup.rs)
-- A Mapbox secret token only if Mapbox-backed routes or tiles are enabled
+- Internet access to OpenFreeMap for default vector map data, or a compatible self-hosted tile source
+- A Mapbox secret token only if optional Mapbox-backed proxy routes are enabled
 - Node.js 20+ for local PWA development
 
 ### Step 1 — Clone and configure
@@ -208,7 +222,7 @@ All variables go in the root `.env` file. Copy `.env.example` to get started.
 | `INTERNAL_SERVICE_SECRET` | Random string for service-to-service auth (required in production; fails closed if unset) |
 | `CIRCLE_TOKEN_SECRET` | Random string used to derive the per-circle membership tokens (required in production; **stable** — rotating it invalidates existing circle tokens) |
 | `PUBLIC_BASE_URL` | Canonical external origin used by NIP-98 validation |
-| `MAPBOX_TOKEN` | Optional Mapbox secret token used only by the server-side proxy |
+| `MAPBOX_TOKEN` | Optional Mapbox secret token used only by optional server-side proxy routes; not required by the default map |
 
 ### Optional
 
@@ -274,7 +288,7 @@ sentinelmesh/
 
 ---
 
-## Current implementation status
+## Implementation status
 
 - [x] Local Nostr identity, signing, backup, and restore primitives
 - [x] Community report submission and voting paths
@@ -285,6 +299,10 @@ sentinelmesh/
 - [x] Transactionally atomic report transitions and side effects
 - [x] Single-host core production deployment, migrations, readiness, backup drills, and monitoring
 - [x] Durable and targeted push delivery with explicit permission controls
+- [x] NIP-05 identity verification and expiry controls
+- [x] NIP-46 remote signer mode with strict no-fallback behavior
+- [x] NIP-98 authenticated mutations and replay protection
+- [x] Bright responsive interface and OpenStreetMap-based MapLibre cartography
 
 Signal ingestion, Family Circles, acoustic detection, routing, photos, and Insights are retained as experimental work. Presence in the repository is not an end-to-end completion claim.
 

@@ -54,7 +54,7 @@ describe('ReportList', () => {
   test('shows empty state when no reports', () => {
     const store = buildStore([])
     render(<Provider store={store}><ReportList /></Provider>)
-    expect(screen.getByText(/no reports/i)).toBeTruthy()
+    expect(screen.getByText(/no community reports/i)).toBeTruthy()
   })
 
   test('displays status badge', () => {
