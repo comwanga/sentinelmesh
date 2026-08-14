@@ -26,6 +26,8 @@ export default defineConfig({
       },
       workbox: {
         importScripts: ['/push-sw.js'],
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff2}'],
         runtimeCaching: [
           {
