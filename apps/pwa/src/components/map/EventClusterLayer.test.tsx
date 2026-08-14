@@ -19,8 +19,8 @@ vi.mock('../EventMarker', () => ({
 }))
 
 vi.mock('./ClusterMarker', () => ({
-  ClusterMarker: ({ totalCount }: { totalCount: number }) => (
-    <div data-testid="cluster-marker" data-count={totalCount} />
+  ClusterMarker: ({ totalCount, onClick }: { totalCount: number; onClick: () => void }) => (
+    <button data-testid="cluster-marker" data-count={totalCount} onClick={onClick} />
   ),
 }))
 
@@ -65,6 +65,14 @@ describe('EventClusterLayer', () => {
     const clusterMarkers = screen.queryAllByTestId('cluster-marker')
     const clusterWith2 = clusterMarkers.find(el => el.getAttribute('data-count') === '2')
     expect(clusterWith2).toBeDefined()
+  })
+
+  it('passes every cluster member instead of selecting an arbitrary event', () => {
+    const onClusterClick = vi.fn()
+    render(<EventClusterLayer zoom={10} onClusterClick={onClusterClick} />)
+    const cluster = screen.getAllByTestId('cluster-marker').find(el => el.getAttribute('data-count') === '2')!
+    cluster.click()
+    expect(onClusterClick).toHaveBeenCalledWith([event1, event2])
   })
 
   it('does not render inactive events', () => {

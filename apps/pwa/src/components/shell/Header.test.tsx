@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import eventsReducer from '../../store/eventsSlice'
@@ -47,5 +47,15 @@ describe('Header', () => {
   it('shows active event count in notification badge', () => {
     render(<Header />, { wrapper: wrap(makeStore({ items: [baseEvent] })) })
     expect(screen.getByText('1')).toBeInTheDocument()
+  })
+
+  it('navigates an entered search to the map query', () => {
+    function Location() { return <output data-testid="location">{useLocation().pathname}{useLocation().search}</output> }
+    const store = makeStore()
+    render(<Provider store={store}><MemoryRouter><Header /><Location /></MemoryRouter></Provider>)
+    const input = screen.getByLabelText('Search the safety map')
+    fireEvent.change(input, { target: { value: '  Central Park  ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(screen.getByTestId('location')).toHaveTextContent('/map?q=Central%20Park')
   })
 })

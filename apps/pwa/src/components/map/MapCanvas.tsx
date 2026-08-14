@@ -11,11 +11,37 @@ interface ViewState {
   zoom: number
 }
 
+export type CameraCommand =
+  | { id: number; center: [number, number]; zoom?: number; padding?: number | { top: number; right: number; bottom: number; left: number } }
+  | { id: number; bounds: [number, number, number, number]; padding?: number | { top: number; right: number; bottom: number; left: number } }
+
 interface Props {
   initialViewState?: ViewState
   children?: React.ReactNode
   onMapLoad?: () => void
   onBoundsChange?: (bounds: ViewportBounds, zoom: number) => void
+  cameraCommand?: CameraCommand | null
+}
+
+function CameraController({ command }: { command: CameraCommand }) {
+  const { current: map } = useMap()
+
+  useEffect(() => {
+    if (!map) return
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    const options = { padding: command.padding, duration: reducedMotion ? 0 : 700 }
+    if ('bounds' in command) {
+      map.fitBounds([[command.bounds[0], command.bounds[1]], [command.bounds[2], command.bounds[3]]], options)
+    } else {
+      map.easeTo({
+        ...options,
+        center: command.center,
+        zoom: Math.max(map.getZoom(), command.zoom ?? 15),
+      })
+    }
+  }, [command, map])
+
+  return null
 }
 
 interface ViewportReporterProps {
@@ -42,7 +68,7 @@ function ViewportReporter({ onBoundsChange }: ViewportReporterProps) {
   return null
 }
 
-export function MapCanvas({ initialViewState = WORLD_CENTER, children, onMapLoad, onBoundsChange }: Props = {}) {
+export function MapCanvas({ initialViewState = WORLD_CENTER, children, onMapLoad, onBoundsChange, cameraCommand }: Props = {}) {
   const handleMoveEnd = useCallback((evt: { viewState: ViewState }) => {
     persistViewport(evt.viewState)
   }, [])
@@ -57,6 +83,7 @@ export function MapCanvas({ initialViewState = WORLD_CENTER, children, onMapLoad
         mapStyle={MAP_STYLE}
       >
         {onBoundsChange && <ViewportReporter onBoundsChange={onBoundsChange} />}
+        {cameraCommand && <CameraController command={cameraCommand} />}
         {children}
       </Map>
     </div>

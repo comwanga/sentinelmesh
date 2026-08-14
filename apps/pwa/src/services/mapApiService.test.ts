@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { searchAddress, getRoute, reverseGeocode } from './mapApiService'
+import { searchAddress, getRoute, MapSearchError, reverseGeocode } from './mapApiService'
 
 const mockFetch = vi.fn()
 globalThis.fetch = mockFetch
@@ -31,15 +31,15 @@ describe('searchAddress', () => {
     expect(mockFetch.mock.calls[0][0]).toContain('lat=-1.28')
   })
 
-  test('returns empty array on non-ok response', async () => {
-    mockFetch.mockResolvedValue({ ok: false })
-    expect(await searchAddress('xyz')).toEqual([])
+  test('distinguishes a non-ok response from no results', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 503 })
+    await expect(searchAddress('xyz')).rejects.toBeInstanceOf(MapSearchError)
   })
 
-  test('returns empty array on network error', async () => {
+  test('distinguishes a network error from no results', async () => {
     const error = new Error('network')
     mockFetch.mockRejectedValue(error)
-    expect(await searchAddress('xyz')).toEqual([])
+    await expect(searchAddress('xyz')).rejects.toBeInstanceOf(MapSearchError)
   })
 })
 
