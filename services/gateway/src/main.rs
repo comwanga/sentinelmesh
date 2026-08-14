@@ -61,11 +61,17 @@ async fn main() -> anyhow::Result<()> {
     let redis_healthy = Arc::new(AtomicBool::new(false));
     let workers_healthy = Arc::new(AtomicBool::new(true));
 
-    let map_provider: std::sync::Arc<dyn maps::MapProvider> =
-        std::sync::Arc::new(maps::MapboxAdapter::new(
+    let map_provider: std::sync::Arc<dyn maps::MapProvider> = if config.map_api_enabled {
+        std::sync::Arc::new(maps::StadiaAdapter::new(
             http_client.clone(),
-            config.mapbox_token.clone().unwrap_or_default(),
-        ));
+            config
+                .stadia_api_key
+                .clone()
+                .ok_or_else(|| anyhow::anyhow!("MAP_API_ENABLED requires STADIA_API_KEY"))?,
+        ))
+    } else {
+        std::sync::Arc::new(maps::DisabledMapProvider)
+    };
 
     let acoustic_limiter: Arc<DefaultKeyedRateLimiter<String>> = Arc::new(RateLimiter::keyed(
         Quota::per_minute(NonZeroU32::new(ACOUSTIC_RATE_LIMIT_PER_MINUTE).unwrap()),

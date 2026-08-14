@@ -17,13 +17,13 @@ const HOME_KEY = 'sentinel_home_location'
 const MODES: { id: TravelMode; label: string }[] = [
   { id: 'walking', label: 'WALK' },
   { id: 'driving', label: 'DRIVE' },
-  { id: 'transit', label: 'TRANSIT' },
+  { id: 'cycling', label: 'CYCLE' },
 ]
 
 const MODE_DURATION_LABEL: Record<TravelMode, string> = {
   walking: 'WALKING',
   driving: 'DRIVING',
-  transit: 'TRANSIT',
+  cycling: 'CYCLING',
 }
 
 interface Props {
@@ -225,17 +225,6 @@ export function HomeRoutePanel({ onClose }: Props) {
               </button>
             ))}
           </div>
-
-          {mode === 'transit' && (
-            <div style={{
-              fontSize: 9, color: '#FF9800', background: '#0d1118',
-              border: '1px solid rgba(255,152,0,0.2)', borderRadius: 4,
-              padding: '6px 8px', marginBottom: 8, lineHeight: 1.5,
-            }}>
-              Live transit routing requires GTFS feed data.
-              Showing driving estimate — verify with a local transit app.
-            </div>
-          )}
 
           <button
             onClick={doFetch}

@@ -1,6 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
-export type TravelMode = 'walking' | 'driving' | 'transit'
+export type TravelMode = 'walking' | 'driving' | 'cycling'
 
 export interface UiIntent {
   type: 'overlay' | 'modal'

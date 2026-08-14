@@ -1,40 +1,43 @@
 import type { LatLng } from '../utils/geo'
 
 export interface GeocodeSuggestion {
+  id: string
   label: string
+  kind: 'address' | 'road' | 'place' | 'poi'
   lat: number
   lng: number
+  bbox?: [number, number, number, number]
 }
 
 export interface RouteResult {
+  id: string
   coordinates: [number, number][]
+  distance_m: number
+  duration_s: number
+  warnings: string[]
+  degraded: boolean
+  // Downstream route presentation still consumes these aliases.
   distance: number
   duration: number
 }
 
-export type TravelMode = 'walking' | 'driving' | 'transit'
-
-const OSRM_BASE = 'https://router.project-osrm.org/route/v1'
-const OSRM_PROFILE: Record<TravelMode, string> = {
-  walking: 'foot',
-  driving: 'driving',
-  transit: 'driving', // OSRM has no transit; callers show a UI message for transit
-}
+export type TravelMode = 'walking' | 'driving' | 'cycling'
 
 export async function searchAddress(
   query: string,
-  proximity?: { lat: number; lng: number },
+  proximity?: LatLng,
+  signal?: AbortSignal,
 ): Promise<GeocodeSuggestion[]> {
-  const params = new URLSearchParams({ q: query, limit: '5' })
+  const params = new URLSearchParams({ q: query.trim(), limit: '5' })
   if (proximity) {
     params.set('lat', String(proximity.lat))
     params.set('lng', String(proximity.lng))
   }
   try {
-    const res = await fetch(`/api/maps/search?${params}`)
+    const res = await fetch(`/api/maps/search?${params}`, { signal })
     if (!res.ok) return []
-    const data = await res.json() as { features?: GeocodeSuggestion[] }
-    return data.features ?? []
+    const data = await res.json() as { results: GeocodeSuggestion[] }
+    return data.results
   } catch {
     return []
   }
@@ -44,54 +47,40 @@ export async function getRoute(
   from: LatLng,
   to: LatLng,
   mode: TravelMode = 'walking',
+  signal?: AbortSignal,
 ): Promise<RouteResult[]> {
-  // Try backend first (has danger-zone enrichment)
   try {
-    const params = new URLSearchParams({
-      from: `${from.lng},${from.lat}`,
-      to: `${to.lng},${to.lat}`,
-      mode,
+    const res = await fetch('/api/maps/route', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to, mode, alternatives: true }),
+      signal,
     })
-    const res = await fetch(`/api/maps/route?${params}`)
-    if (res.ok) {
-      const data = await res.json() as RouteResult | RouteResult[]
-      return Array.isArray(data) ? data : [data]
-    }
-  } catch { /* fall through */ }
-
-  // Direct OSRM fallback — works without backend
-  try {
-    const profile = OSRM_PROFILE[mode]
-    const url =
-      `${OSRM_BASE}/${profile}/${from.lng},${from.lat};${to.lng},${to.lat}` +
-      `?geometries=geojson&alternatives=true&steps=false`
-    const res = await fetch(url)
     if (!res.ok) return []
     const data = await res.json() as {
-      code: string
-      routes: Array<{
-        geometry: { coordinates: [number, number][] }
-        distance: number
-        duration: number
-      }>
+      routes: Omit<RouteResult, 'distance' | 'duration'>[]
     }
-    if (data.code !== 'Ok') return []
-    return data.routes.map(r => ({
-      coordinates: r.geometry.coordinates,
-      distance: r.distance,
-      duration: r.duration,
+    return data.routes.map(route => ({
+      ...route,
+      distance: route.distance_m,
+      duration: route.duration_s,
     }))
   } catch {
     return []
   }
 }
 
-export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+export async function reverseGeocode(
+  lat: number,
+  lng: number,
+  signal?: AbortSignal,
+): Promise<string | null> {
   try {
-    const res = await fetch(`/api/maps/reverse?lat=${lat}&lng=${lng}`)
+    const params = new URLSearchParams({ lat: String(lat), lng: String(lng) })
+    const res = await fetch(`/api/maps/reverse?${params}`, { signal })
     if (!res.ok) return null
-    const data = await res.json() as { label?: string }
-    return data.label ?? null
+    const data = await res.json() as { result: GeocodeSuggestion | null }
+    return data.result?.label ?? null
   } catch {
     return null
   }

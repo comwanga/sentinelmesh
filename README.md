@@ -222,12 +222,14 @@ All variables go in the root `.env` file. Copy `.env.example` to get started.
 | `INTERNAL_SERVICE_SECRET` | Random string for service-to-service auth (required in production; fails closed if unset) |
 | `CIRCLE_TOKEN_SECRET` | Random string used to derive the per-circle membership tokens (required in production; **stable** — rotating it invalidates existing circle tokens) |
 | `PUBLIC_BASE_URL` | Canonical external origin used by NIP-98 validation |
-| `MAPBOX_TOKEN` | Optional Mapbox secret token used only by optional server-side proxy routes; not required by the default map |
 
 ### Optional
 
 | Variable | Description |
 |---|---|
+| `MAP_API_ENABLED` | Enables gateway map search, reverse geocoding, and routing. Defaults to `false`. |
+| `STADIA_API_KEY` | Server-side Stadia Maps API key. Required when map APIs are enabled in production; never expose as a `VITE_*` value. |
+| `MAPBOX_TOKEN` | Legacy server-side tile proxy token only; not used for map search or routing. |
 | `PINATA_JWT` | Server-side Pinata JWT for the IPFS photo proxy (`/api/photos/pin`). |
 | `TWITTER_BEARER_TOKEN` | For pulling Twitter/X signals. Skipped if empty. |
 | `SENTRY_DSN` | Sentry error tracking URL. Optional in dev, recommended in production. |
@@ -237,6 +239,8 @@ All variables go in the root `.env` file. Copy `.env.example` to get started.
 | `VAPID_PRIVATE_KEY` | Base64url-encoded VAPID private key for Web Push. Push is disabled if unset. |
 | `VAPID_PUBLIC_KEY` | Base64url-encoded VAPID public key (also set as `VITE_VAPID_PUBLIC_KEY` for the PWA) |
 | `VAPID_SUBJECT` | `mailto:` or HTTPS URL identifying the push sender (e.g. `mailto:ops@example.com`) |
+
+Map search uses Stadia's autocomplete endpoint for interactive suggestions. A separate submitted-query refinement through the full search endpoint can be added later without changing the public result contract.
 
 To generate VAPID keys:
 ```bash

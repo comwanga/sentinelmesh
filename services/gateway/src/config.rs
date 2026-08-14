@@ -11,6 +11,8 @@ pub struct Config {
     pub circle_token_secret: String,
     pub trust_proxy: bool,
     pub max_db_connections: u32,
+    pub map_api_enabled: bool,
+    pub stadia_api_key: Option<String>,
     pub mapbox_token: Option<String>,
     pub vapid_private_key: Option<String>,
     pub vapid_public_key: Option<String>,
@@ -60,6 +62,7 @@ impl Config {
         // strong, non-default value or the process refuses to start.
         let internal_service_secret = resolve_internal_secret(production)?;
         let circle_token_secret = resolve_circle_token_secret(production)?;
+        let (map_api_enabled, stadia_api_key) = resolve_map_api_config(production)?;
 
         Ok(Config {
             database_url: require("DATABASE_URL")?,
@@ -110,7 +113,12 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(50),
-            mapbox_token: std::env::var("MAPBOX_TOKEN").ok(),
+            map_api_enabled,
+            stadia_api_key,
+            // Legacy tile proxy only; map APIs use StadiaAdapter.
+            mapbox_token: std::env::var("MAPBOX_TOKEN")
+                .ok()
+                .filter(|value| !value.trim().is_empty()),
             vapid_private_key: std::env::var("VAPID_PRIVATE_KEY").ok(),
             vapid_public_key: std::env::var("VAPID_PUBLIC_KEY").ok(),
             vapid_subject: std::env::var("VAPID_SUBJECT").ok(),
@@ -140,6 +148,24 @@ impl Config {
 
 fn require(key: &str) -> Result<String> {
     std::env::var(key).map_err(|_| anyhow::anyhow!("missing required env var: {key}"))
+}
+
+fn env_flag(key: &str, default: bool) -> bool {
+    std::env::var(key)
+        .map(|value| value == "true" || value == "1")
+        .unwrap_or(default)
+}
+
+fn resolve_map_api_config(production: bool) -> Result<(bool, Option<String>)> {
+    let enabled = env_flag("MAP_API_ENABLED", false);
+    let key = std::env::var("STADIA_API_KEY")
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if production && enabled && key.is_none() {
+        anyhow::bail!("STADIA_API_KEY must be set when MAP_API_ENABLED=true in production");
+    }
+    Ok((enabled, key))
 }
 
 const INSECURE_INTERNAL_DEFAULT: &str = "dev-only-insecure-secret";
@@ -583,5 +609,26 @@ mod tests {
         assert_eq!(parse_u64_env_or(None, 3600), 3600);
         assert_eq!(parse_u64_env_or(Some("60".into()), 3600), 60);
         assert_eq!(parse_u64_env_or(Some("bad".into()), 3600), 3600);
+    }
+
+    #[test]
+    fn map_api_is_disabled_by_default_and_blank_key_is_absent() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("MAP_API_ENABLED");
+        std::env::set_var("STADIA_API_KEY", "   ");
+        let result = resolve_map_api_config(false).unwrap();
+        std::env::remove_var("STADIA_API_KEY");
+        assert_eq!(result, (false, None));
+    }
+
+    #[test]
+    fn production_map_activation_requires_key() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("MAP_API_ENABLED", "true");
+        std::env::remove_var("STADIA_API_KEY");
+        let result = resolve_map_api_config(true);
+        std::env::remove_var("MAP_API_ENABLED");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("STADIA_API_KEY"));
     }
 }
