@@ -9,14 +9,14 @@ export function HomeRouteLayer() {
 
   // Determine which route is selected (homeRoute) and which are alternatives
   const selectedCoords = homeRoute?.coordinates
-  const alternatives = homeRoutes.filter(r => r.coordinates !== selectedCoords)
+  const alternatives = homeRoutes.filter(route => route.id !== homeRoute?.id)
 
   return (
     <>
       {/* Faded alternative routes drawn first (under selected) */}
       {alternatives.map((alt, i) => (
         <Source
-          key={`alt-${i}`}
+          key={alt.id}
           id={`home-route-alt-${i}`}
           type="geojson"
           data={{

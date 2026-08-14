@@ -14,12 +14,14 @@ export interface HomeLocation {
 }
 
 export interface HomeRoute {
+  id: string
   coordinates: [number, number][]
   distanceKm: number
   durationMin: number
   warnings: string[]
   label: string
   mode: TravelMode
+  alertIntersections: number
 }
 
 interface UiState {

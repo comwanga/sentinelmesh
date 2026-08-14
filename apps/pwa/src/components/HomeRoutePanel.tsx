@@ -1,308 +1,188 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
-import { useAppSelector, useAppDispatch } from '../store'
+import { useEffect, useRef, useState } from 'react'
+import { useAppDispatch, useAppSelector } from '../store'
 import {
-  setHomeLocation,
-  clearHomeLocation,
-  homeRoutesSet,
-  homeRoutesCleared,
+  clearHomeLocation as clearHomeState,
   homeRouteSelect,
+  homeRoutesCleared,
+  homeRoutesSet,
+  setHomeLocation,
+  type HomeRoute,
   type TravelMode,
 } from '../store/uiSlice'
 import { geocodeAddress, type GeocodeSuggestion } from '../services/geocodingService'
+import { clearHomeLocation, saveHomeLocation } from '../services/homeLocationStore'
 import { fetchRouteToHome } from '../services/routingService'
-import { useCurrentLocation } from '../hooks/useCurrentLocation'
-
-const HOME_KEY = 'sentinel_home_location'
+import type { CurrentLocation, LocationStatus } from '../hooks/useCurrentLocation'
+import type { LatLng } from '../utils/geo'
 
 const MODES: { id: TravelMode; label: string }[] = [
-  { id: 'walking', label: 'WALK' },
-  { id: 'driving', label: 'DRIVE' },
-  { id: 'cycling', label: 'CYCLE' },
+  { id: 'walking', label: 'Walking' },
+  { id: 'driving', label: 'Driving' },
+  { id: 'cycling', label: 'Cycling' },
 ]
 
-const MODE_DURATION_LABEL: Record<TravelMode, string> = {
-  walking: 'WALKING',
-  driving: 'DRIVING',
-  cycling: 'CYCLING',
-}
-
 interface Props {
+  location: CurrentLocation | null
+  locationStatus: LocationStatus
+  searchProximity?: LatLng
   onClose: () => void
+  onRoutePreview?: (routes: HomeRoute[], selectedIndex: number) => void
 }
 
-export function HomeRoutePanel({ onClose }: Props) {
+export function HomeRoutePanel({ location, locationStatus, searchProximity, onClose, onRoutePreview }: Props) {
   const dispatch = useAppDispatch()
-  const homeLocation = useAppSelector(s => s.ui.homeLocation)
-  const homeRoutes = useAppSelector(s => s.ui.homeRoutes)
-  const rawEvents = useAppSelector(s => (s as any).events?.items ?? [])
-  const { location } = useCurrentLocation()
-
-  // Keep events in a ref so doFetch always reads latest without re-creating callback
-  const eventsRef = useRef(rawEvents)
-  eventsRef.current = rawEvents
-
+  const home = useAppSelector(state => state.ui.homeLocation)
+  const routes = useAppSelector(state => state.ui.homeRoutes)
+  const events = useAppSelector(state => state.events.items)
   const [query, setQuery] = useState('')
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([])
-  const [searching, setSearching] = useState(false)
-  const [routing, setRouting] = useState(false)
-  const [routeError, setRouteError] = useState<string | null>(null)
+  const [pendingHome, setPendingHome] = useState<GeocodeSuggestion | null>(null)
   const [mode, setMode] = useState<TravelMode>('walking')
-  const [selectedIdx, setSelectedIdx] = useState(0)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [state, setState] = useState<'idle' | 'searching' | 'saving' | 'routing'>('idle')
+  const [message, setMessage] = useState<string | null>(null)
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchAbort = useRef<AbortController | null>(null)
+  const searchSequence = useRef(0)
 
-  // Debounced autocomplete
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    const trimmed = query.trim()
-    if (trimmed.length < 2) { setSuggestions([]); return }
-    setSearching(true)
-    debounceRef.current = setTimeout(async () => {
-      const results = await geocodeAddress(trimmed, location ?? undefined)
-      setSuggestions(results)
-      setSearching(false)
-    }, 400)
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
-  }, [query, location])
-
-  // Clear stale routes when mode changes
-  useEffect(() => {
-    if (homeRoutes.length > 0) {
-      dispatch(homeRoutesCleared())
-      setSelectedIdx(0)
-    }
-  // only re-run when mode changes, not on every homeRoutes update
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, dispatch])
-
-  const handleSelectHome = useCallback((s: GeocodeSuggestion) => {
-    const home = { lat: s.lat, lng: s.lng, label: s.label }
-    dispatch(setHomeLocation(home))
-    localStorage.setItem(HOME_KEY, JSON.stringify(home))
-    setSuggestions([])
-    setQuery('')
-    dispatch(homeRoutesCleared())
-    setRouteError(null)
-    setSelectedIdx(0)
-  }, [dispatch])
-
-  const handleClearHome = useCallback(() => {
-    dispatch(clearHomeLocation())
-    dispatch(homeRoutesCleared())
-    localStorage.removeItem(HOME_KEY)
-    setRouteError(null)
-    setSelectedIdx(0)
-  }, [dispatch])
-
-  const doFetch = useCallback(async () => {
-    if (!homeLocation || !location) return
-    setRouting(true)
-    setRouteError(null)
-    dispatch(homeRoutesCleared())
-    setSelectedIdx(0)
-    const dangerZones = (eventsRef.current as any[])
-      .filter((e: any) => e.is_active)
-      .map((e: any) => ({ lat: e.lat, lng: e.lng, radiusKm: (e.radius_meters ?? 400) / 1000 }))
-    const routes = await fetchRouteToHome(
-      { lat: location.lat, lng: location.lng },
-      { lat: homeLocation.lat, lng: homeLocation.lng },
-      dangerZones,
-      mode,
-    )
-    setRouting(false)
-    if (!routes.length) {
-      setRouteError('Could not calculate route. Check your connection.')
+    if (debounce.current) clearTimeout(debounce.current)
+    searchAbort.current?.abort()
+    const sequence = ++searchSequence.current
+    const value = query.trim()
+    if (value.length < 2) {
+      setSuggestions([])
+      setState('idle')
       return
     }
-    dispatch(homeRoutesSet(routes))
-  }, [homeLocation, location, mode, dispatch])
+    setState('searching')
+    debounce.current = setTimeout(async () => {
+      const controller = new AbortController()
+      searchAbort.current = controller
+      try {
+        const results = await geocodeAddress(value, searchProximity, controller.signal)
+        if (sequence !== searchSequence.current) return
+        setSuggestions(results)
+        setMessage(null)
+      } catch (error) {
+        if (controller.signal.aborted || Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError')) return
+        if (sequence !== searchSequence.current) return
+        setSuggestions([])
+        setMessage('Home search is unavailable. Try again.')
+      } finally {
+        if (sequence === searchSequence.current) setState('idle')
+      }
+    }, 400)
+    return () => {
+      if (debounce.current) clearTimeout(debounce.current)
+      searchAbort.current?.abort()
+      if (searchSequence.current === sequence) searchSequence.current++
+    }
+  }, [query, searchProximity?.lat, searchProximity?.lng])
 
-  const handleSelectRoute = useCallback((idx: number) => {
-    setSelectedIdx(idx)
-    dispatch(homeRouteSelect(idx))
-  }, [dispatch])
+  function chooseSuggestion(suggestion: GeocodeSuggestion) {
+    setPendingHome(suggestion)
+    setSuggestions([])
+    setQuery('')
+    setMessage(null)
+  }
 
-  const activeRoute = homeRoutes[selectedIdx] ?? null
+  async function confirmHome() {
+    if (!pendingHome) return
+    const next = { lat: pendingHome.lat, lng: pendingHome.lng, label: pendingHome.label }
+    setState('saving')
+    try {
+      await saveHomeLocation(next)
+      dispatch(setHomeLocation(next))
+      dispatch(homeRoutesCleared())
+      setPendingHome(null)
+      setMessage('Home saved, encrypted and stored only on this device.')
+    } catch {
+      setMessage('Home could not be saved on this device. Check private browsing or storage settings.')
+    } finally {
+      setState('idle')
+    }
+  }
 
-  const labelStyle: React.CSSProperties = { fontSize: 9, color: '#4a5568', letterSpacing: '0.06em', marginBottom: 5 }
+  async function clearSavedHome() {
+    try {
+      await clearHomeLocation()
+      dispatch(clearHomeState())
+      dispatch(homeRoutesCleared())
+      setPendingHome(null)
+      setMessage('Saved home cleared from this device.')
+    } catch {
+      setMessage('Saved home could not be cleared. Try again.')
+    }
+  }
 
-  return (
-    <div style={{
-      background: '#0d1118', border: '1px solid #1a2035', borderRadius: 10,
-      padding: 16, width: 300, maxWidth: '100%',
-      fontFamily: "'Courier New', monospace",
-    }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
-        <span style={{ fontSize: 11, letterSpacing: '0.12em', color: '#00E5FF', fontWeight: 700 }}>
-          NAVIGATE HOME
-        </span>
-        <button
-          onClick={() => { onClose(); dispatch(homeRoutesCleared()) }}
-          style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#4a5568', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}
-        >
-          ×
-        </button>
-      </div>
+  async function requestRoute() {
+    if (!home || !location) return
+    setState('routing')
+    setMessage(null)
+    dispatch(homeRoutesCleared())
+    setSelectedIndex(0)
+    try {
+      const dangerZones = events.filter(event => event.is_active).map(event => ({
+        lat: event.lat,
+        lng: event.lng,
+        radiusKm: (Number((event as unknown as Record<string, unknown>).radius_meters) || 400) / 1000,
+      }))
+      const next = await fetchRouteToHome(location, home, dangerZones, mode)
+      if (!next.length) {
+        setMessage('No route preview is available for this trip.')
+        return
+      }
+      dispatch(homeRoutesSet(next))
+      onRoutePreview?.(next, 0)
+      setMessage(`${next.length} route preview${next.length === 1 ? '' : 's'} loaded.`)
+    } catch {
+      setMessage('Route preview provider could not be reached. Check your connection and try again.')
+    } finally {
+      setState('idle')
+    }
+  }
 
-      {/* Saved home */}
-      {homeLocation ? (
-        <div style={{ background: '#050709', border: '1px solid rgba(0,229,255,0.2)', borderRadius: 6, padding: '8px 10px', marginBottom: 12 }}>
-          <div style={{ fontSize: 9, color: '#4a5568', letterSpacing: '0.08em', marginBottom: 4 }}>SAVED HOME</div>
-          <div style={{ fontSize: 10, color: '#e2e8f0', lineHeight: 1.4, marginBottom: 6 }}>{homeLocation.label}</div>
-          <button
-            onClick={handleClearHome}
-            style={{ fontSize: 9, color: '#FF6B6B', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-          >
-            ✕ Clear
-          </button>
-        </div>
-      ) : (
-        <div style={{ fontSize: 9, color: '#4a5568', marginBottom: 10 }}>
-          No home saved. Search below to set your home location.
-        </div>
-      )}
+  function selectRoute(index: number) {
+    setSelectedIndex(index)
+    dispatch(homeRouteSelect(index))
+    onRoutePreview?.(routes, index)
+    setMessage(`Route preview ${index + 1} selected.`)
+  }
 
-      {/* Address search */}
-      <div style={labelStyle}>SET HOME ADDRESS</div>
-      <div style={{ position: 'relative', marginBottom: 6 }}>
-        <input
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Escape') { setQuery(''); setSuggestions([]) } }}
-          placeholder="Type any address or place worldwide…"
-          autoComplete="off"
-          style={{
-            width: '100%', boxSizing: 'border-box',
-            background: '#050709', border: '1px solid #1a2035', borderRadius: 4,
-            color: '#e2e8f0', fontSize: 10, padding: '6px 28px 6px 8px', outline: 'none',
-          }}
-        />
-        {searching && (
-          <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: '#4a5568' }}>…</span>
-        )}
-      </div>
+  const controlStyle: React.CSSProperties = { minHeight: 44, borderRadius: 8, cursor: 'pointer' }
 
-      {/* Autocomplete suggestions */}
-      {suggestions.length > 0 && (
-        <div style={{ marginBottom: 12, border: '1px solid #1a2035', borderRadius: 6, overflow: 'hidden' }}>
-          {suggestions.map((sg, i) => (
-            <button
-              key={i}
-              onClick={() => handleSelectHome(sg)}
-              style={{
-                display: 'block', width: '100%', textAlign: 'left',
-                background: '#050709', border: 'none',
-                borderBottom: i < suggestions.length - 1 ? '1px solid #1a2035' : 'none',
-                color: '#e2e8f0', fontSize: 10, padding: '7px 10px', cursor: 'pointer',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#0d1118')}
-              onMouseLeave={e => (e.currentTarget.style.background = '#050709')}
-            >
-              {sg.label}
-            </button>
-          ))}
-        </div>
-      )}
+  return <aside className="home-route-panel" aria-label="Home route preview">
+    <header><strong>Route preview home</strong><button style={controlStyle} onClick={onClose} aria-label="Close home route preview">Close</button></header>
+    <p className="home-privacy">Your exact home is encrypted and stored only on this device.</p>
 
-      {/* Travel mode + route button only visible once home is saved */}
-      {homeLocation && (
-        <>
-          <div style={{ ...labelStyle, marginTop: 4 }}>TRAVEL MODE</div>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            {MODES.map(m => (
-              <button
-                key={m.id}
-                onClick={() => setMode(m.id)}
-                style={{
-                  flex: 1, padding: '5px 0', fontSize: 9, letterSpacing: '0.06em',
-                  cursor: 'pointer', borderRadius: 4,
-                  background: mode === m.id ? 'rgba(0,229,255,0.12)' : '#050709',
-                  border: `1px solid ${mode === m.id ? 'rgba(0,229,255,0.5)' : '#1a2035'}`,
-                  color: mode === m.id ? '#00E5FF' : '#4a5568',
-                }}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
+    {home && <div className="home-saved"><small>SAVED HOME</small><span>{home.label}</span><button style={controlStyle} onClick={clearSavedHome}>Clear saved home</button></div>}
 
-          <button
-            onClick={doFetch}
-            disabled={routing || !location}
-            style={{
-              width: '100%', padding: '9px 0', marginBottom: 10,
-              background: routing ? '#050709' : 'rgba(0,229,255,0.1)',
-              border: `1px solid ${routing ? '#1a2035' : 'rgba(0,229,255,0.4)'}`,
-              borderRadius: 6,
-              color: routing ? '#4a5568' : '#00E5FF',
-              fontSize: 11, letterSpacing: '0.06em', cursor: routing ? 'default' : 'pointer',
-            }}
-          >
-            {routing ? 'Calculating…' : !location ? 'Enable GPS first' : 'Get Route Home'}
-          </button>
-        </>
-      )}
+    <label htmlFor="home-search">{home ? 'Change home' : 'Set home'}</label>
+    <input id="home-search" style={{ minHeight: 44 }} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search address or place" autoComplete="off" />
+    {state === 'searching' && <p role="status">Searching...</p>}
+    {suggestions.length > 0 && <div className="home-suggestions" role="listbox" aria-label="Home search results">
+      {suggestions.map(suggestion => <button style={controlStyle} role="option" aria-selected="false" key={suggestion.id} onClick={() => chooseSuggestion(suggestion)}>{suggestion.label}</button>)}
+    </div>}
 
-      {routeError && (
-        <div style={{ fontSize: 9, color: '#FF2D2D', marginBottom: 8 }}>{routeError}</div>
-      )}
+    {pendingHome && <div className="home-confirm">
+      <p>Save <strong>{pendingHome.label}</strong> as home?</p>
+      <button style={controlStyle} disabled={state === 'saving'} onClick={confirmHome}>Confirm and save on this device</button>
+      <button style={controlStyle} onClick={() => setPendingHome(null)}>Cancel</button>
+    </div>}
 
-      {/* Route alternatives */}
-      {homeRoutes.length > 0 && (
-        <div>
-          <div style={labelStyle}>ROUTES</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {homeRoutes.map((r, i) => (
-              <button
-                key={i}
-                onClick={() => handleSelectRoute(i)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-                  textAlign: 'left', cursor: 'pointer', borderRadius: 6, padding: '8px 10px',
-                  background: i === selectedIdx ? 'rgba(0,229,255,0.08)' : '#050709',
-                  border: `1px solid ${i === selectedIdx ? 'rgba(0,229,255,0.35)' : '#1a2035'}`,
-                }}
-              >
-                <div style={{
-                  width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                  background: i === selectedIdx ? '#00E5FF' : 'transparent',
-                  border: `1.5px solid ${i === selectedIdx ? '#00E5FF' : '#2a3a55'}`,
-                }} />
-                <span style={{ fontSize: 9, color: i === selectedIdx ? '#e2e8f0' : '#4a6080', flex: 1 }}>
-                  {r.label}
-                </span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: i === selectedIdx ? '#00E5FF' : '#4a6080' }}>
-                  {r.distanceKm} km
-                </span>
-                <span style={{ fontSize: 9, color: '#4a5568', minWidth: 36, textAlign: 'right' }}>
-                  {r.durationMin} min
-                </span>
-              </button>
-            ))}
-          </div>
+    {home && <>
+      <fieldset><legend>Travel mode</legend>{MODES.map(item => <button style={controlStyle} key={item.id} aria-pressed={mode === item.id} onClick={() => { setMode(item.id); dispatch(homeRoutesCleared()) }}>{item.label}</button>)}</fieldset>
+      <button className="route-request" style={controlStyle} disabled={!location || state === 'routing'} onClick={requestRoute}>
+        {state === 'routing' ? 'Loading route preview...' : location ? 'Request route preview' : locationStatus === 'requesting' ? 'Waiting for GPS...' : 'Enable GPS to preview route'}
+      </button>
+    </>}
 
-          {/* Selected route detail + warnings */}
-          {activeRoute && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ display: 'flex', gap: 12, padding: '6px 10px', background: '#050709', border: '1px solid #1a2035', borderRadius: 6 }}>
-                <div>
-                  <div style={{ fontSize: 9, color: '#4a5568', marginBottom: 2 }}>DISTANCE</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#00E5FF' }}>{activeRoute.distanceKm} km</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 9, color: '#4a5568', marginBottom: 2 }}>{MODE_DURATION_LABEL[activeRoute.mode]}</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{activeRoute.durationMin} min</div>
-                </div>
-              </div>
-              {activeRoute.warnings.map((w, wi) => (
-                <div key={wi} style={{ fontSize: 9, color: '#FF9800', display: 'flex', gap: 4, marginTop: 4 }}>
-                  <span>⚠</span><span>{w}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
+    {routes.length > 0 && <div className="route-alternatives"><strong>Alternatives</strong>{routes.map((route, index) => <button style={controlStyle} aria-pressed={index === selectedIndex} key={route.id} onClick={() => selectRoute(index)}>
+      <span>{route.label}</span><span>{route.distanceKm} km, {route.durationMin} min</span>
+      {route.alertIntersections > 0 && <small>Route intersects an alert area</small>}
+    </button>)}</div>}
+    {message && <p role="status" aria-live="polite">{message}</p>}
+    <div className="sr-only" role="status" aria-live="polite">GPS status: {locationStatus}</div>
+  </aside>
 }

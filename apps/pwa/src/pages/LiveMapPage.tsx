@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Crosshair, Layers3, LocateFixed, Radio, ScanLine } from 'lucide-react'
+import { Crosshair, Home, Layers3, LocateFixed, Radio, ScanLine } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import type { EventType, SafetyEvent } from '../../../../shared/types'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { useCurrentLocation } from '../hooks/useCurrentLocation'
 import { useInitialViewport } from '../hooks/useInitialViewport'
 import { useViewportWs, type ViewportBounds } from '../hooks/useViewportWs'
-import { useAppSelector } from '../store'
+import { useAppDispatch, useAppSelector } from '../store'
 import { selectEventItems, selectViewportEventItems } from '../store/eventsSlice'
 import { EventClusterLayer } from '../components/map/EventClusterLayer'
 import { FieldLedger } from '../components/map/FieldLedger'
@@ -16,6 +16,11 @@ import { MapSearch } from '../components/map/MapSearch'
 import { RadiusZoneLayer } from '../components/map/RadiusZoneLayer'
 import { SearchResultMarker } from '../components/map/SearchResultMarker'
 import type { GeocodeSuggestion } from '../services/mapApiService'
+import { HomeRoutePanel } from '../components/HomeRoutePanel'
+import { HomeLocationMarker } from '../components/map/HomeLocationMarker'
+import { HomeRouteLayer } from '../components/map/HomeRouteLayer'
+import { loadHomeLocation } from '../services/homeLocationStore'
+import { homeRoutesCleared, setHomeLocation, type HomeRoute } from '../store/uiSlice'
 
 type FilterId = 'security' | 'unrest' | 'traffic' | 'environment' | 'response' | 'other'
 const FILTERS: { id: FilterId; label: string; color: string; types: EventType[] }[] = [
@@ -29,6 +34,7 @@ const FILTERS: { id: FilterId; label: string; color: string; types: EventType[] 
 
 export function LiveMapPage() {
   const { layout } = useBreakpoint()
+  const dispatch = useAppDispatch()
   const [loaded, setLoaded] = useState(false)
   const [viewport, setViewport] = useState<{ bounds: ViewportBounds; zoom: number } | null>(null)
   const [filters, setFilters] = useState<Set<FilterId>>(new Set())
@@ -36,16 +42,42 @@ export function LiveMapPage() {
   const [searchResult, setSearchResult] = useState<GeocodeSuggestion | null>(null)
   const [cameraCommand, setCameraCommand] = useState<CameraCommand | null>(null)
   const [showRadii, setShowRadii] = useState(true)
+  const [showHome, setShowHome] = useState(false)
+  const [gpsAnnouncement, setGpsAnnouncement] = useState('Location is off.')
   const [searchParams, setSearchParams] = useSearchParams()
   const [searchSeed, setSearchSeed] = useState(() => ({ id: 0, query: searchParams.get('q') ?? '' }))
   const cameraSequence = useRef(0)
   const deepLinkFocused = useRef<string | null>(null)
   const initialViewport = useInitialViewport()
-  const { location, error: locationError } = useCurrentLocation()
+  const { location, status: locationStatus = 'idle', error: locationError, startFollowing = () => undefined, stopFollowing = () => undefined, disable = () => undefined } = useCurrentLocation()
+  const homeLocation = useAppSelector(state => state.ui.homeLocation)
   const events = useAppSelector(selectViewportEventItems).filter(event => event.is_active)
   const allEvents = useAppSelector(selectEventItems)
   useViewportWs(viewport?.bounds ?? null, viewport?.zoom ?? 12)
   const onBoundsChange = useCallback((bounds: ViewportBounds, zoom: number) => setViewport({ bounds, zoom }), [])
+
+  useEffect(() => {
+    let active = true
+    loadHomeLocation().then(home => { if (active && home) dispatch(setHomeLocation(home)) })
+    return () => { active = false }
+  }, [dispatch])
+
+  useEffect(() => {
+    if (!location || locationStatus !== 'following') return
+    setCameraCommand({ id: ++cameraSequence.current, center: [location.lng, location.lat], zoom: 15, padding: cameraPadding })
+  }, [location, locationStatus, layout])
+
+  useEffect(() => {
+    const messages = {
+      idle: 'Location is off.',
+      requesting: 'Requesting high accuracy location.',
+      following: 'Location acquired. Map is following your position.',
+      'located-not-following': 'Map follow paused after map interaction.',
+      denied: 'Location permission was denied.',
+      unavailable: 'Location is unavailable.',
+    }
+    setGpsAnnouncement(messages[locationStatus])
+  }, [locationStatus])
 
   const activeTypes = new Set([...filters].flatMap(id => FILTERS.find(filter => filter.id === id)?.types ?? []))
   const visible = filters.size ? events.filter(event => activeTypes.has(event.event_type)) : events
@@ -55,6 +87,10 @@ export function LiveMapPage() {
   const cameraPadding = layout === 'mobile'
     ? { top: 180, right: 24, bottom: 140, left: 24 }
     : { top: 150, right: 400, bottom: 60, left: 40 }
+  const mapSearchProximity = viewport ? {
+    lat: Number(((viewport.bounds.north + viewport.bounds.south) / 2).toFixed(2)),
+    lng: Number(((viewport.bounds.east + viewport.bounds.west) / 2).toFixed(2)),
+  } : undefined
 
   useEffect(() => {
     const query = searchParams.get('q')
@@ -120,23 +156,44 @@ export function LiveMapPage() {
     })
   }
 
+  function activateLocation() {
+    if (locationStatus === 'following' || locationStatus === 'requesting') disable()
+    else startFollowing()
+  }
+
+  function fitRoutePreview(routes: HomeRoute[], selectedIndex: number) {
+    const route = routes[selectedIndex]
+    if (!route || !location || !homeLocation) return
+    const points = [...route.coordinates, [location.lng, location.lat] as [number, number], [homeLocation.lng, homeLocation.lat] as [number, number]]
+    const lngs = points.map(point => point[0])
+    const lats = points.map(point => point[1])
+    const west = Math.min(...lngs)
+    const east = Math.max(...lngs)
+    const south = Math.min(...lats)
+    const north = Math.max(...lats)
+    setCameraCommand({
+      id: ++cameraSequence.current,
+      bounds: [west - (west === east ? 0.001 : 0), south - (south === north ? 0.001 : 0), east + (west === east ? 0.001 : 0), north + (south === north ? 0.001 : 0)],
+      padding: cameraPadding,
+    })
+  }
+
   return <div data-testid="live-map-page" className="atlas-workspace">
     <section className="map-stage" aria-label="Live incident atlas">
       {!loaded && <div className="map-loading"><ScanLine /><span>Preparing the safety map</span><i /></div>}
-      <MapCanvas initialViewState={initialViewport} onMapLoad={() => setLoaded(true)} onBoundsChange={onBoundsChange} cameraCommand={cameraCommand}>
+      <MapCanvas initialViewState={initialViewport} onMapLoad={() => setLoaded(true)} onBoundsChange={onBoundsChange} cameraCommand={cameraCommand} onUserInteraction={stopFollowing}>
         {showRadii && <RadiusZoneLayer events={visible} />}
         <EventClusterLayer events={visible} onEventClick={selectEvent} onClusterClick={focusCluster} selectedEventId={selected?.id} />
         {location && <LocationMarker location={location} />}
+        {homeLocation && <HomeLocationMarker home={homeLocation} />}
+        <HomeRouteLayer />
         {searchResult && <SearchResultMarker result={searchResult} />}
       </MapCanvas>
 
       <MapSearch
         key={searchSeed.id}
         initialQuery={searchSeed.query}
-        proximity={viewport ? {
-          lat: Number(((viewport.bounds.north + viewport.bounds.south) / 2).toFixed(2)),
-          lng: Number(((viewport.bounds.east + viewport.bounds.west) / 2).toFixed(2)),
-        } : undefined}
+        proximity={mapSearchProximity}
         onSelect={selectSearchResult}
         onClear={() => setSearchResult(null)}
       />
@@ -154,11 +211,14 @@ export function LiveMapPage() {
 
       <div className="map-tools">
         <button className={showRadii ? 'active' : ''} onClick={() => setShowRadii(value => !value)} aria-pressed={showRadii} title="Toggle impact zones"><Layers3 /></button>
-        <button title={location ? 'Location acquired' : 'Location unavailable'} aria-label="Current location status"><LocateFixed /></button>
+        <button className={locationStatus === 'following' ? 'active' : ''} onClick={activateLocation} aria-pressed={locationStatus === 'following'} aria-label={locationStatus === 'requesting' ? 'Cancel location request' : locationStatus === 'following' ? 'Disable location' : location ? 'Recenter and follow current location' : 'Enable current location'} title={locationStatus === 'requesting' ? 'Cancel location request' : locationStatus === 'following' ? 'Disable location' : 'Recenter and follow'}><LocateFixed /></button>
+        <button className={showHome ? 'active' : ''} onClick={() => setShowHome(value => !value)} aria-expanded={showHome} aria-label="Set home and preview route" title="Home route preview"><Home /></button>
       </div>
 
       <div className="map-legend"><span><i className="confirmed" />Confirmed</span><span><i className="developing" />Developing evidence</span><span><Crosshair size={13} />Approximate impact zone</span></div>
-      {locationError && <div className="geo-note">Location is optional. The atlas remains fully browsable.</div>}
+      {locationError && <div className="geo-note">Location is optional. {typeof locationError === 'string' ? locationError : String(locationError)} The atlas remains fully browsable.</div>}
+      <div className="sr-only" aria-live="polite">{gpsAnnouncement}</div>
+      {showHome && <div className="home-route-host"><HomeRoutePanel location={location} locationStatus={locationStatus} searchProximity={mapSearchProximity} onRoutePreview={fitRoutePreview} onClose={() => { setShowHome(false); dispatch(homeRoutesCleared()) }} /></div>}
       {eventParam && !selected && <div className="map-selection-status" role="status" aria-live="polite">Alert {eventParam} is not currently available. It will open if it arrives in the live feed.</div>}
       <FieldLedger events={visible} selected={selected} onSelect={selectEvent} mobile={layout === 'mobile'} />
     </section>

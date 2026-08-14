@@ -21,6 +21,7 @@ interface Props {
   onMapLoad?: () => void
   onBoundsChange?: (bounds: ViewportBounds, zoom: number) => void
   cameraCommand?: CameraCommand | null
+  onUserInteraction?: () => void
 }
 
 function CameraController({ command }: { command: CameraCommand }) {
@@ -68,7 +69,7 @@ function ViewportReporter({ onBoundsChange }: ViewportReporterProps) {
   return null
 }
 
-export function MapCanvas({ initialViewState = WORLD_CENTER, children, onMapLoad, onBoundsChange, cameraCommand }: Props = {}) {
+export function MapCanvas({ initialViewState = WORLD_CENTER, children, onMapLoad, onBoundsChange, cameraCommand, onUserInteraction }: Props = {}) {
   const handleMoveEnd = useCallback((evt: { viewState: ViewState }) => {
     persistViewport(evt.viewState)
   }, [])
@@ -78,6 +79,8 @@ export function MapCanvas({ initialViewState = WORLD_CENTER, children, onMapLoad
       <Map
         initialViewState={initialViewState}
         onMoveEnd={handleMoveEnd}
+        onDragStart={event => { if (event.originalEvent) onUserInteraction?.() }}
+        onZoomStart={event => { if (event.originalEvent) onUserInteraction?.() }}
         onLoad={onMapLoad}
         style={{ width: '100%', height: '100%' }}
         mapStyle={MAP_STYLE}

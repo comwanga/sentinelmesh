@@ -40,6 +40,8 @@ vi.mock('react-map-gl/maplibre', () => ({
     initialViewState: { longitude: number; latitude: number; zoom: number }
     onMoveEnd: (evt: { viewState: { longitude: number; latitude: number; zoom: number } }) => void
     mapStyle?: unknown
+    onDragStart?: (event: { originalEvent?: Event }) => void
+    onZoomStart?: (event: { originalEvent?: Event }) => void
   }) => {
     mapProps.current = props
     return (
@@ -144,5 +146,14 @@ describe('MapCanvas', () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })))
     render(<MapCanvas cameraCommand={{ id: 1, center: [1, 2] }} />)
     expect(mockMap.easeTo).toHaveBeenCalledWith(expect.objectContaining({ duration: 0 }))
+  })
+
+  it('reports only user camera interaction', () => {
+    const onUserInteraction = vi.fn()
+    render(<MapCanvas onUserInteraction={onUserInteraction} />)
+    const props = mapProps.current as { onDragStart: (event: { originalEvent?: Event }) => void; onZoomStart: (event: { originalEvent?: Event }) => void }
+    props.onDragStart({})
+    props.onZoomStart({ originalEvent: new Event('wheel') })
+    expect(onUserInteraction).toHaveBeenCalledOnce()
   })
 })

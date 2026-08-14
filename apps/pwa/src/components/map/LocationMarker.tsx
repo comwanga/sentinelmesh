@@ -10,7 +10,7 @@ export function LocationMarker({ location }: Props) {
     <Marker longitude={location.lng} latitude={location.lat} anchor="center">
       <div style={{ position: 'relative', width: 20, height: 20 }}>
         {/* Pulse ring */}
-        <div style={{
+        <div className="sm-location-pulse" style={{
           position: 'absolute',
           inset: -6,
           borderRadius: '50%',
@@ -31,6 +31,9 @@ export function LocationMarker({ location }: Props) {
             0%   { transform: scale(1); opacity: 0.8; }
             70%  { transform: scale(2.2); opacity: 0; }
             100% { transform: scale(2.2); opacity: 0; }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .sm-location-pulse { animation: none !important; }
           }
         `}</style>
       </div>
