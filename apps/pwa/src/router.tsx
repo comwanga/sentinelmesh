@@ -6,7 +6,9 @@ import { AlertsPage } from './pages/AlertsPage'
 import { InsightsPage } from './pages/InsightsPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { SettingsPage } from './pages/SettingsPage'
-import { experimentalFeatures } from './config/features'
+import { ChatPage } from './pages/ChatPage'
+import { PublicChannelPage } from './pages/PublicChannelPage'
+import { experimentalFeatures, chatEnabled } from './config/features'
 
 function RouteError() {
   return (
@@ -30,6 +32,10 @@ export const router = createBrowserRouter([
       { path: '/settings', element: <SettingsPage /> },
       ...(experimentalFeatures.circles ? [{ path: '/circles', element: <CirclesPage /> }] : []),
       ...(experimentalFeatures.insights ? [{ path: '/insights', element: <InsightsPage /> }] : []),
+      ...(chatEnabled ? [
+        { path: '/chat', element: <ChatPage /> },
+        { path: '/chat/community/:groupId', element: <PublicChannelPage /> },
+      ] : []),
       { path: '*', element: <Navigate to="/map" replace /> },
     ],
   },
