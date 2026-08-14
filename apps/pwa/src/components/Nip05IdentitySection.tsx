@@ -5,7 +5,7 @@ interface Props {
   pubkey: string
 }
 
-const textStyle = { fontFamily: "'Courier New', monospace", fontSize: 10 } as const
+const textStyle = { fontSize: 11 } as const
 
 export function Nip05IdentitySection({ pubkey }: Props) {
   const [identity, setIdentity] = useState<Nip05Status | null>(null)
@@ -68,11 +68,11 @@ export function Nip05IdentitySection({ pubkey }: Props) {
   }, [])
 
   return (
-    <div style={{ borderTop: '1px solid #1a2035', margin: '14px 0', paddingTop: 14 }}>
-      <label htmlFor="nip05-identifier" style={{ ...textStyle, display: 'block', color: '#4a5568', letterSpacing: '0.06em', marginBottom: 6 }}>
-        OPTIONAL NIP-05 IDENTITY
+    <div style={{ borderTop: '1px solid #d9e1dc', margin: '16px 0 0', paddingTop: 16 }}>
+      <label htmlFor="nip05-identifier" style={{ ...textStyle, display: 'block', color: '#48635e', fontWeight: 800, marginBottom: 6 }}>
+        Optional NIP-05 identity
       </label>
-      <p style={{ ...textStyle, color: '#4a5568', margin: '0 0 8px', lineHeight: 1.5 }}>
+      <p style={{ ...textStyle, color: '#687c78', margin: '0 0 9px', lineHeight: 1.5 }}>
         Verify a name@domain label that already maps to the active public key. This label is not used for reputation.
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -86,18 +86,19 @@ export function Nip05IdentitySection({ pubkey }: Props) {
           disabled={loading}
           aria-invalid={message?.ok === false}
           aria-describedby="nip05-status"
-          style={{ flex: '1 1 220px', background: '#0d1118', border: '1px solid #1a2035', borderRadius: 4, color: '#e2e8f0', ...textStyle, fontSize: 11, padding: '7px 10px' }}
+          className="form-control"
+          style={{ flex: '1 1 220px' }}
         />
         <button onClick={() => void verify()} disabled={loading || !identifier.trim()}
-          style={{ background: '#1a2035', border: '1px solid #1a2035', borderRadius: 4, color: '#94a3b8', ...textStyle, padding: '7px 14px', cursor: loading ? 'wait' : 'pointer' }}>
+          className="button-secondary">
           {identity ? 'Refresh' : 'Verify'}
         </button>
         {identity && <button onClick={() => void remove()} disabled={loading}
-          style={{ background: 'none', border: '1px solid #FF8C00', borderRadius: 4, color: '#FF8C00', ...textStyle, padding: '7px 14px', cursor: loading ? 'wait' : 'pointer' }}>
+          className="button-danger">
           Remove
         </button>}
       </div>
-      <div id="nip05-status" aria-live="polite" style={{ ...textStyle, marginTop: 8, color: message ? (message.ok ? '#4CAF50' : '#FF2D2D') : identity?.verified ? '#4CAF50' : '#FF8C00' }}>
+      <div id="nip05-status" aria-live="polite" style={{ ...textStyle, marginTop: 8, color: message ? (message.ok ? '#25845b' : '#c83e3e') : identity?.verified ? '#25845b' : '#a76510' }}>
         {message?.text ?? (identity ? `${identity.verified ? 'Verified' : 'Verification expired'} · valid until ${new Date(identity.valid_until).toLocaleString()}` : loading ? 'Loading identity…' : '')}
       </div>
     </div>

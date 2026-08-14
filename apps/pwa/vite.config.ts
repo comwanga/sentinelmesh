@@ -17,8 +17,8 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         lang: 'en',
-        theme_color: '#0B0E14',
-        background_color: '#0B0E14',
+        theme_color: '#F7F8F3',
+        background_color: '#F7F8F3',
         display: 'standalone',
         icons: [
           { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
@@ -26,6 +26,8 @@ export default defineConfig({
       },
       workbox: {
         importScripts: ['/push-sw.js'],
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff2}'],
         runtimeCaching: [
           {

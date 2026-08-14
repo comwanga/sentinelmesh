@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useAppDispatch } from '../store'
 import { viewportEventsSet, viewportEventsBatchApply } from '../store/eventsSlice'
 import type { SafetyEvent, EventType, EventState, Severity, TrustState } from '../../../../shared/types'
+import { websocketBaseUrl } from '../services/apiOrigin'
 
 export interface ViewportBounds {
   north: number
@@ -38,7 +39,7 @@ type ViewportServerMsg =
   | { type: 'SNAPSHOT';      events: WsEvent[] }
   | { type: 'DIFF_PATCH';    added: WsEvent[]; removed: string[]; updated: WsEvent[] }
 
-const WS_BASE = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`
+const WS_BASE = websocketBaseUrl()
 
 const BACKOFF_BASE_MS = 1_000
 const BACKOFF_CAP_MS  = 30_000

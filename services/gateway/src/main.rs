@@ -189,10 +189,17 @@ async fn main() -> anyhow::Result<()> {
     // CORS: allow any origin (public-read API — safety events, community reports)
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers([
             HeaderName::from_static("content-type"),
             HeaderName::from_static("authorization"),
+            HeaderName::from_static("x-nostr-auth"),
         ]);
 
     // Rate limiting: 100 req/s per IP, burst of 50

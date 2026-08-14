@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
-import { loadIdentity, generateNewIdentity, toNpub, toNsec, importFromNsec, hexFromNpubOrHex, type NostrKeypair } from '../services/nostrService'
-import { issueVouch } from '../services/vouchService'
+import { BadgeCheck, Copy, HardDriveDownload, KeyRound, RadioTower, ShieldCheck, X } from 'lucide-react'
+import { loadIdentity, generateNewIdentity, toNpub, toNsec, importFromNsec, type NostrKeypair } from '../services/nostrService'
 import { exportBackup, decryptBackup, applyRestore, currentVaultId, type RestoreResult } from '../services/backupService'
 import { vaultFingerprint, loadVaultMeta } from '../services/identityStore'
 import type { VaultPayload } from '../services/identityStore'
@@ -24,6 +24,8 @@ export function SettingsPage() {
   const [pendingPayload, setPendingPayload] = useState<{ payload: VaultPayload; vaultId: string } | null>(null)
   const [bunkerInput, setBunkerInput] = useState('')
   const [signerMsg, setSignerMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [manageOpen, setManageOpen] = useState(false)
+  const [manageTab, setManageTab] = useState<'signing' | 'recovery'>('signing')
   const activeIdentity = useActiveIdentity()
 
   // The persisted identity loads asynchronously from the encrypted vault.
@@ -39,12 +41,13 @@ export function SettingsPage() {
 
   const npub = keypair ? toNpub(keypair.publicKey) : ''
   const nsec = keypair ? toNsec(keypair.secretKey) : ''
+  const activeNpub = activeIdentity.pubkey ? toNpub(activeIdentity.pubkey) : npub
 
   const copyNpub = useCallback(() => {
-    navigator.clipboard.writeText(npub).then(() => {
+    navigator.clipboard.writeText(activeNpub).then(() => {
       setCopiedNpub(true); setTimeout(() => setCopiedNpub(false), 2000)
     })
-  }, [npub])
+  }, [activeNpub])
 
   const copyNsec = useCallback(() => {
     navigator.clipboard.writeText(nsec).then(() => {
@@ -75,20 +78,6 @@ export function SettingsPage() {
     setImportMsg({ text: 'New key generated and saved.', ok: true })
     setTimeout(() => setImportMsg(null), 3000)
   }, [])
-
-  const [vouchInput, setVouchInput] = useState('')
-  const [vouchMsg, setVouchMsg] = useState<string | null>(null)
-
-  const handleVouch = useCallback(async () => {
-    const hex = hexFromNpubOrHex(vouchInput.trim())
-    if (!hex) {
-      setVouchMsg('Enter a valid npub or hex pubkey')
-      return
-    }
-    const ok = await issueVouch(hex)
-    setVouchMsg(ok ? 'Vouch submitted.' : 'Vouch failed (you may not be eligible to vouch, or already vouched).')
-    setTimeout(() => setVouchMsg(null), 4000)
-  }, [vouchInput])
 
   const handleExport = useCallback(async () => {
     if (exportPass.length < 12) { setBackupMsg({ text: 'Passphrase must be at least 12 characters.', ok: false }); return }
@@ -167,325 +156,120 @@ export function SettingsPage() {
   }, [])
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', background: '#0B0E14' }}>
-      <div style={{ padding: '16px 20px', borderBottom: '1px solid #1a2035' }}>
-        <h1 style={{ fontFamily: "'Courier New', monospace", fontSize: 16, color: '#e2e8f0', margin: 0, letterSpacing: '0.1em' }}>
-          Settings
-        </h1>
+    <div className="page-scroll">
+      <div className="page-header">
+        <h1>Identity and preferences</h1>
+        <p>SentinelMesh is ready to use. Configure alerts or manage your identity only when you need to.</p>
       </div>
 
       <AlertPerimeter />
-
-      <section style={{ padding: '20px', borderBottom: '1px solid #1a2035' }}>
-        <h2 style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#BB86FC', letterSpacing: '0.1em', margin: '0 0 8px' }}>
-          ACTIVE SIGNER
-        </h2>
-        <p style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', margin: '0 0 12px', lineHeight: 1.5 }}>
-          Local signing is the default. Connect a NIP-46 bunker to use one remote identity for reports, votes, vouches, NIP-05, and request authentication.
-        </p>
-        <div style={{ background: '#0d1118', border: `1px solid ${activeIdentity.mode === 'bunker' ? '#BB86FC' : '#1a2035'}`, borderRadius: 6, padding: '10px 12px', marginBottom: 12 }}>
-          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: activeIdentity.status === 'ready' ? '#4CAF50' : '#FF8C00', marginBottom: 5 }}>
-            {activeIdentity.mode.toUpperCase()} / {activeIdentity.status.toUpperCase().replace('-', ' ')}
-          </div>
-          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#94a3b8', wordBreak: 'break-all' }}>
-            {activeIdentity.pubkey || 'Identity pending'}
-          </div>
-          {activeIdentity.error && <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#FF2D2D', marginTop: 7 }}>{activeIdentity.error}</div>}
-          {activeIdentity.approvalUrl && activeIdentity.status !== 'ready' && (
-            <a href={activeIdentity.approvalUrl} target="_blank" rel="noreferrer" style={{ display: 'inline-block', fontFamily: "'Courier New', monospace", fontSize: 10, color: '#00E5FF', marginTop: 8 }}>
-              Open signer authorization
-            </a>
-          )}
-        </div>
-        {activeIdentity.mode === 'local' ? (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <input value={bunkerInput} onChange={event => setBunkerInput(event.target.value)} placeholder="bunker://..." aria-label="Bunker connection URI" disabled={activeIdentity.status === 'connecting'}
-              style={{ flex: '1 1 320px', minWidth: 0, background: '#0d1118', border: '1px solid #1a2035', borderRadius: 4, color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 11, padding: '7px 10px' }} />
-            <button onClick={handleConnectBunker} disabled={!bunkerInput.trim() || activeIdentity.status === 'connecting'} style={{ background: '#241834', border: '1px solid #BB86FC', borderRadius: 4, color: '#BB86FC', fontFamily: "'Courier New', monospace", fontSize: 10, padding: '7px 14px', cursor: bunkerInput.trim() ? 'pointer' : 'not-allowed' }}>
-              Connect bunker
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {activeIdentity.status !== 'ready' && <button onClick={handleReconnectBunker} disabled={activeIdentity.status === 'connecting'} style={{ background: '#241834', border: '1px solid #BB86FC', borderRadius: 4, color: '#BB86FC', fontFamily: "'Courier New', monospace", fontSize: 10, padding: '7px 14px', cursor: 'pointer' }}>Reconnect</button>}
-            <button onClick={handleDisconnectBunker} style={{ background: 'none', border: '1px solid #FF8C00', borderRadius: 4, color: '#FF8C00', fontFamily: "'Courier New', monospace", fontSize: 10, padding: '7px 14px', cursor: 'pointer' }}>Disconnect and use local</button>
-          </div>
-        )}
-        {activeIdentity.mode === 'bunker' && <p style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#FF8C00', margin: '10px 0 0' }}>Circles are disabled in remote mode because their NIP-44 keys belong to the local identity.</p>}
-        {signerMsg && <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: signerMsg.ok ? '#4CAF50' : '#FF2D2D', marginTop: 9 }}>{signerMsg.text}</div>}
-        {activeIdentity.pubkey && <Nip05IdentitySection pubkey={activeIdentity.pubkey} />}
-      </section>
-
-      {/* ── Identity ─────────────────────────────── */}
-      <section style={{ padding: '20px', borderBottom: '1px solid #1a2035' }}>
-        <h2 style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#00E5FF', letterSpacing: '0.1em', margin: '0 0 14px' }}>
-          Nostr Identity
-        </h2>
-        <p style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', margin: '0 0 12px' }}>
-          Your identity is a Nostr key pair stored encrypted on this device. It persists across reloads
-          and is used to sign reports and authenticate with circles.
-        </p>
-
-        {/* npub */}
-        <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', marginBottom: 4, letterSpacing: '0.06em' }}>
-          PUBLIC KEY (npub)
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-          <div style={{
-            flex: 1, background: '#0d1118', border: '1px solid #1a2035', borderRadius: 6,
-            padding: '8px 10px', fontFamily: "'Courier New', monospace", fontSize: 11, color: '#e2e8f0',
-            wordBreak: 'break-all', lineHeight: 1.5,
-          }}>
-            {npub}
-          </div>
-          <button
-            onClick={copyNpub}
-            style={{
-              flexShrink: 0, background: copiedNpub ? '#1B5E20' : 'none',
-              border: '1px solid ' + (copiedNpub ? '#4CAF50' : '#1a2035'), borderRadius: 4,
-              color: copiedNpub ? '#4CAF50' : '#4a5568', fontFamily: "'Courier New', monospace",
-              fontSize: 10, padding: '5px 10px', cursor: 'pointer',
-            }}
-          >
-            {copiedNpub ? 'Copied!' : 'Copy'}
-          </button>
-        </div>
-
-        {/* nsec reveal */}
-        <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', marginBottom: 4, letterSpacing: '0.06em' }}>
-          SECRET KEY (nsec) <span style={{ color: '#FF8C00' }}>⚠ never share</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-          <div style={{
-            flex: 1, background: '#0d1118', border: '1px solid #2d1b00', borderRadius: 6,
-            padding: '8px 10px', fontFamily: "'Courier New', monospace", fontSize: 11,
-            color: showNsec ? '#FF8C00' : '#2d3748', wordBreak: 'break-all', lineHeight: 1.5,
-          }}>
-            {showNsec ? nsec : '••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••'}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
-            <button
-              onClick={() => setShowNsec(v => !v)}
-              style={{
-                background: 'none', border: '1px solid #1a2035', borderRadius: 4,
-                color: '#4a5568', fontFamily: "'Courier New', monospace", fontSize: 10,
-                padding: '4px 8px', cursor: 'pointer',
-              }}
-            >
-              {showNsec ? 'Hide' : 'Show'}
-            </button>
-            {showNsec && (
-              <button
-                onClick={copyNsec}
-                style={{
-                  background: copiedNsec ? '#2d1b00' : 'none',
-                  border: '1px solid ' + (copiedNsec ? '#FF8C00' : '#1a2035'), borderRadius: 4,
-                  color: copiedNsec ? '#FF8C00' : '#4a5568', fontFamily: "'Courier New', monospace",
-                  fontSize: 10, padding: '4px 8px', cursor: 'pointer',
-                }}
-              >
-                {copiedNsec ? 'Copied!' : 'Copy'}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ── Backup & Recovery ─────────────────────────────── */}
-        <div style={{ borderTop: '1px solid #1a2035', margin: '14px 0', paddingTop: 14 }}>
-          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', letterSpacing: '0.06em', marginBottom: 8 }}>
-            BACKUP &amp; RECOVERY
-            {staleBadge === 'stale' && <span style={{ color: '#FF8C00', marginLeft: 8 }}>⚠ Backup out of date — re-export</span>}
-            {staleBadge === 'no-backup' && <span style={{ color: '#FF8C00', marginLeft: 8 }}>⚠ No backup yet</span>}
-          </div>
-
-          {/* Export */}
-          <input type="password" value={exportPass} onChange={e => setExportPass(e.target.value)}
-            placeholder="Backup passphrase (min 12 chars)" disabled={!keypair}
-            style={{ width: '100%', boxSizing: 'border-box', background: '#0d1118', border: '1px solid #1a2035', borderRadius: 4, color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 11, padding: '7px 10px', marginBottom: 6 }} />
-          <input type="password" value={exportPass2} onChange={e => setExportPass2(e.target.value)}
-            placeholder="Confirm passphrase" disabled={!keypair}
-            style={{ width: '100%', boxSizing: 'border-box', background: '#0d1118', border: '1px solid #1a2035', borderRadius: 4, color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 11, padding: '7px 10px', marginBottom: 6 }} />
-          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#FF8C00', marginBottom: 8 }}>
-            There is no way to recover this passphrase. Store it safely — without it the backup cannot be opened.
-          </div>
-          <button onClick={handleExport} disabled={!keypair}
-            style={{ background: 'none', border: '1px solid #1a2035', borderRadius: 4, color: keypair ? '#94a3b8' : '#4a5568', fontFamily: "'Courier New', monospace", fontSize: 10, padding: '6px 14px', cursor: keypair ? 'pointer' : 'not-allowed' }}>
-            Export encrypted backup
-          </button>
-          {shownVaultId && (
-            <div style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: '#00E5FF', marginTop: 8 }}>
-              Vault ID: <strong>{shownVaultId}</strong> — note this to verify your backup later.
+      <div className="settings-overview">
+        <section className="settings-card identity-summary-card">
+          <div className="settings-card-icon"><BadgeCheck /></div>
+          <div className="settings-card-copy">
+            <span className="eyebrow">YOUR IDENTITY</span>
+            <h2>{activeIdentity.mode === 'bunker' ? 'Remote signer' : 'Local identity'} {activeIdentity.status === 'ready' ? 'ready' : activeIdentity.status.replace('-', ' ')}</h2>
+            <p>Your identity was created automatically. Nothing else is required to browse the map or submit a signed report.</p>
+            <div className="identity-key-row">
+              <code>{activeNpub || 'Identity loading…'}</code>
+              <button className="icon-text-button" onClick={copyNpub} disabled={!activeNpub}><Copy />{copiedNpub ? 'Copied' : 'Copy'}</button>
             </div>
-          )}
-
-          {/* Import */}
-          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', letterSpacing: '0.06em', margin: '14px 0 6px' }}>
-            RESTORE FROM BACKUP
           </div>
-          <input type="file" accept="application/json,.json"
-            onChange={e => {
-              const f = e.target.files?.[0]; if (!f) return
-              const pass = window.prompt('Enter the passphrase for this backup file:') ?? ''
-              void handleFilePicked(f, pass)
-              e.target.value = ''
-            }}
-            style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#94a3b8' }} />
+          <button className="button-secondary settings-card-action" onClick={() => { setManageTab('signing'); setManageOpen(true) }}>Signing options</button>
+        </section>
 
-          {pendingPayload && (
-            <div style={{ background: '#0d1118', border: '1px solid #2d1b00', borderRadius: 6, padding: '8px 10px', marginTop: 8 }}>
-              <div style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: '#00E5FF', marginBottom: 6 }}>
-                Backup Vault ID: <strong>{pendingPayload.vaultId}</strong>
-              </div>
-              <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#FF8C00', marginBottom: 8 }}>
-                Confirm this matches the Vault ID you expect. Restoring REPLACES the identity on this device.
-              </div>
-              <button onClick={handleConfirmRestore}
-                style={{ background: 'none', border: '1px solid #FF8C00', borderRadius: 4, color: '#FF8C00', fontFamily: "'Courier New', monospace", fontSize: 10, padding: '6px 14px', cursor: 'pointer', marginRight: 8 }}>
-                Confirm restore
-              </button>
-              <button onClick={() => setPendingPayload(null)}
-                style={{ background: 'none', border: '1px solid #1a2035', borderRadius: 4, color: '#4a5568', fontFamily: "'Courier New', monospace", fontSize: 10, padding: '6px 14px', cursor: 'pointer' }}>
-                Cancel
-              </button>
+        <section className="settings-card recovery-summary-card">
+          <div className="settings-card-icon recovery"><ShieldCheck /></div>
+          <div className="settings-card-copy">
+            <span className="eyebrow">SECURITY &amp; RECOVERY</span>
+            <h2>{staleBadge === 'none' ? 'Backup current' : staleBadge === 'stale' ? 'Backup needs updating' : 'Create your first backup'}</h2>
+            <p>Backups are optional but recommended if you want to recover this identity on another device.</p>
+          </div>
+          <button className="button-primary settings-card-action" onClick={() => { setManageTab('recovery'); setManageOpen(true) }}><HardDriveDownload /> Manage recovery</button>
+        </section>
+      </div>
+
+      {manageOpen && (
+        <div className="identity-dialog-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setManageOpen(false) }}>
+          <section className="identity-dialog" role="dialog" aria-modal="true" aria-labelledby="identity-dialog-title">
+            <header className="identity-dialog-header">
+              <div><span className="eyebrow">ADVANCED IDENTITY</span><h2 id="identity-dialog-title">Manage identity</h2></div>
+              <button className="dialog-close" onClick={() => setManageOpen(false)} aria-label="Close identity settings"><X /></button>
+            </header>
+            <div className="identity-dialog-tabs" role="tablist" aria-label="Identity management sections">
+              <button role="tab" aria-selected={manageTab === 'signing'} className={manageTab === 'signing' ? 'active' : ''} onClick={() => setManageTab('signing')}><RadioTower /> Signing</button>
+              <button role="tab" aria-selected={manageTab === 'recovery'} className={manageTab === 'recovery' ? 'active' : ''} onClick={() => setManageTab('recovery')}><KeyRound /> Recovery</button>
             </div>
-          )}
 
-          {backupMsg && (
-            <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, marginTop: 8, color: backupMsg.ok ? '#4CAF50' : '#FF2D2D' }}>
-              {backupMsg.text}
+            <div className="identity-dialog-body">
+              {manageTab === 'signing' ? (
+                <div className="advanced-section">
+                  <h3>Active signer</h3>
+                  <p>Local signing is the default. A NIP-46 bunker lets another signer approve actions for this identity.</p>
+                  <div className={`signer-status ${activeIdentity.status === 'ready' ? 'ready' : ''}`}>
+                    <strong>{activeIdentity.mode === 'bunker' ? 'Remote bunker' : 'This device'}</strong>
+                    <span>{activeIdentity.status.replace('-', ' ')}</span>
+                    <code>{activeNpub || 'Identity pending'}</code>
+                    {activeIdentity.error && <small className="form-error">{activeIdentity.error}</small>}
+                    {activeIdentity.approvalUrl && activeIdentity.status !== 'ready' && <a href={activeIdentity.approvalUrl} target="_blank" rel="noreferrer">Open signer authorization</a>}
+                  </div>
+                  {activeIdentity.mode === 'local' ? (
+                    <div className="inline-form">
+                      <input className="form-control" value={bunkerInput} onChange={event => setBunkerInput(event.target.value)} placeholder="bunker://…" aria-label="Bunker connection URI" disabled={activeIdentity.status === 'connecting'} />
+                      <button className="button-primary" onClick={handleConnectBunker} disabled={!bunkerInput.trim() || activeIdentity.status === 'connecting'}>Connect bunker</button>
+                    </div>
+                  ) : (
+                    <div className="button-row">
+                      {activeIdentity.status !== 'ready' && <button className="button-secondary" onClick={handleReconnectBunker} disabled={activeIdentity.status === 'connecting'}>Reconnect</button>}
+                      <button className="button-danger" onClick={handleDisconnectBunker}>Disconnect and use local</button>
+                    </div>
+                  )}
+                  {signerMsg && <p className={signerMsg.ok ? 'form-success' : 'form-error'}>{signerMsg.text}</p>}
+                  {activeIdentity.pubkey && <Nip05IdentitySection pubkey={activeIdentity.pubkey} />}
+                </div>
+              ) : (
+                <div className="advanced-section recovery-sections">
+                  <section>
+                    <h3>Create encrypted backup</h3>
+                    <p>Choose a passphrase of at least 12 characters. It cannot be recovered if lost.</p>
+                    <input className="form-control" type="password" value={exportPass} onChange={event => setExportPass(event.target.value)} placeholder="Backup passphrase" disabled={!keypair} />
+                    <input className="form-control" type="password" value={exportPass2} onChange={event => setExportPass2(event.target.value)} placeholder="Confirm passphrase" disabled={!keypair} />
+                    <button className="button-primary" onClick={handleExport} disabled={!keypair}>Download encrypted backup</button>
+                    {shownVaultId && <p className="vault-id">Vault ID: <strong>{shownVaultId}</strong></p>}
+                  </section>
+
+                  <section>
+                    <h3>Restore a backup</h3>
+                    <p>Restoring replaces the identity currently stored on this device.</p>
+                    <input type="file" accept="application/json,.json" onChange={event => {
+                      const file = event.target.files?.[0]; if (!file) return
+                      const passphrase = window.prompt('Enter the passphrase for this backup file:') ?? ''
+                      void handleFilePicked(file, passphrase)
+                      event.target.value = ''
+                    }} />
+                    {pendingPayload && <div className="restore-confirmation"><strong>Backup Vault ID: {pendingPayload.vaultId}</strong><p>Confirm this is the backup you expect.</p><div className="button-row"><button className="button-danger" onClick={handleConfirmRestore}>Confirm restore</button><button className="button-secondary" onClick={() => setPendingPayload(null)}>Cancel</button></div></div>}
+                  </section>
+
+                  <section>
+                    <h3>Local secret key</h3>
+                    <p>Only reveal or import a secret key when moving an existing identity. Never share an nsec.</p>
+                    <div className="secret-key-row"><code>{showNsec ? nsec : 'nsec1••••••••••••••••••••••••••••••••••••'}</code><button className="button-secondary" onClick={() => setShowNsec(value => !value)}>{showNsec ? 'Hide' : 'Reveal'}</button>{showNsec && <button className="button-secondary" onClick={copyNsec}>{copiedNsec ? 'Copied' : 'Copy'}</button>}</div>
+                    <div className="inline-form"><input className="form-control" type="password" value={nsecInput} onChange={event => setNsecInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void handleImport() }} placeholder="Paste nsec1…" /><button className="button-secondary" onClick={handleImport} disabled={!nsecInput.trim()}>Import key</button></div>
+                    {importMsg && <p className={importMsg.ok ? 'form-success' : 'form-error'}>{importMsg.text}</p>}
+                  </section>
+
+                  <section className="danger-zone">
+                    <h3>Replace this identity</h3>
+                    <p>Generate a new identity only after backing up the current one. Existing Circle access may be lost.</p>
+                    <button className="button-danger" onClick={handleGenerate} disabled={!keypair}>Generate new identity</button>
+                  </section>
+                  {backupMsg && <p className={backupMsg.ok ? 'form-success' : 'form-error'}>{backupMsg.text}</p>}
+                </div>
+              )}
             </div>
-          )}
+          </section>
         </div>
-
-        {/* Import nsec */}
-        <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', marginBottom: 6, letterSpacing: '0.06em' }}>
-          IMPORT EXISTING KEY
-        </div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: importMsg ? 6 : 14 }}>
-          <input
-            type="password"
-            value={nsecInput}
-            onChange={e => setNsecInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleImport() }}
-            placeholder="Paste nsec1…"
-            style={{
-              flex: 1, background: '#0d1118', border: '1px solid #1a2035', borderRadius: 4,
-              color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 11,
-              padding: '7px 10px', outline: 'none',
-            }}
-          />
-          <button
-            onClick={handleImport}
-            disabled={!keypair}
-            style={{
-              background: '#1a2035', border: '1px solid #1a2035', borderRadius: 4,
-              color: '#94a3b8', fontFamily: "'Courier New', monospace", fontSize: 11,
-              padding: '7px 14px', cursor: keypair ? 'pointer' : 'not-allowed',
-              opacity: keypair ? 1 : 0.5, flexShrink: 0,
-            }}
-          >
-            Import
-          </button>
-        </div>
-        {importMsg && (
-          <div style={{
-            fontFamily: "'Courier New', monospace", fontSize: 10, marginBottom: 14,
-            color: importMsg.ok ? '#4CAF50' : '#FF2D2D',
-          }}>
-            {importMsg.text}
-          </div>
-        )}
-
-        {/* Generate new key */}
-        <button
-          onClick={handleGenerate}
-          disabled={!keypair}
-          style={{
-            background: 'none', border: '1px solid #1a2035', borderRadius: 4,
-            color: '#4a5568', fontFamily: "'Courier New', monospace", fontSize: 10,
-            padding: '6px 14px', cursor: keypair ? 'pointer' : 'not-allowed',
-            opacity: keypair ? 1 : 0.5, letterSpacing: '0.05em',
-          }}
-        >
-          Generate new key (resets identity)
-        </button>
-      </section>
-
-      {/* ── Vouch for a key ──────────────────────── */}
-      <section style={{ padding: '20px', borderBottom: '1px solid #1a2035' }}>
-        <h2 style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#00E5FF', letterSpacing: '0.1em', margin: '0 0 8px' }}>
-          VOUCH FOR A KEY
-        </h2>
-        <p style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568', margin: '0 0 12px', lineHeight: 1.5 }}>
-          Vouch for someone you know to be a real person. This is a public attestation.
-        </p>
-        <div style={{ display: 'flex', gap: 8, marginBottom: vouchMsg ? 6 : 0 }}>
-          <input
-            type="text"
-            value={vouchInput}
-            onChange={e => setVouchInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleVouch() }}
-            placeholder="npub1… or hex pubkey"
-            style={{
-              flex: 1, background: '#0d1118', border: '1px solid #1a2035', borderRadius: 4,
-              color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 11,
-              padding: '7px 10px', outline: 'none',
-            }}
-          />
-          <button
-            onClick={handleVouch}
-            disabled={!vouchInput.trim()}
-            style={{
-              background: '#1a2035', border: '1px solid #1a2035', borderRadius: 4,
-              color: '#94a3b8', fontFamily: "'Courier New', monospace", fontSize: 11,
-              padding: '7px 14px', cursor: vouchInput.trim() ? 'pointer' : 'not-allowed',
-              opacity: vouchInput.trim() ? 1 : 0.5, flexShrink: 0,
-            }}
-          >
-            Vouch
-          </button>
-        </div>
-        {vouchMsg && (
-          <div style={{
-            fontFamily: "'Courier New', monospace", fontSize: 10,
-            color: vouchMsg.startsWith('Vouch submitted') ? '#4CAF50' : '#FF8C00',
-          }}>
-            {vouchMsg}
-          </div>
-        )}
-      </section>
-
-      {/* ── Data handling ─────────────────────────── */}
-      <section style={{ padding: '20px', borderBottom: '1px solid #1a2035' }}>
-        <h2 style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#00E5FF', letterSpacing: '0.1em', margin: '0 0 8px' }}>
-          Current Data Handling
-        </h2>
-        {[
-          'No name, email, or phone number is required; an optional NIP-05 name@domain label is stored when you verify one.',
-          'Incident locations are sent to provide map and report features.',
-          'All reports signed with your Nostr key.',
-          'Experimental features are disabled in this release.',
-        ].map(item => (
-          <p key={item} style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: '#4a5568', margin: '4px 0' }}>
-            ✓ {item}
-          </p>
-        ))}
-      </section>
-
-      {/* ── Open Protocols ───────────────────────── */}
-      <section style={{ padding: '20px' }}>
-        <h2 style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#00E5FF', letterSpacing: '0.1em', margin: '0 0 8px' }}>
-          Built on Open Protocols
-        </h2>
-        <div style={{ display: 'flex', gap: 12 }}>
-          {['Nostr'].map(proto => (
-            <span key={proto} style={{
-              fontFamily: "'Courier New', monospace", fontSize: 10, padding: '4px 10px',
-              border: '1px solid #1a2035', borderRadius: 6, color: '#BB86FC',
-            }}>{proto}</span>
-          ))}
-        </div>
-      </section>
+      )}
     </div>
   )
 }

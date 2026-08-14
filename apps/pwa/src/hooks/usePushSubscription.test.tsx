@@ -7,7 +7,7 @@ import { usePushSubscription } from './usePushSubscription'
 
 const subscription = { endpoint: 'https://push.example/sub', toJSON: () => ({ endpoint: 'https://push.example/sub', keys: { p256dh: 'key', auth: 'auth' } }), unsubscribe: vi.fn(async () => true) }
 const requestPermission = vi.fn(async () => 'granted' as NotificationPermission)
-const getSubscription = vi.fn(async () => null)
+const getSubscription = vi.fn(async (): Promise<typeof subscription | null> => null)
 const subscribe = vi.fn(async () => subscription)
 
 beforeEach(() => {
@@ -34,5 +34,17 @@ describe('usePushSubscription', () => {
     const [, init] = vi.mocked(fetch).mock.calls[0]!
     expect(JSON.parse(String(init?.body))).toMatchObject({ min_severity: 'HIGH', radius_km: 12, center_lat: -1.29, center_lng: 36.82 })
     expect(sha256).toHaveBeenCalledWith(init?.body)
+  })
+
+  test('re-registers an existing subscription when saved preferences exist', async () => {
+    localStorage.setItem('sentinelmesh-push-perimeter-v1', JSON.stringify({
+      minSeverity: 'CRITICAL', radiusKm: 8, center: { lat: -1.29, lng: 36.82 },
+    }))
+    getSubscription.mockResolvedValueOnce(subscription)
+    const { result } = renderHook(() => usePushSubscription('AQID'))
+    await waitFor(() => expect(result.current.state).toBe('enabled'))
+    expect(requestPermission).not.toHaveBeenCalled()
+    const [, init] = vi.mocked(fetch).mock.calls[0]!
+    expect(JSON.parse(String(init?.body))).toMatchObject({ min_severity: 'CRITICAL', radius_km: 8 })
   })
 })

@@ -57,49 +57,47 @@ export function ReportList() {
 
   if (reports.length === 0) {
     return (
-      <div style={containerStyle}>
-        <p style={{ fontFamily: 'sans-serif', fontSize: 13, color: '#888', textAlign: 'center' }}>
-          No reports in your area yet.
+      <div className="report-list">
+        <p className="empty-state">
+          No community reports yet.
         </p>
       </div>
     )
   }
 
   return (
-    <div style={containerStyle}>
-      <h3 style={{ margin: '0 0 12px', fontSize: 14, fontFamily: 'sans-serif' }}>Community Reports</h3>
+    <div className="report-list">
+      <h3>Community reports</h3>
       {reports.map(report => (
-        <div key={report.id} style={cardStyle}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span style={{ fontFamily: 'sans-serif', fontSize: 12, fontWeight: 600 }}>
+        <div key={report.id} className="report-card">
+          <div className="report-card-head">
+            <span className="report-card-title">
               {report.report_type.replace(/_/g, ' ')}
             </span>
-            <span style={{
+            <span className="status-pill" style={{
               background: STATUS_COLORS[report.status] ?? '#888',
-              color: '#fff', fontSize: 10, padding: '2px 6px',
-              borderRadius: 8, fontFamily: 'sans-serif',
             }}>
               {report.status}
             </span>
           </div>
 
           {report.description && (
-            <p style={{ margin: '4px 0', fontSize: 12, fontFamily: 'sans-serif', color: '#333' }}>
+            <p>
               {report.description}
             </p>
           )}
 
-          <p style={{ margin: '2px 0 6px', fontSize: 10, color: '#888', fontFamily: 'sans-serif' }}>
+          <p className="report-meta">
             {report.place_name ?? `${report.lat.toFixed(4)}, ${report.lng.toFixed(4)}`}
             {' · '}Score: {report.consensus_score}
             {' · '}{report.confirmation_count}✓ {report.denial_count}✗
           </p>
 
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => castVote(report, 'CONFIRM')} style={voteBtnStyle('#2E7D32')}>
+          <div className="vote-actions">
+            <button className="confirm" onClick={() => castVote(report, 'CONFIRM')}>
               Confirm
             </button>
-            <button onClick={() => castVote(report, 'DENY')} style={voteBtnStyle('#CC0000')}>
+            <button className="deny" onClick={() => castVote(report, 'DENY')}>
               Deny
             </button>
           </div>
@@ -107,19 +105,4 @@ export function ReportList() {
       ))}
     </div>
   )
-}
-
-const containerStyle: React.CSSProperties = {
-  background: '#fff', borderRadius: 8, padding: 12,
-  boxShadow: '0 2px 12px rgba(0,0,0,0.15)', maxHeight: '60vh',
-  overflowY: 'auto', width: 320,
-}
-const cardStyle: React.CSSProperties = {
-  borderBottom: '1px solid #eee', paddingBottom: 10, marginBottom: 10,
-}
-function voteBtnStyle(bg: string): React.CSSProperties {
-  return {
-    background: bg, color: '#fff', border: 'none', borderRadius: 4,
-    padding: '3px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'sans-serif',
-  }
 }

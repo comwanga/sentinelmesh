@@ -42,5 +42,3 @@ CREATE INDEX push_deliveries_claim_idx
 CREATE INDEX push_deliveries_stale_lease_idx
   ON push_deliveries (locked_at)
   WHERE status = 'processing';
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON push_deliveries TO sentinel_app;

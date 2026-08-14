@@ -3,9 +3,9 @@ import { MAP_COLORS, SEVERITY_COLORS, RADIUS_FILL, RADIUS_STROKE } from './map-t
 
 describe('map-tokens', () => {
   it('MAP_COLORS has required base tokens', () => {
-    expect(MAP_COLORS.bg).toBe('#0B0E14')
-    expect(MAP_COLORS.roadCasing).toBe('#111827')
-    expect(MAP_COLORS.water).toBe('#0c1828')
+    expect(MAP_COLORS.bg).toBe('#F4F3EC')
+    expect(MAP_COLORS.roadCasing).toBe('#D4D2C8')
+    expect(MAP_COLORS.water).toBe('#BDE3EE')
   })
 
   it('SEVERITY_COLORS maps all four severities', () => {

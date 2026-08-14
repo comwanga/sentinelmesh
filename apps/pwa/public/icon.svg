@@ -1,5 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="SentinelMesh">
-  <rect width="512" height="512" rx="112" fill="#0b0e14"/>
-  <path d="M256 60 432 148v216l-176 88L80 364V148Z" fill="none" stroke="#00e5ff" stroke-width="36"/>
-  <circle cx="256" cy="256" r="62" fill="#00e5ff"/>
+  <rect width="512" height="512" rx="112" fill="#F7F8F3"/>
+  <path d="M105 328 190 181l82 142 71-122 64 111" fill="none" stroke="#0B6B61" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="105" cy="328" r="30" fill="#FF6B55"/>
+  <circle cx="190" cy="181" r="30" fill="#0B6B61"/>
+  <circle cx="272" cy="323" r="30" fill="#2E87A7"/>
+  <circle cx="343" cy="201" r="30" fill="#E7B84B"/>
+  <circle cx="407" cy="312" r="30" fill="#0B6B61"/>
 </svg>

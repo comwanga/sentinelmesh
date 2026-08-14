@@ -20,29 +20,29 @@ vi.mock('react-router-dom', () => ({
 }))
 
 describe('CirclesPage', () => {
-  it('renders E2EE notice "END-TO-END ENCRYPTED — ZERO KNOWLEDGE"', () => {
+  it('renders the experimental encrypted circles notice', () => {
     mockUseBreakpoint.mockReturnValue({ layout: 'desktop' })
     render(<CirclesPage />)
-    expect(screen.getByText('END-TO-END ENCRYPTED — ZERO KNOWLEDGE')).toBeInTheDocument()
+    expect(screen.getByText('Experimental encrypted circles')).toBeInTheDocument()
   })
 
-  it('mobile: renders "VIEW ON MAP" button', () => {
+  it('mobile: renders the safety map button', () => {
     mockUseBreakpoint.mockReturnValue({ layout: 'mobile' })
     render(<CirclesPage />)
-    expect(screen.getByText('VIEW ON MAP')).toBeInTheDocument()
+    expect(screen.getByText('View safety map')).toBeInTheDocument()
   })
 
-  it('desktop: does not render "VIEW ON MAP" button', () => {
+  it('desktop: does not render the safety map button', () => {
     mockUseBreakpoint.mockReturnValue({ layout: 'desktop' })
     render(<CirclesPage />)
-    expect(screen.queryByText('VIEW ON MAP')).not.toBeInTheDocument()
+    expect(screen.queryByText('View safety map')).not.toBeInTheDocument()
   })
 
-  it('"VIEW ON MAP" button navigates to /map', () => {
+  it('the safety map button navigates to /map', () => {
     mockUseBreakpoint.mockReturnValue({ layout: 'mobile' })
     render(<CirclesPage />)
 
-    fireEvent.click(screen.getByText('VIEW ON MAP'))
+    fireEvent.click(screen.getByText('View safety map'))
 
     expect(mockNavigate).toHaveBeenCalledWith('/map')
   })

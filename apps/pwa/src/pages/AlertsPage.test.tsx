@@ -57,9 +57,9 @@ describe('AlertsPage', () => {
     vi.clearAllMocks()
   })
 
-  it('renders heading "ACTIVE ALERTS"', () => {
+  it('renders the community alerts heading', () => {
     renderPage()
-    expect(screen.getByText('ACTIVE ALERTS')).toBeInTheDocument()
+    expect(screen.getByText('Community alerts')).toBeInTheDocument()
   })
 
   it('renders all 8 EventType filter chips', () => {

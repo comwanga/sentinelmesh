@@ -1,23 +1,23 @@
 export const MAP_COLORS = {
-  bg:                   '#0B0E14',
-  water:                '#0c1828',
-  park:                 '#0b1c10',
-  landuseResidential:   '#0c1320',
-  landuseCommercial:    '#0d1525',
-  roadCasing:           '#111827',
-  roadMotorway:         '#2c3a52',
-  roadTrunk:            '#253347',
-  roadPrimary:          '#1f2c3e',
-  roadSecondary:        '#182030',
-  roadTertiary:         '#131820',
-  roadMinor:            '#10131a',
-  buildingFill:         '#101520',
-  buildingOutline:      '#1a2030',
-  labelDistrict:        '#a8b8cc',
-  labelSuburb:          '#7a9ab5',
-  labelMinor:           '#607a90',
-  labelRoad:            '#4e6a85',
-  labelPoi:             '#527a9e',
+  bg:                   '#F4F3EC',
+  water:                '#BDE3EE',
+  park:                 '#DCEAD5',
+  landuseResidential:   '#ECEBE4',
+  landuseCommercial:    '#EEE4D7',
+  roadCasing:           '#D4D2C8',
+  roadMotorway:         '#F2C975',
+  roadTrunk:            '#F5D994',
+  roadPrimary:          '#FFFFFF',
+  roadSecondary:        '#FFFFFF',
+  roadTertiary:         '#F9F8F3',
+  roadMinor:            '#F7F6F1',
+  buildingFill:         '#DDDCD4',
+  buildingOutline:      '#CBC9BE',
+  labelDistrict:        '#173D3A',
+  labelSuburb:          '#3D5D59',
+  labelMinor:           '#617572',
+  labelRoad:            '#526864',
+  labelPoi:             '#0B6B61',
 } as const
 
 export const SEVERITY_COLORS = {
@@ -28,8 +28,8 @@ export const SEVERITY_COLORS = {
 } as const
 
 export const OVERLAY_COLORS = {
-  route:  '#00E5FF',
-  family: '#00E6B4',
+  route:  '#2E87A7',
+  family: '#0B6B61',
 } as const
 
 export const RADIUS_FILL = {

@@ -20,8 +20,8 @@ export function AlertPerimeter() {
     <section className="perimeter-panel" aria-labelledby="alert-perimeter-title">
       <div className="perimeter-orbit" aria-hidden="true"><BellRing size={24} /></div>
       <div className="perimeter-copy">
-        <span className="eyebrow">FIELD SIGNAL / OPT-IN</span>
-        <h2 id="alert-perimeter-title">Alert Perimeter</h2>
+        <span className="eyebrow">PRIVATE AND OPT-IN</span>
+        <h2 id="alert-perimeter-title">Nearby alert perimeter</h2>
         <p>Draw a listening radius around your current area. Only confirmed incidents meeting your severity threshold are queued for delivery.</p>
       </div>
       <div className="perimeter-grid">
@@ -35,7 +35,7 @@ export function AlertPerimeter() {
       <div className="perimeter-actions">
         {push.state === 'enabled'
           ? <><button className="signal-button muted" onClick={() => void push.enable(preferences)} disabled={!preferences.center}><MapPin size={16} /> Update perimeter</button><button className="text-button" onClick={() => void push.disable()}>Disable alerts</button></>
-          : <button className="signal-button" onClick={() => void push.enable(preferences)} disabled={!preferences.center || push.state === 'working' || push.state === 'unsupported'}><ShieldCheck size={16} /> {push.state === 'working' ? 'Establishing signal…' : 'Enable field alerts'}</button>}
+          : <button className="signal-button" onClick={() => void push.enable(preferences)} disabled={!preferences.center || push.state === 'working' || push.state === 'unsupported'}><ShieldCheck size={16} /> {push.state === 'working' ? 'Enabling alerts…' : 'Enable nearby alerts'}</button>}
         <span className={`perimeter-status ${push.state}`}><i />{push.state === 'enabled' ? 'Listening' : push.state === 'denied' ? 'Permission blocked in browser' : push.state === 'unsupported' ? 'Push unavailable on this device' : 'Silent until enabled'}</span>
       </div>
       {(locationError || push.error) && <p className="perimeter-error" role="alert">{locationError ?? push.error}</p>}

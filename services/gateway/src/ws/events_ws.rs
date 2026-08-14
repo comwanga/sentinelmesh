@@ -45,7 +45,7 @@ pub struct WsEvent {
 }
 
 fn default_trust_state() -> String {
-    "confirmed".to_string()
+    "heuristic".to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -143,11 +143,10 @@ pub async fn query_viewport_events(
 ) -> sqlx::Result<Vec<WsEvent>> {
     let limit = viewport_event_limit(zoom);
     // Table uses lat/lng numerics — no PostGIS. Simple bounding-box range filter.
-    // $1=west $2=south $3=east $4=north; state derived from is_active.
+    // $1=west $2=south $3=east $4=north.
     if filters.is_empty() {
         sqlx::query_as::<_, WsEvent>(
-            "SELECT id, event_type, severity,
-                    CASE WHEN is_active THEN 'ACTIVE' ELSE 'INACTIVE' END AS state,
+            "SELECT id, event_type, severity, state,
                     trust_state,
                     title, lat::float8 AS lat, lng::float8 AS lng, started_at
                FROM safety_events
@@ -168,8 +167,7 @@ pub async fn query_viewport_events(
         .await
     } else {
         sqlx::query_as::<_, WsEvent>(
-            "SELECT id, event_type, severity,
-                    CASE WHEN is_active THEN 'ACTIVE' ELSE 'INACTIVE' END AS state,
+            "SELECT id, event_type, severity, state,
                     trust_state,
                     title, lat::float8 AS lat, lng::float8 AS lng, started_at
                FROM safety_events

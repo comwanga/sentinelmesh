@@ -103,32 +103,30 @@ export function ReportSubmit({ onClose, linkedEventId }: Props) {
   }, [reportType, description, linkedEventId, onClose, dispatch])
 
   return (
-    <div style={containerStyle}>
-      <h3 style={{ margin: '0 0 14px', fontSize: 13, fontFamily: "'Courier New', monospace", color: '#e2e8f0', letterSpacing: '0.08em' }}>
-        SUBMIT REPORT
-      </h3>
+    <div className="report-panel">
+      <h3>Share a community report</h3>
 
-      <label style={labelStyle}>Type</label>
+      <label className="form-label">Type</label>
       <select
         value={reportType}
         onChange={e => setReportType(e.target.value)}
-        style={inputStyle}
+        className="form-control"
       >
         {REPORT_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
       </select>
 
-      <label style={labelStyle}>Description (optional)</label>
+      <label className="form-label">Description (optional)</label>
       <textarea
         value={description}
         onChange={e => setDescription(e.target.value)}
         rows={3}
-        style={{ ...inputStyle, resize: 'none' }}
+        className="form-control"
         placeholder="Describe what you see…"
       />
 
       {experimentalFeatures.photos && (
         <>
-          <label style={labelStyle}>Photo (experimental)</label>
+          <label className="form-label">Photo (experimental)</label>
           <input ref={fileRef} type="file" accept="image/*" style={{ marginBottom: 4, fontSize: 11, color: '#94a3b8', width: '100%' }} />
           <p style={{ margin: '0 0 12px', fontSize: 10, color: '#4a5568', fontFamily: "'Courier New', monospace" }}>
             EXIF removal and face blurring are best effort. Review the image before upload.
@@ -142,39 +140,17 @@ export function ReportSubmit({ onClose, linkedEventId }: Props) {
         </p>
       )}
 
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div className="button-row">
         <button
           onClick={handleSubmit}
           disabled={submitState === 'locating' || submitState === 'submitting'}
-          style={btnStyle('#1B5E20', '#4CAF50')}
+          className="button-primary"
         >
           {submitState === 'locating' ? 'Getting location…' :
            submitState === 'submitting' ? 'Submitting…' : 'Submit'}
         </button>
-        <button onClick={onClose} style={btnStyle('#1a2035', '#4a5568')}>Cancel</button>
+        <button onClick={onClose} className="button-secondary">Cancel</button>
       </div>
     </div>
   )
-}
-
-const containerStyle: React.CSSProperties = {
-  background: '#0d1118', borderRadius: 8, padding: 16,
-  border: '1px solid #1a2035',
-  fontFamily: "'Courier New', monospace",
-}
-const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: 10, color: '#4a5568', marginBottom: 3, letterSpacing: '0.06em',
-}
-const inputStyle: React.CSSProperties = {
-  width: '100%', fontSize: 12, padding: '6px 8px', marginBottom: 10,
-  border: '1px solid #1a2035', borderRadius: 4, boxSizing: 'border-box',
-  background: '#0B0E14', color: '#e2e8f0', fontFamily: "'Courier New', monospace",
-  outline: 'none',
-}
-function btnStyle(bg: string, color: string): React.CSSProperties {
-  return {
-    flex: 1, background: bg, color, border: `1px solid ${color}33`, borderRadius: 4,
-    padding: '7px 0', fontSize: 11, cursor: 'pointer', fontFamily: "'Courier New', monospace",
-    letterSpacing: '0.05em',
-  }
 }

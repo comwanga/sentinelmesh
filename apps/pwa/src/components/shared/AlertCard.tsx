@@ -56,25 +56,24 @@ export function AlertCard({
 
   return (
     <button type="button" onClick={onClick} className={`atlas-alert-card ${selected ? 'selected' : ''}`} style={{
-      background: '#0d1118', border: '1px solid #1a2035', borderRadius: 8,
-      padding: '10px 12px', marginBottom: 8, borderLeft: `3px solid ${accent}`,
+      background: '#fff', border: '1px solid #d9e1dc', borderRadius: 13,
+      padding: '12px 13px', marginBottom: 9, borderLeft: `4px solid ${accent}`,
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
         <div style={{ flex: 1 }}>
           <div style={{
-            fontFamily: "'Courier New', monospace", fontSize: 12,
-            fontWeight: 700, color: '#e2e8f0', marginBottom: 2,
+            fontSize: 13, fontWeight: 800, color: '#183330', marginBottom: 3,
           }}>
             {title}
           </div>
-          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 11, color: '#94a3b8' }}>
+          <div style={{ fontSize: 11, color: '#48635e' }}>
             {location} {severity ? `· ${severity}` : ''}
           </div>
         </div>
       </div>
 
       <div style={{
-        fontFamily: "'Courier New', monospace", fontSize: 11, color: '#4a5568', marginBottom: 6,
+        fontSize: 10, color: '#687c78', marginBottom: 7,
       }}>
         {timeAgo(timestamp)}
       </div>
@@ -82,18 +81,18 @@ export function AlertCard({
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const }}>
         {trust.badge ? (
           <span style={{
-            fontFamily: "'Courier New', monospace", fontSize: 11, padding: '2px 6px',
-            borderRadius: 4, letterSpacing: '0.08em',
-            background: '#11151f', color: trust.color, border: `1px solid ${trust.color}`,
+            fontSize: 9, fontWeight: 800, padding: '3px 7px',
+            borderRadius: 10, letterSpacing: '0.05em',
+            background: '#f7f8f3', color: trust.color, border: `1px solid ${trust.color}`,
           }}>
             {trust.badge}
           </span>
         ) : (
           <span style={{
-            fontFamily: "'Courier New', monospace", fontSize: 11, padding: '2px 6px',
-            borderRadius: 4, letterSpacing: '0.08em',
-            background: status === 'CONFIRMED' ? '#1B5E20' : '#1A237E',
-            color: status === 'CONFIRMED' ? '#4CAF50' : '#BB86FC',
+            fontSize: 9, fontWeight: 800, padding: '3px 7px',
+            borderRadius: 10, letterSpacing: '0.05em',
+            background: status === 'CONFIRMED' ? '#dff3e8' : '#e8eff8',
+            color: status === 'CONFIRMED' ? '#25845b' : '#42658b',
           }}>
             {status}
           </span>

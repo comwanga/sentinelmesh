@@ -19,7 +19,7 @@ describe('Sidebar', () => {
   it('renders core navigation only by default', () => {
     const s = makeStore()
     render(<Sidebar />, { wrapper: makeWrapper(s) })
-    ;['Live atlas', 'Alert ledger', 'Field reports', 'Identity + settings'].forEach(label => {
+    ;['Safety map', 'Alerts', 'Community reports', 'Identity + settings'].forEach(label => {
       expect(screen.getByText(label)).toBeInTheDocument()
     })
     ;['Family circles', 'Routes', 'Acoustic Detect', 'Insights'].forEach(label => {
