@@ -1,9 +1,10 @@
 // Circle keys are stored as non-extractable CryptoKey objects in IndexedDB.
 // localStorage can only hold strings (forcing an extractable, exfiltratable key),
 // so it is no longer used for keys — XSS cannot export a non-extractable key.
-import { finalizeEvent, nip44, type VerifiedEvent } from 'nostr-tools'
+import { finalizeEvent, nip44, verifyEvent, type VerifiedEvent } from 'nostr-tools'
 import { upsertCircleKey, removeVaultCircle, loadVaultCircleKey } from './identityStore'
 import { getCachedKeypair } from './nostrService'
+import { signWithActiveIdentity } from './signerService'
 
 const LEGACY_KEY_PREFIX = 'sentinelmesh:circle_key:'
 const DB_NAME = 'sentinelmesh'
@@ -279,6 +280,157 @@ export async function decryptLocation(
     if (!decoded) return null
     const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: decoded.iv as unknown as BufferSource }, circleKey, decoded.data as unknown as BufferSource)
     return JSON.parse(new TextDecoder().decode(plain)) as { lat: number; lng: number; ts: string }
+  } catch {
+    return null
+  }
+}
+
+export const CIRCLE_LOCATION_EVENT_KIND = 30080
+const LOCATION_AAD_PREFIX = 'sentinelmesh:circle-location:v1'
+const LOCATION_MAX_AGE_SECONDS = 5 * 60
+const LOCATION_FUTURE_SKEW_SECONDS = 30
+
+export type LocationPrecision = 'exact' | 'approximate'
+export interface CircleLocationContentV1 {
+  lat: number
+  lng: number
+  accuracy_m: number
+  captured_at: number
+  precision: LocationPrecision
+}
+export interface VerifiedCircleLocationV1 extends CircleLocationContentV1 {
+  pubkey: string
+  event_id: string
+  expires_at: number
+}
+
+let approximateSessionGrid: {
+  cellM: number
+  latStep: number
+  lngStep: number
+  latOffset: number
+  lngOffset: number
+} | null = null
+
+function locationAad(circleId: string, keyEpoch: number): Uint8Array {
+  return new TextEncoder().encode(`${LOCATION_AAD_PREFIX}|${circleId}|${keyEpoch}`)
+}
+
+/** Stable, session-scoped 250-500m cell transform applied before signing. */
+export function approximateLocationForSession(lat: number, lng: number): { lat: number; lng: number; cell_m: number } {
+  if (!approximateSessionGrid) {
+    const random = crypto.getRandomValues(new Uint32Array(3))
+    const cellM = 250 + (random[0] % 251)
+    const referenceCos = Math.max(Math.cos(lat * Math.PI / 180), 0.01)
+    approximateSessionGrid = {
+      cellM,
+      latStep: cellM / 111_320,
+      lngStep: cellM / (111_320 * referenceCos),
+      latOffset: random[1] / 0x1_0000_0000,
+      lngOffset: random[2] / 0x1_0000_0000,
+    }
+  }
+  const { cellM, latStep, lngStep, latOffset, lngOffset } = approximateSessionGrid
+  return {
+    lat: (Math.floor(lat / latStep - latOffset) + latOffset + 0.5) * latStep,
+    lng: (Math.floor(lng / lngStep - lngOffset) + lngOffset + 0.5) * lngStep,
+    cell_m: cellM,
+  }
+}
+
+function validCoordinateContent(value: unknown): value is CircleLocationContentV1 {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  const keys = Object.keys(record).sort().join(',')
+  return keys === 'accuracy_m,captured_at,lat,lng,precision'
+    && typeof record.lat === 'number' && Number.isFinite(record.lat) && record.lat >= -90 && record.lat <= 90
+    && typeof record.lng === 'number' && Number.isFinite(record.lng) && record.lng >= -180 && record.lng <= 180
+    && typeof record.accuracy_m === 'number' && Number.isFinite(record.accuracy_m)
+    && record.accuracy_m >= 0 && record.accuracy_m <= 100_000
+    && typeof record.captured_at === 'number' && Number.isSafeInteger(record.captured_at)
+    && (record.precision === 'exact' || record.precision === 'approximate')
+}
+
+function exactLocationTags(event: VerifiedEvent, circleId: string, keyEpoch: number): { expiresAt: number } | null {
+  if (event.tags.length !== 4) return null
+  const expected = new Map(event.tags.map(tag => [tag[0], tag]))
+  if (expected.size !== 4 || [...expected.keys()].some(name => !['circle', 'epoch', 'expires', 'nonce'].includes(name))) return null
+  const circle = expected.get('circle'); const epoch = expected.get('epoch')
+  const expires = expected.get('expires'); const nonce = expected.get('nonce')
+  if (!circle || circle.length !== 2 || circle[1] !== circleId
+    || !epoch || epoch.length !== 2 || epoch[1] !== String(keyEpoch)
+    || !expires || expires.length !== 2 || !/^\d+$/.test(expires[1])
+    || !nonce || nonce.length !== 2 || !/^[0-9a-f-]{36}$/i.test(nonce[1])) return null
+  const expiresAt = Number(expires[1])
+  return Number.isSafeInteger(expiresAt) ? { expiresAt } : null
+}
+
+export async function encryptCircleLocationV1(
+  circleKey: CryptoKey,
+  circleId: string,
+  keyEpoch: number,
+  location: { lat: number; lng: number; accuracy_m: number; captured_at?: number },
+  precision: LocationPrecision,
+  expiresAt: number,
+): Promise<string> {
+  if (!circleId || !Number.isSafeInteger(keyEpoch) || keyEpoch < 1) throw new Error('Invalid circle location context')
+  const capturedAt = location.captured_at ?? Math.floor(Date.now() / 1000)
+  const transformed = precision === 'approximate'
+    ? approximateLocationForSession(location.lat, location.lng)
+    : { lat: location.lat, lng: location.lng, cell_m: 0 }
+  const content: CircleLocationContentV1 = {
+    lat: transformed.lat,
+    lng: transformed.lng,
+    accuracy_m: precision === 'approximate' ? Math.max(location.accuracy_m, transformed.cell_m) : location.accuracy_m,
+    captured_at: capturedAt,
+    precision,
+  }
+  if (!validCoordinateContent(content) || !Number.isSafeInteger(expiresAt)
+    || expiresAt <= capturedAt || expiresAt > capturedAt + LOCATION_MAX_AGE_SECONDS) {
+    throw new Error('Invalid circle location payload')
+  }
+  const event = await signWithActiveIdentity({
+    kind: CIRCLE_LOCATION_EVENT_KIND,
+    created_at: capturedAt,
+    tags: [['circle', circleId], ['epoch', String(keyEpoch)], ['expires', String(expiresAt)], ['nonce', crypto.randomUUID()]],
+    content: JSON.stringify(content),
+  })
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv, additionalData: locationAad(circleId, keyEpoch) as unknown as BufferSource },
+    circleKey,
+    new TextEncoder().encode(JSON.stringify(event)),
+  )
+  return encodeB64(iv, ciphertext)
+}
+
+export async function decryptCircleLocationV1(
+  circleKey: CryptoKey,
+  ciphertextB64: string,
+  circleId: string,
+  keyEpoch: number,
+  activeMemberPubkeys: ReadonlySet<string>,
+  now = Math.floor(Date.now() / 1000),
+): Promise<VerifiedCircleLocationV1 | null> {
+  try {
+    const decoded = decodeB64(ciphertextB64)
+    if (!decoded) return null
+    const plaintext = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: decoded.iv as unknown as BufferSource, additionalData: locationAad(circleId, keyEpoch) as unknown as BufferSource },
+      circleKey,
+      decoded.data as unknown as BufferSource,
+    )
+    const event = JSON.parse(new TextDecoder().decode(plaintext)) as VerifiedEvent
+    if (!verifyEvent(event) || event.kind !== CIRCLE_LOCATION_EVENT_KIND
+      || event.created_at > now + LOCATION_FUTURE_SKEW_SECONDS
+      || !activeMemberPubkeys.has(event.pubkey.toLowerCase())) return null
+    const tags = exactLocationTags(event, circleId, keyEpoch)
+    if (!tags || tags.expiresAt <= now || tags.expiresAt > event.created_at + LOCATION_MAX_AGE_SECONDS) return null
+    const content: unknown = JSON.parse(event.content)
+    if (!validCoordinateContent(content) || content.captured_at !== event.created_at
+      || content.captured_at > now + LOCATION_FUTURE_SKEW_SECONDS
+      || content.captured_at < now - LOCATION_MAX_AGE_SECONDS) return null
+    return { ...content, pubkey: event.pubkey, event_id: event.id, expires_at: tags.expiresAt }
   } catch {
     return null
   }

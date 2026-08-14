@@ -247,7 +247,7 @@ function EmptyState() {
             </div>
           )}
           <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#4a5568', lineHeight: 1.6 }}>
-            ✓ End-to-end encrypted · ✓ Location never stored on server · ✓ You control who joins
+            Circle names and keys are encrypted. Safe location sharing is not enabled yet; when enabled, the server retains short-lived encrypted envelopes and timing metadata.
           </div>
         </div>
       )}

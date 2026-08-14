@@ -14,6 +14,9 @@ import {
   encryptString,
   decryptString,
   saveCircleKeyWithBackup,
+  encryptCircleLocationV1,
+  decryptCircleLocationV1,
+  approximateLocationForSession,
 } from '../e2eeService'
 import { loadVault, saveSecretKey } from '../identityStore'
 import { __resetIdentityCacheForTests, loadIdentity } from '../nostrService'
@@ -103,6 +106,52 @@ describe('encryptLocation / decryptLocation', () => {
     const key = await generateCircleKey()
     const result = await decryptLocation(key, 'bm90dmFsaWQ=')
     expect(result).toBeNull()
+  })
+})
+
+describe('signed CircleLocationEnvelopeV1 crypto', () => {
+  it('signs, encrypts, and strictly verifies the complete inner event', async () => {
+    await saveSecretKey(rawKey(31)); __resetIdentityCacheForTests()
+    const identity = await loadIdentity()
+    const key = await generateCircleKey()
+    const now = Math.floor(Date.now() / 1000)
+    const ciphertext = await encryptCircleLocationV1(key, 'circle-safe', 4, {
+      lat: -1.2921, lng: 36.8219, accuracy_m: 12, captured_at: now,
+    }, 'exact', now + 240)
+    const result = await decryptCircleLocationV1(key, ciphertext, 'circle-safe', 4, new Set([identity.publicKey]), now)
+    expect(result).toMatchObject({ lat: -1.2921, lng: 36.8219, accuracy_m: 12, precision: 'exact', pubkey: identity.publicKey })
+    expect(result!.event_id).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('rejects tampering, wrong key, circle, epoch, expiry, and nonmembers', async () => {
+    await saveSecretKey(rawKey(32)); __resetIdentityCacheForTests()
+    const identity = await loadIdentity()
+    const key = await generateCircleKey(); const wrong = await generateCircleKey()
+    const now = Math.floor(Date.now() / 1000)
+    const ciphertext = await encryptCircleLocationV1(key, 'circle-bound', 2, {
+      lat: 1, lng: 2, accuracy_m: 5, captured_at: now,
+    }, 'exact', now + 60)
+    const bytes = Uint8Array.from(atob(ciphertext), c => c.charCodeAt(0)); bytes[bytes.length - 1] ^= 1
+    const tampered = btoa(String.fromCharCode(...bytes))
+    const members = new Set([identity.publicKey])
+    expect(await decryptCircleLocationV1(key, tampered, 'circle-bound', 2, members, now)).toBeNull()
+    expect(await decryptCircleLocationV1(wrong, ciphertext, 'circle-bound', 2, members, now)).toBeNull()
+    expect(await decryptCircleLocationV1(key, ciphertext, 'wrong-circle', 2, members, now)).toBeNull()
+    expect(await decryptCircleLocationV1(key, ciphertext, 'circle-bound', 3, members, now)).toBeNull()
+    expect(await decryptCircleLocationV1(key, ciphertext, 'circle-bound', 2, members, now + 61)).toBeNull()
+    expect(await decryptCircleLocationV1(key, ciphertext, 'circle-bound', 2, new Set(), now)).toBeNull()
+  })
+
+  it('rejects invalid coordinates and applies a stable 250-500m approximate cell before signing', async () => {
+    const key = await generateCircleKey(); const now = Math.floor(Date.now() / 1000)
+    await expect(encryptCircleLocationV1(key, 'circle', 1, {
+      lat: 91, lng: 0, accuracy_m: 1, captured_at: now,
+    }, 'exact', now + 60)).rejects.toThrow('Invalid circle location payload')
+    const first = approximateLocationForSession(-1.2921, 36.8219)
+    const second = approximateLocationForSession(-1.2921, 36.8219)
+    expect(second).toEqual(first)
+    expect(first.cell_m).toBeGreaterThanOrEqual(250)
+    expect(first.cell_m).toBeLessThanOrEqual(500)
   })
 })
 

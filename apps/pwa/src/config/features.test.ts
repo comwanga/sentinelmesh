@@ -6,6 +6,13 @@ describe('experimental feature flags', () => {
     vi.resetModules()
   })
 
+  it('does not let the circles experiment enable safe location', async () => {
+    vi.stubEnv('VITE_ENABLE_EXPERIMENTAL_CIRCLES', 'true')
+    const { experimentalFeatures, safeCircleLocationEnabled } = await import('./features')
+    expect(experimentalFeatures.circles).toBe(true)
+    expect(safeCircleLocationEnabled).toBe(false)
+  })
+
   it('keeps every experimental feature disabled by default', async () => {
     const { experimentalFeatures } = await import('./features')
     expect(Object.values(experimentalFeatures).every(value => value === false)).toBe(true)

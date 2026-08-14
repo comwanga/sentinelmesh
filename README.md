@@ -16,7 +16,7 @@ The default product supports the safety map, alert list, signed community report
 | **Community reports** | Core | Submits location-based reports signed by the user's local Nostr key and supports community confirmation or denial. |
 | **Nostr identity** | Core | Generates an encrypted local identity or connects a NIP-46 remote signer, with backup, restore, NIP-19 key handling, and optional NIP-05 verification. |
 | **Push notifications** | Core | User-enabled alert perimeters deliver confirmed incidents through durable, geographically targeted queues. |
-| **Family Circles** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_CIRCLES`; the current client/server journey is not release-ready. |
+| **Family Circles** | Experimental | Circle management is behind `VITE_ENABLE_EXPERIMENTAL_CIRCLES`. Location publication additionally requires both `SAFE_CIRCLE_LOCATION_ENABLED=true` and `VITE_ENABLE_SAFE_CIRCLE_LOCATION=true`; it is disabled by default and not wired to continuous sharing or UI rendering. |
 | **Acoustic detection** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ACOUSTIC`; detections are client assertions and cannot independently confirm an event. |
 | **Routing** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ROUTING`; routes are not described as safe or authoritative. |
 | **Photos** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_PHOTOS`; privacy processing is best effort. |
@@ -63,20 +63,20 @@ The throughline: **trust is earned through independent corroboration**, and the 
 Be precise about this — overclaiming privacy is a safety risk for the people who rely on it.
 
 **Protected:**
-- **Family-circle keys** are delivered pairwise through signed NIP-44 v2 envelopes. Circle names, labels, and coordinates remain encrypted on-device with the shared AES-256-GCM circle key; the server stores ciphertext it cannot read.
+- **Family-circle keys** are delivered pairwise through signed NIP-44 v2 envelopes. The safe-location foundation signs the complete location event before AES-256-GCM encryption; the server stores one short-lived opaque ciphertext envelope per sender and cannot read its coordinates.
 - **Legacy circle keys** that were previously migrated into non-extractable storage without a vault copy remain usable for decryption but cannot be distributed. Restore a backup containing the key or create a new circle; the client will not rotate them destructively.
-- **Family-circle social graph** is tokenized at rest: membership/owner/recipient identifiers are stored as per-circle keyed tokens (no plaintext pubkeys), and circle names and member labels are encrypted under the circle key. A database leak cannot reconstruct who belongs to which circle, or read circle/member names.
+- **Family-circle social graph** is tokenized at rest: membership, owner, and location-sender identifiers are stored as per-circle keyed tokens (no plaintext pubkeys), and circle names and member labels are encrypted under the circle key. A database leak without the token secret cannot map those tokens back to pubkeys or read circle/member names.
 - **Community-report locations** are coarsened to a ~100 m cell, and the reporter's identity (pubkey/signature) is stored in a separate access-controlled table behind a restricted database role. A database leak cannot link a precise location trail to a person.
 - **Audio** never leaves the device. Acoustic detection sends only a label, confidence, and location.
 - **No name/email/phone is required.** If a user opts into NIP-05 verification, the canonical `name@domain` label and its 24-hour verification window are stored with the public key. The user can remove it explicitly; otherwise it remains as expired history until that public key verifies again or another key reclaims the label.
 - **Map browsing uses open data.** The default PWA renders Stadia-hosted, OpenStreetMap-derived OpenMapTiles vector data with MapLibre. Localhost needs no credentials; production uses registered-domain authentication.
 - **Photos** are EXIF-stripped and face-blurred on-device before upload (face blur is best-effort, frontal faces only).
 
-**Threat model.** The community-report and family-circle protections above defend against a **stolen database or leaked read access without the application's secrets**. They do **not** hide data from the running server operator (who holds the keying secrets) — that is a deliberate, documented scope boundary, to be narrowed by later work.
+**Threat model.** The community-report and family-circle protections above defend against a **stolen database or leaked read access without the application's secrets**. The server still observes circle identifiers, keyed sender tokens, ciphertext hashes, envelope sizes, and publish/expiry timing. A compromised running client, circle key, authenticated member, or gateway can attack availability or traffic analysis; E2EE protects coordinate contents, not those boundaries.
 
 **NOT protected (known limitations — do not assume otherwise):**
 - **Acoustic-detection locations are stored in plaintext** and linked to a persistent pubkey, with no retention limit yet. Treat acoustic-detection history as an identity-linked location trail.
-- **Family-circle timing metadata is visible to the server**: it can see *when* a member shares location (the coordinates, membership, and names are protected — the timing is not).
+- **Family-circle envelope metadata is visible to the server**: it stores short-lived encrypted envelopes plus circle, epoch, keyed sender, replay hash, size, creation, and expiry metadata. Coordinates are not plaintext, but timing and traffic patterns are not hidden.
 - **A Nostr pubkey is a stable pseudonymous identifier.** User-signed events and anything independently published to external relays or storage may be retained by third parties.
 - **An optional NIP-05 label is linkable to the public key.** The server operator, or anyone with access to both profile and restricted report-author records, can correlate that human-readable label with pubkey-linked activity.
 

@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useAppDispatch } from '../store'
-import { memberStatusUpdated, locationReceived, circleDecryptError } from '../store/circlesSlice'
-import { decryptLocation, loadCircleKey } from './e2eeService'
+import { safeCircleLocationEnabled } from '../config/features'
 import type { CircleWsMessage } from '../../../../shared/types'
 
 const WS_BASE = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/circles`
@@ -12,7 +11,9 @@ export function useCircleWsConnection(circleId: string | null, nostrAuthEvent?: 
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (!circleId) return
+    // The WS authentication/snapshot protocol is not yet repaired. Do not open
+    // or render location traffic merely because experimental circles are on.
+    if (!circleId || !safeCircleLocationEnabled) return
 
     function connect(): void {
       const ws = new WebSocket(WS_BASE)
@@ -30,22 +31,9 @@ export function useCircleWsConnection(circleId: string | null, nostrAuthEvent?: 
         try {
           const msg: CircleWsMessage = JSON.parse(event.data as string)
 
-          if (msg.type === 'CIRCLE_LOCATION_BLOB') {
-            const { sender_pubkey, encrypted_payload, sent_at } = msg.payload
-            const key = await loadCircleKey(circleId!)
-            if (!key) {
-              dispatch(circleDecryptError(`${sender_pubkey.slice(0, 8)}… — circle key not found`))
-              return
-            }
-            const loc = await decryptLocation(key, encrypted_payload)
-            if (loc) {
-              dispatch(locationReceived({ pubkey: sender_pubkey, lat: loc.lat, lng: loc.lng, ts: sent_at }))
-            } else {
-              dispatch(circleDecryptError(`${sender_pubkey.slice(0, 8)}… — decryption failed`))
-            }
-          } else if (msg.type === 'CIRCLE_PRESENCE') {
-            dispatch(memberStatusUpdated({ pubkey: msg.payload.sender_pubkey, status: msg.payload.mode }))
-          }
+          // Future opaque snapshot/envelope/epoch/removal messages are parsed but
+          // intentionally not rendered until member-to-envelope binding is safe.
+          void msg
         } catch {
           console.warn('[circle-ws] invalid message')
         }

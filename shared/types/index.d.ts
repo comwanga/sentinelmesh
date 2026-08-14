@@ -151,6 +151,18 @@ export interface ProximityAlert {
   triggered_at: string
 }
 
+export interface CircleLocationEnvelopeV1 {
+  id: string
+  version: 1
+  circle_id: string
+  key_epoch: number
+  ciphertext: string
+  created_at: string
+  expires_at: string
+}
+
 export type CircleWsMessage =
-  | { type: 'CIRCLE_LOCATION_BLOB'; payload: { sender_pubkey: string; encrypted_payload: string; sent_at: string } }
-  | { type: 'CIRCLE_PRESENCE';      payload: { sender_pubkey: string; mode: PresenceMode } }
+  | { type: 'CIRCLE_LOCATION_SNAPSHOT'; payload: CircleLocationEnvelopeV1[] }
+  | { type: 'CIRCLE_LOCATION_ENVELOPE'; payload: CircleLocationEnvelopeV1 }
+  | { type: 'CIRCLE_EPOCH_CHANGED'; payload: { circle_id: string; key_epoch: number; rekey_required: boolean } }
+  | { type: 'CIRCLE_MEMBER_REMOVED'; payload: { circle_id: string; key_epoch: number } }

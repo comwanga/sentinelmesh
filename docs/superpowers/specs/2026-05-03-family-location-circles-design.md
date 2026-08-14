@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-03  
 **Branch:** feat/family-location-circles  
-**Status:** Approved for implementation
+**Status:** Superseded for location transport by migration 009 and the safe CircleLocationEnvelopeV1 foundation. Do not use this document to enable live publishing or rendering.
 
 ---
 
