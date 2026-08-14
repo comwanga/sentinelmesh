@@ -42,7 +42,7 @@ docker exec -i "$container" pg_restore -U postgres -d sentinelmesh_restore \
 
 version=$(docker exec "$container" psql -U postgres -d sentinelmesh_restore -Atc \
   'SELECT MAX(version) FROM schema_versions')
-test "$version" = "7"
+test "$version" = "8"
 manifest=$(docker exec "$container" psql -U postgres -d sentinelmesh_restore -Atc \
   "SELECT version || '|' || description FROM schema_versions ORDER BY version;
    SELECT version || '|' || name || '|' || checksum FROM schema_migrations ORDER BY version")
@@ -53,11 +53,13 @@ expected_manifest="2|SentinelMesh clean V2 baseline
 5|005_add_nip05_identity.sql
 6|006_add_nip44_circle_key_wrap.sql
 7|007_add_targeted_push_outbox.sql
+8|008_grant_push_outbox_runtime.sql
 3|003_protect_migration_history.sql|d7c41d110fdbb68f38586a2f57804c4567444946be29c988eba1c467cacfdce9
 4|004_simplify_runtime_schema.sql|e7e3b94079424215c60b88675e045eeebaf3bd1b4d21256b926858945270c1a0
 5|005_add_nip05_identity.sql|77fe3e26e02b444dc5c673af5453f67affe7bd2106d7235778a50f7c1fca1c91
 6|006_add_nip44_circle_key_wrap.sql|98085254ae48e12db57e13459ec2a6a425f29f919568475f0597a8a2186b93cb
-7|007_add_targeted_push_outbox.sql|e3d0fbd16d1b343a980b8aa7fa86c39f24d10fe9abd6595a3cc1aa5f0ae3b111"
+7|007_add_targeted_push_outbox.sql|a660ca8d78efa63631b2167e02c72d8123f19684c095c56ec45f2cedcf69adc9
+8|008_grant_push_outbox_runtime.sql|44bfdd61fafcb1a979853dfed2d2253fa31674b25bac851b2e0def35353bb7ab"
 test "$manifest" = "$expected_manifest"
 
 docker exec "$container" psql -U postgres -d sentinelmesh_restore -v ON_ERROR_STOP=1 \
@@ -91,6 +93,7 @@ fi
 
 docker exec -e PGPASSWORD="$app_password" "$container" psql -U sentinel_app \
   -d sentinelmesh_restore -v ON_ERROR_STOP=1 \
+  -c 'SELECT count(*) FROM push_deliveries' \
   -c 'SET ROLE sentinel_reputation; SELECT count(*) FROM report_authors' >/dev/null
 
 touch "$dump.verified"
