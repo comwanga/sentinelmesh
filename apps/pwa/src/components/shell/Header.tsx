@@ -12,7 +12,7 @@ export function Header() {
     <button className="atlas-wordmark" onClick={() => navigate('/map')} aria-label="SentinelMesh live map">
       <span className="wordmark-sigil"><img src="/icon.svg" alt="" /></span><span><strong>Sentinel</strong>Mesh<small>COMMUNITY SAFETY NETWORK</small></span>
     </button>
-    {layout === 'desktop' && <div className="atlas-search"><Search size={16} /><input aria-label="Search the safety map" placeholder="Search an area or review the live map" onKeyDown={event => { if (event.key === 'Enter') navigate('/map') }} /><kbd><Command size={12} /> K</kbd></div>}
+    {layout === 'desktop' && <div className="atlas-search"><Search size={16} /><input aria-label="Search the safety map" placeholder="Search an area or review the live map" onKeyDown={event => { if (event.key === 'Enter' && event.currentTarget.value.trim()) navigate(`/map?q=${encodeURIComponent(event.currentTarget.value.trim())}`) }} /><kbd><Command size={12} /> K</kbd></div>}
     <div className={`network-state ${connected ? 'live' : ''}`}><i /><span>{connected ? 'Network live' : 'Reconnecting'}</span></div>
     <button className="header-alerts" onClick={() => navigate('/alerts')} aria-label={`${activeCount} active alerts`}><Bell />{activeCount > 0 && <b>{activeCount > 99 ? '99+' : activeCount}</b>}</button>
   </header>

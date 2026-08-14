@@ -56,9 +56,10 @@ interface Props {
   onEventClick?: (event: SafetyEvent) => void
   events?: SafetyEvent[]
   selectedEventId?: string | null
+  onClusterClick?: (events: SafetyEvent[]) => void
 }
 
-export function EventClusterLayer({ zoom: zoomProp, onEventClick, events, selectedEventId }: Props) {
+export function EventClusterLayer({ zoom: zoomProp, onEventClick, events, selectedEventId, onClusterClick }: Props) {
   const { current: map } = useMap()
   const [mapZoom, setMapZoom] = useState<number>(map?.getZoom() ?? 2)
 
@@ -121,7 +122,7 @@ export function EventClusterLayer({ zoom: zoomProp, onEventClick, events, select
                 mediumCount={cluster.mediumCount}
                 lowCount={cluster.lowCount}
                 totalCount={cluster.totalCount}
-                onClick={() => onEventClick?.(cluster.events[0])}
+                onClick={() => onClusterClick?.(cluster.events)}
               />
             )
           }

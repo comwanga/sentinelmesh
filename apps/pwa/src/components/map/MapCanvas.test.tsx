@@ -26,6 +26,8 @@ const mockMap = vi.hoisted(() => {
       getWest: () => 36,
     })),
     getZoom: vi.fn(() => 10),
+    easeTo: vi.fn(),
+    fitBounds: vi.fn(),
     on: vi.fn((event: string, fn: () => void) => { handlers.set(event, fn) }),
     off: vi.fn((event: string) => { handlers.delete(event) }),
     _fire: (event: string) => handlers.get(event)?.(),
@@ -57,7 +59,10 @@ vi.mock('react-map-gl/maplibre', () => ({
 }))
 
 describe('MapCanvas', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })))
+  })
 
   it('renders Map with the synchronous canonical style on the first pass', () => {
     render(<MapCanvas />)
@@ -119,5 +124,25 @@ describe('MapCanvas', () => {
   it('does not subscribe to bounds changes without a callback', () => {
     render(<MapCanvas />)
     expect(mockMap.on).not.toHaveBeenCalled()
+  })
+
+  it('executes one-shot center and bounds camera commands without controlling the map', () => {
+    const { rerender } = render(<MapCanvas cameraCommand={{ id: 1, center: [36.82, -1.28], zoom: 14, padding: 20 }} />)
+    expect(mockMap.easeTo).toHaveBeenCalledWith(expect.objectContaining({ center: [36.82, -1.28], zoom: 14, duration: 700 }))
+    expect(mapProps.current).not.toHaveProperty('longitude')
+    rerender(<MapCanvas cameraCommand={{ id: 2, bounds: [36, -2, 37, -1], padding: 30 }} />)
+    expect(mockMap.fitBounds).toHaveBeenCalledWith([[36, -2], [37, -1]], expect.objectContaining({ padding: 30, duration: 700 }))
+  })
+
+  it('does not zoom out when focusing a center from a closer view', () => {
+    mockMap.getZoom.mockReturnValueOnce(17)
+    render(<MapCanvas cameraCommand={{ id: 1, center: [36.82, -1.28], zoom: 14 }} />)
+    expect(mockMap.easeTo).toHaveBeenCalledWith(expect.objectContaining({ zoom: 17 }))
+  })
+
+  it('disables camera animation when reduced motion is preferred', () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })))
+    render(<MapCanvas cameraCommand={{ id: 1, center: [1, 2] }} />)
+    expect(mockMap.easeTo).toHaveBeenCalledWith(expect.objectContaining({ duration: 0 }))
   })
 })

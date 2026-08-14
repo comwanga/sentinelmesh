@@ -23,6 +23,13 @@ export interface RouteResult {
 
 export type TravelMode = 'walking' | 'driving' | 'cycling'
 
+export class MapSearchError extends Error {
+  constructor(message = 'Map search is unavailable') {
+    super(message)
+    this.name = 'MapSearchError'
+  }
+}
+
 export async function searchAddress(
   query: string,
   proximity?: LatLng,
@@ -33,13 +40,20 @@ export async function searchAddress(
     params.set('lat', String(proximity.lat))
     params.set('lng', String(proximity.lng))
   }
+  let res: Response
   try {
-    const res = await fetch(`/api/maps/search?${params}`, { signal })
-    if (!res.ok) return []
+    res = await fetch(`/api/maps/search?${params}`, { signal })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    throw new MapSearchError()
+  }
+  if (!res.ok) throw new MapSearchError(`Map search failed (${res.status})`)
+  try {
     const data = await res.json() as { results: GeocodeSuggestion[] }
     return data.results
-  } catch {
-    return []
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    throw new MapSearchError()
   }
 }
 
