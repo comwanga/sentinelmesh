@@ -1,3 +1,5 @@
 export const TILE_SOURCE = {
-  openfreemap: 'https://tiles.openfreemap.org/planet',
+  stadia: (import.meta.env.VITE_MAP_TILE_URL as string | undefined) ??
+    'https://tiles.stadiamaps.com/data/openmaptiles.json',
+  glyphs: 'https://tiles.stadiamaps.com/fonts/{fontstack}/{range}.pbf',
 } as const

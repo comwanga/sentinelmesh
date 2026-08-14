@@ -21,4 +21,11 @@ describe('HTML entrypoint', () => {
     const main = readFileSync(resolve(__dirname, 'main.tsx'), 'utf-8')
     expect(main).toContain("maplibre-gl/dist/maplibre-gl.css")
   })
+
+  it('mounts React before hydrating signer state and handles hydration failures', () => {
+    const main = readFileSync(resolve(__dirname, 'main.tsx'), 'utf-8')
+    expect(main.indexOf('ReactDOM.createRoot')).toBeLessThan(main.indexOf('loadIdentity()'))
+    expect(main).toContain('.then(initializeActiveSigner).catch(')
+    expect(main).not.toContain('.finally(')
+  })
 })

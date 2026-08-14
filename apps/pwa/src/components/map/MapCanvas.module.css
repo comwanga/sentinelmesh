@@ -4,15 +4,3 @@
   position: relative;
   isolation: isolate;
 }
-
-.container::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 120px;
-  background: linear-gradient(to bottom, transparent 0%, rgba(247, 248, 243, 0.45) 100%);
-  pointer-events: none;
-  z-index: 5;
-}
