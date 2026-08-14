@@ -8,6 +8,8 @@ import { ReportsPage } from './pages/ReportsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ChatPage } from './pages/ChatPage'
 import { PublicChannelPage } from './pages/PublicChannelPage'
+import { DirectConversationPage } from './pages/DirectConversationPage'
+import { CircleChatPage } from './pages/CircleChatPage'
 import { experimentalFeatures, chatEnabled } from './config/features'
 
 function RouteError() {
@@ -35,6 +37,8 @@ export const router = createBrowserRouter([
       ...(chatEnabled ? [
         { path: '/chat', element: <ChatPage /> },
         { path: '/chat/community/:groupId', element: <PublicChannelPage /> },
+        { path: '/chat/dm/:conversationId', element: <DirectConversationPage /> },
+        ...(experimentalFeatures.circles ? [{ path: '/circles/:circleId/chat', element: <CircleChatPage /> }] : []),
       ] : []),
       { path: '*', element: <Navigate to="/map" replace /> },
     ],

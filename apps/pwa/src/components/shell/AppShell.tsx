@@ -3,6 +3,9 @@ import { Outlet } from 'react-router-dom'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { useSafetyDataSync } from '../../hooks/useSafetyDataSync'
 import { useCircles } from '../../hooks/useCircles'
+import { useInboxSync } from '../../hooks/useInboxSync'
+import { chatEnabled } from '../../config/features'
+import { hasChatRelays } from '../../config/chat'
 import { useAppSelector } from '../../store'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
@@ -12,6 +15,7 @@ export function AppShell() {
   useSafetyDataSync()
   // Acoustic detection is opt-in — started only when user activates the overlay
   useCircles()
+  useInboxSync(chatEnabled && hasChatRelays())
   const { layout } = useBreakpoint()
   const proximityAlerts = useAppSelector(s => s.circles.proximityAlerts)
   const [announcement, setAnnouncement] = useState('')

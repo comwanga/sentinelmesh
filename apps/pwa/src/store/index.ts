@@ -8,6 +8,7 @@ import insightsEventsReducer from './insightsEventsSlice'
 import communityStatsReducer from './communityStatsSlice'
 import safetyLogReducer from './safetyLogSlice'
 import chatReducer from './chatSlice'
+import dmReducer from './dmSlice'
 import { useSelector, TypedUseSelectorHook, useDispatch } from 'react-redux'
 
 export const store = configureStore({
@@ -21,6 +22,7 @@ export const store = configureStore({
     communityStats: communityStatsReducer,
     safetyLog:      safetyLogReducer,
     chat:           chatReducer,
+    dm:             dmReducer,
   },
 })
 
