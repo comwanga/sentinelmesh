@@ -58,6 +58,12 @@ pub struct Config {
     /// revocation relies on in-process socket invalidation, so safe circle
     /// location is only supported with a single replica.
     pub gateway_replicas: u32,
+    /// HMAC secret shared with the managed inbox relay for webhook signatures.
+    pub relay_webhook_secret: Option<String>,
+    /// Optional expected value of the `X-Relay-Source` header (source allowlist).
+    pub relay_webhook_allowed_source: Option<String>,
+    /// Gates the chat notification push worker and webhook->push enqueue path.
+    pub chat_push_enabled: bool,
 }
 
 impl Config {
@@ -112,6 +118,13 @@ impl Config {
             ),
             safe_circle_location_enabled: env_flag("SAFE_CIRCLE_LOCATION_ENABLED", false),
             gateway_replicas: parse_u32_env_or(std::env::var("GATEWAY_REPLICAS").ok(), 1).max(1),
+            relay_webhook_secret: std::env::var("RELAY_WEBHOOK_SECRET")
+                .ok()
+                .filter(|value| !value.trim().is_empty()),
+            relay_webhook_allowed_source: std::env::var("RELAY_WEBHOOK_ALLOWED_SOURCE")
+                .ok()
+                .filter(|value| !value.trim().is_empty()),
+            chat_push_enabled: env_flag("CHAT_PUSH_ENABLED", false),
             internal_service_secret,
             circle_token_secret,
             trust_proxy: std::env::var("TRUST_PROXY")

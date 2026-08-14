@@ -53,7 +53,7 @@ compose run --rm migrate
 
 version=$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
   'SELECT MAX(version) FROM schema_versions')
-test "$version" = "10"
+test "$version" = "11"
 test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
   "SELECT string_agg(version || '|' || name || '|' || checksum, E'\\n' ORDER BY version) FROM schema_migrations")" = "3|003_protect_migration_history.sql|d7c41d110fdbb68f38586a2f57804c4567444946be29c988eba1c467cacfdce9
 4|004_simplify_runtime_schema.sql|e7e3b94079424215c60b88675e045eeebaf3bd1b4d21256b926858945270c1a0
@@ -62,7 +62,8 @@ test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
 7|007_add_targeted_push_outbox.sql|a660ca8d78efa63631b2167e02c72d8123f19684c095c56ec45f2cedcf69adc9
 8|008_grant_push_outbox_runtime.sql|44bfdd61fafcb1a979853dfed2d2253fa31674b25bac851b2e0def35353bb7ab
 9|009_safe_circle_location_envelopes.sql|6eec445a8da9828c3367263140cf296191733428d17c493fdb8c2e34bf2ac6ea
-10|010_circle_membership_lifecycle.sql|4f33076c65c4c8a9af8c52a461a3364c730ba3856288418c481fc3958575398f"
+10|010_circle_membership_lifecycle.sql|4f33076c65c4c8a9af8c52a461a3364c730ba3856288418c481fc3958575398f
+11|011_add_chat_notifications.sql|645889bfa78545ff70bd47a7de7af694329a4a6323da282712f6d186eb5c2598f"
 test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
   "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND column_name IN ('bitcoin_txid','bitcoin_block','anchor_hash')")" = 0
 test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
@@ -129,6 +130,12 @@ test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
   "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'push_deliveries'")" = 1
 test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
   "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'push_subscriptions' AND column_name IN ('min_severity','center_lat','center_lng','radius_km','center_geog')")" = 5
+test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
+  "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('relay_webhook_receipts','chat_notification_preferences','chat_push_deliveries')")" = 3
+test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
+  "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'chat_notification_preferences' AND column_name IN ('nostr_pubkey','dm_enabled','quiet_hours','public_channels','updated_at')")" = 5
+test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
+  "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'chat_push_deliveries' AND column_name IN ('subscription_id','dedupe_key','payload','status','attempts','available_at','locked_at','worker_id','last_error','created_at','updated_at','sent_at')")" = 12
 test "$(compose exec -T postgres sh -c \
   'PGPASSWORD="$APP_DATABASE_PASSWORD" psql -U sentinel_app -d sentinelmesh -Atc "SELECT has_table_privilege(current_user, '\''push_deliveries'\'', '\''SELECT'\'') AND has_table_privilege(current_user, '\''push_deliveries'\'', '\''INSERT'\'') AND has_table_privilege(current_user, '\''push_deliveries'\'', '\''UPDATE'\'') AND has_table_privilege(current_user, '\''push_deliveries'\'', '\''DELETE'\'')"')" = t
 if compose exec -T postgres psql -U postgres -d sentinelmesh -v ON_ERROR_STOP=1 \
@@ -148,7 +155,7 @@ if compose exec -T postgres sh -c \
   exit 1
 fi
 
-for tampered_version in 3 4 5 6 7 8 9 10; do
+for tampered_version in 3 4 5 6 7 8 9 10 11; do
   original_checksum=$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
     "SELECT checksum FROM schema_migrations WHERE version = $tampered_version")
   compose exec -T postgres psql -U postgres -d sentinelmesh -v ON_ERROR_STOP=1 \
@@ -161,7 +168,7 @@ for tampered_version in 3 4 5 6 7 8 9 10; do
     -c "UPDATE schema_migrations SET checksum = '$original_checksum' WHERE version = $tampered_version"
 done
 test "$(compose exec -T postgres psql -U postgres -d sentinelmesh -Atc \
-  'SELECT count(*) FROM schema_migrations WHERE version = 10')" = 1
+  'SELECT count(*) FROM schema_migrations WHERE version = 11')" = 1
 
 BACKUP_DIR=/tmp/sentinelmesh-backup-test ./ops/postgres-backup.sh >/tmp/sentinelmesh-backup-path
 ./ops/postgres-restore-verify.sh "$(cat /tmp/sentinelmesh-backup-path)"

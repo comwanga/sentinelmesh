@@ -17,6 +17,7 @@ The default product supports the safety map, alert list, signed community report
 | **Nostr identity** | Core | Generates an encrypted local identity or connects a NIP-46 remote signer, with backup, restore, NIP-19 key handling, and optional NIP-05 verification. |
 | **Push notifications** | Core | User-enabled alert perimeters deliver confirmed incidents through durable, geographically targeted queues. |
 | **Family Circles** | Experimental | Circle management is behind `VITE_ENABLE_EXPERIMENTAL_CIRCLES`. Location sharing additionally requires both `SAFE_CIRCLE_LOCATION_ENABLED=true` and `VITE_ENABLE_SAFE_CIRCLE_LOCATION=true`; it is off by default. Membership uses epoch-bound keys and pending/accept, removal revokes a member and forces a rekey, the circle WebSocket requires a fresh bound kind-27235 auth event, and markers render only decrypted, roster-verified locations with explicit user controls. |
+| **Community + encrypted chat** | Experimental | Disabled by default (`VITE_ENABLE_CHAT=false`). Public NIP-29 channels and NIP-17/NIP-59 encrypted DMs and Circle rooms require configured relays; relay webhooks and generic push are gated behind `CHAT_PUSH_ENABLED`. See `docs/operations/relay-conformance.md`. |
 | **Acoustic detection** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ACOUSTIC`; detections are client assertions and cannot independently confirm an event. |
 | **Routing** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ROUTING`; routes are not described as safe or authoritative. |
 | **Photos** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_PHOTOS`; privacy processing is best effort. |
@@ -78,6 +79,7 @@ Be precise about this — overclaiming privacy is a safety risk for the people w
 **NOT protected (known limitations — do not assume otherwise):**
 - **Acoustic-detection locations are stored in plaintext** and linked to a persistent pubkey, with no retention limit yet. Treat acoustic-detection history as an identity-linked location trail.
 - **Family-circle envelope metadata is visible to the server**: it stores short-lived encrypted envelopes plus circle, epoch, keyed sender, replay hash, size, creation, and expiry metadata. Coordinates are not plaintext, but timing and traffic patterns are not hidden.
+- **Encrypted chat uses NIP-44**, which has no forward secrecy, post-compromise security, or post-quantum protection. The inbox relay sees the recipient, connection IP, traffic timing, and payload size; the community relay sees all public authors, content, and membership. A compromised circle key, authenticated member, or gateway can attack availability or traffic analysis.
 - **A Nostr pubkey is a stable pseudonymous identifier.** User-signed events and anything independently published to external relays or storage may be retained by third parties.
 - **An optional NIP-05 label is linkable to the public key.** The server operator, or anyone with access to both profile and restricted report-author records, can correlate that human-readable label with pubkey-linked activity.
 
