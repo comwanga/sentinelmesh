@@ -1,70 +1,56 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'fs'
-import { fileURLToPath } from 'url'
-import { resolve, dirname } from 'path'
+import style from '../config/sentinelmesh-light.json'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-const STYLE_PATH = resolve(__dirname, '../../public/sentinelmesh-dark.json')
+const layers = style.layers as Array<Record<string, unknown>>
+const ids = layers.map(layer => layer.id as string)
+const layer = (id: string) => layers.find(candidate => candidate.id === id)!
 
-describe('sentinelmesh-dark.json', () => {
-  it('is valid JSON', () => {
-    const text = readFileSync(STYLE_PATH, 'utf-8')
-    expect(() => JSON.parse(text)).not.toThrow()
-  })
-
-  it('has version 8', () => {
-    const style = JSON.parse(readFileSync(STYLE_PATH, 'utf-8'))
+describe('canonical SentinelMesh light style', () => {
+  it('is a substantial version 8 bright style in app source', () => {
     expect(style.version).toBe(8)
+    expect(style.name).toBe('SentinelMesh Light')
+    expect(layers.length).toBeGreaterThanOrEqual(30)
+    expect(layer('background').paint).toMatchObject({ 'background-color': '#f8f6f1' })
+    expect(layer('water').paint).toMatchObject({ 'fill-color': '#c9e5f2' })
+    expect(layer('parks').paint).toMatchObject({ 'fill-color': '#dcebd6' })
   })
 
-  it('has at least 20 layers', () => {
-    const style = JSON.parse(readFileSync(STYLE_PATH, 'utf-8'))
-    expect((style.layers as unknown[]).length).toBeGreaterThanOrEqual(20)
-  })
-
-  it('has background layer as first layer', () => {
-    const style = JSON.parse(readFileSync(STYLE_PATH, 'utf-8'))
-    const layers = style.layers as Array<Record<string, unknown>>
-    expect(layers[0].id).toBe('background')
-    expect(layers[0].type).toBe('background')
-  })
-
-  it('road casing layers appear before road fill layers', () => {
-    const style = JSON.parse(readFileSync(STYLE_PATH, 'utf-8'))
-    const ids = (style.layers as Array<Record<string, unknown>>).map(l => l.id as string)
-    const firstCasing = ids.findIndex(id => id.includes('casing'))
-    const firstFill   = ids.findIndex(id => id.startsWith('road-fill'))
-    expect(firstCasing).toBeGreaterThanOrEqual(0)
-    expect(firstFill).toBeGreaterThan(firstCasing)
-  })
-
-  it('uses openmaptiles source name', () => {
-    const style = JSON.parse(readFileSync(STYLE_PATH, 'utf-8'))
-    expect(style.sources).toHaveProperty('openmaptiles')
-  })
-
-  it('openmaptiles source URL is the {TILE_SOURCE} placeholder (injected at runtime by loadMapStyle)', () => {
-    const style = JSON.parse(readFileSync(STYLE_PATH, 'utf-8'))
+  it('keeps source and glyph injection explicit', () => {
+    expect(style.glyphs).toBe('{GLYPHS_URL}')
     expect(style.sources.openmaptiles.url).toBe('{TILE_SOURCE}')
   })
 
-  it('source URL does not hardcode any tile provider', () => {
-    const style = JSON.parse(readFileSync(STYLE_PATH, 'utf-8'))
-    expect(style.sources.openmaptiles.url).not.toContain('://')
+  it('contains required attribution and no obsolete providers', () => {
+    const text = JSON.stringify(style)
+    expect(text).toContain('Stadia Maps')
+    expect(text).toContain('OpenMapTiles')
+    expect(text).toContain('OpenStreetMap')
+    expect(text).not.toMatch(/OpenFreeMap|openfreemap|demotiles\.maplibre/i)
   })
 
-  it('glyphs URL points to OpenFreeMap fonts', () => {
-    const style = JSON.parse(readFileSync(STYLE_PATH, 'utf-8'))
-    expect(style.glyphs).toBe('https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf')
+  it('draws every road casing before road fills with local street classes', () => {
+    const casingIndexes = ids.map((id, index) => id.startsWith('road-casing') ? index : -1).filter(index => index >= 0)
+    const fillIndexes = ids.map((id, index) => id.startsWith('road-fill') ? index : -1).filter(index => index >= 0)
+    expect(Math.max(...casingIndexes)).toBeLessThan(Math.min(...fillIndexes))
+    expect(JSON.stringify(layer('road-fill-local').filter)).toMatch(/residential.*living_street/)
   })
 
-  it('symbol-sort-key is set on place-label-city', () => {
-    const style = JSON.parse(readFileSync(STYLE_PATH, 'utf-8'))
-    const layers = style.layers as Array<Record<string, unknown>>
-    const cityLayer = layers.find(l => l.id === 'place-label-city')
-    expect(cityLayer).toBeDefined()
-    const layout = cityLayer!.layout as Record<string, unknown>
-    expect(layout['symbol-sort-key']).toBe(1)
+  it('shows outlined buildings from zoom 13 and labels buildings later', () => {
+    expect(layer('building-fill').minzoom).toBe(13)
+    expect(layer('building-outline').minzoom).toBe(13)
+    expect(ids.indexOf('building-outline')).toBeLessThan(ids.indexOf('building-label'))
+  })
+
+  it('provides road, place, building, airport and text-only useful POI labels', () => {
+    expect(ids).toEqual(expect.arrayContaining([
+      'road-label-major', 'road-label-local', 'building-label', 'airport-label',
+      'place-label-neighbourhood', 'place-label-locality', 'place-label-city', 'place-label-country',
+    ]))
+    const poi = JSON.stringify(layer('poi-useful'))
+    for (const category of ['hospital', 'police', 'fire_station', 'pharmacy', 'school', 'fuel', 'bus', 'railway', 'airport', 'town_hall']) {
+      expect(poi).toContain(category)
+    }
+    expect(poi).not.toContain('icon-image')
+    expect(style).not.toHaveProperty('sprite')
   })
 })

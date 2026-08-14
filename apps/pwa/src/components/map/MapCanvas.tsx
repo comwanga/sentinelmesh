@@ -1,9 +1,6 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { Map, useMap } from 'react-map-gl/maplibre'
-import type { StyleSpecification } from 'maplibre-gl'
-import { loadMapStyle, WORLD_CENTER } from '../../config/mapConfig'
-
-const FALLBACK_STYLE = 'https://demotiles.maplibre.org/style.json'
+import { MAP_STYLE, WORLD_CENTER } from '../../config/mapConfig'
 import { persistViewport } from '../../hooks/useInitialViewport'
 import type { ViewportBounds } from '../../hooks/useViewportWs'
 import styles from './MapCanvas.module.css'
@@ -46,37 +43,22 @@ function ViewportReporter({ onBoundsChange }: ViewportReporterProps) {
 }
 
 export function MapCanvas({ initialViewState = WORLD_CENTER, children, onMapLoad, onBoundsChange }: Props = {}) {
-  const [viewState, setViewState] = useState<ViewState>(initialViewState)
-  const [mapStyle, setMapStyle] = useState<StyleSpecification | string | undefined>(undefined)
-
-  useEffect(() => {
-    loadMapStyle()
-      .then(style => setMapStyle(style as StyleSpecification))
-      .catch(err => {
-        console.error('Map style load failed, using fallback:', err)
-        setMapStyle(FALLBACK_STYLE)
-      })
-  }, [])
-
-  const handleMove = useCallback((evt: { viewState: ViewState }) => {
-    setViewState(evt.viewState)
+  const handleMoveEnd = useCallback((evt: { viewState: ViewState }) => {
     persistViewport(evt.viewState)
   }, [])
 
   return (
     <div className={styles.container}>
-      {mapStyle && (
-        <Map
-          {...viewState}
-          onMove={handleMove}
-          onLoad={onMapLoad}
-          style={{ width: '100%', height: '100%' }}
-          mapStyle={mapStyle}
-        >
-          {onBoundsChange && <ViewportReporter onBoundsChange={onBoundsChange} />}
-          {children}
-        </Map>
-      )}
+      <Map
+        initialViewState={initialViewState}
+        onMoveEnd={handleMoveEnd}
+        onLoad={onMapLoad}
+        style={{ width: '100%', height: '100%' }}
+        mapStyle={MAP_STYLE}
+      >
+        {onBoundsChange && <ViewportReporter onBoundsChange={onBoundsChange} />}
+        {children}
+      </Map>
     </div>
   )
 }
