@@ -11,11 +11,11 @@ pub async fn create_pool(database_url: &str, max_connections: u32) -> Result<PgP
 }
 
 pub async fn assert_schema_version(pool: &PgPool) -> Result<()> {
-    const REQUIRED_SCHEMA_VERSION: i32 = 9;
+    const REQUIRED_SCHEMA_VERSION: i32 = 10;
     let compatible: bool = sqlx::query_scalar(
         "SELECT
-           (SELECT array_agg(version ORDER BY version) FROM schema_versions) = ARRAY[2, 3, 4, 5, 6, 7, 8, 9]
-           AND (SELECT array_agg(version ORDER BY version) FROM schema_migrations) = ARRAY[3, 4, 5, 6, 7, 8, 9]
+           (SELECT array_agg(version ORDER BY version) FROM schema_versions) = ARRAY[2, 3, 4, 5, 6, 7, 8, 9, 10]
+           AND (SELECT array_agg(version ORDER BY version) FROM schema_migrations) = ARRAY[3, 4, 5, 6, 7, 8, 9, 10]
            AND (SELECT array_agg(name ORDER BY version) FROM schema_migrations) =
                  ARRAY[
                    '003_protect_migration_history.sql',
@@ -24,7 +24,8 @@ pub async fn assert_schema_version(pool: &PgPool) -> Result<()> {
                     '006_add_nip44_circle_key_wrap.sql',
                      '007_add_targeted_push_outbox.sql',
                      '008_grant_push_outbox_runtime.sql',
-                     '009_safe_circle_location_envelopes.sql'
+                     '009_safe_circle_location_envelopes.sql',
+                     '010_circle_membership_lifecycle.sql'
                  ]
            AND (SELECT array_agg(checksum ORDER BY version) FROM schema_migrations) =
                  ARRAY[
@@ -34,7 +35,8 @@ pub async fn assert_schema_version(pool: &PgPool) -> Result<()> {
                     '98085254ae48e12db57e13459ec2a6a425f29f919568475f0597a8a2186b93cb',
                      'a660ca8d78efa63631b2167e02c72d8123f19684c095c56ec45f2cedcf69adc9',
                       '44bfdd61fafcb1a979853dfed2d2253fa31674b25bac851b2e0def35353bb7ab',
-                      '6eec445a8da9828c3367263140cf296191733428d17c493fdb8c2e34bf2ac6ea'
+                      '6eec445a8da9828c3367263140cf296191733428d17c493fdb8c2e34bf2ac6ea',
+                      '4f33076c65c4c8a9af8c52a461a3364c730ba3856288418c481fc3958575398f'
                  ]",
     )
     .fetch_one(pool)

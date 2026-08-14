@@ -42,7 +42,7 @@ docker exec -i "$container" pg_restore -U postgres -d sentinelmesh_restore \
 
 version=$(docker exec "$container" psql -U postgres -d sentinelmesh_restore -Atc \
   'SELECT MAX(version) FROM schema_versions')
-test "$version" = "9"
+test "$version" = "10"
 manifest=$(docker exec "$container" psql -U postgres -d sentinelmesh_restore -Atc \
   "SELECT version || '|' || description FROM schema_versions ORDER BY version;
    SELECT version || '|' || name || '|' || checksum FROM schema_migrations ORDER BY version")
@@ -55,13 +55,15 @@ expected_manifest="2|SentinelMesh clean V2 baseline
 7|007_add_targeted_push_outbox.sql
 8|008_grant_push_outbox_runtime.sql
 9|009_safe_circle_location_envelopes.sql
+10|010_circle_membership_lifecycle.sql
 3|003_protect_migration_history.sql|d7c41d110fdbb68f38586a2f57804c4567444946be29c988eba1c467cacfdce9
 4|004_simplify_runtime_schema.sql|e7e3b94079424215c60b88675e045eeebaf3bd1b4d21256b926858945270c1a0
 5|005_add_nip05_identity.sql|77fe3e26e02b444dc5c673af5453f67affe7bd2106d7235778a50f7c1fca1c91
 6|006_add_nip44_circle_key_wrap.sql|98085254ae48e12db57e13459ec2a6a425f29f919568475f0597a8a2186b93cb
 7|007_add_targeted_push_outbox.sql|a660ca8d78efa63631b2167e02c72d8123f19684c095c56ec45f2cedcf69adc9
 8|008_grant_push_outbox_runtime.sql|44bfdd61fafcb1a979853dfed2d2253fa31674b25bac851b2e0def35353bb7ab
-9|009_safe_circle_location_envelopes.sql|6eec445a8da9828c3367263140cf296191733428d17c493fdb8c2e34bf2ac6ea"
+9|009_safe_circle_location_envelopes.sql|6eec445a8da9828c3367263140cf296191733428d17c493fdb8c2e34bf2ac6ea
+10|010_circle_membership_lifecycle.sql|4f33076c65c4c8a9af8c52a461a3364c730ba3856288418c481fc3958575398f"
 test "$manifest" = "$expected_manifest"
 
 docker exec "$container" psql -U postgres -d sentinelmesh_restore -v ON_ERROR_STOP=1 \
@@ -78,6 +80,12 @@ docker exec "$container" psql -U postgres -d sentinelmesh_restore -v ON_ERROR_ST
         END IF;
         IF (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'circle_members' AND column_name IN ('key_wrap_version','key_wrap_ciphertext')) <> 2 THEN
           RAISE EXCEPTION 'NIP-44 circle key envelope columns are incomplete';
+        END IF;
+        IF (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'circle_members' AND column_name IN ('membership_state','accepted_at','key_wrap_epoch','key_wrap_event')) <> 4 THEN
+          RAISE EXCEPTION 'circle membership lifecycle columns are incomplete';
+        END IF;
+        IF (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'circles' AND column_name = 'membership_revision') <> 1 THEN
+          RAISE EXCEPTION 'circle membership revision column is missing';
         END IF;
         IF (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'location_blobs' AND column_name IN ('protocol_version','key_epoch','sender_token','ciphertext','ciphertext_hash','created_at','expires_at')) <> 7 THEN
           RAISE EXCEPTION 'safe location envelope columns are incomplete';

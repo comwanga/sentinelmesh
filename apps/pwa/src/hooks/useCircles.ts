@@ -1,9 +1,9 @@
 import { useEffect } from 'react'
 import { useAppDispatch } from '../store'
-import { circleLoaded } from '../store/circlesSlice'
+import { circleLoaded, circleEpochChanged } from '../store/circlesSlice'
 import { signLocalNip98AuthEvent, sha256Hex } from '../services/nostrService'
 import { getCircleIds } from '../services/circleIdStore'
-import { loadCircleKey, decryptString, encryptString, unwrapNip44CircleKey } from '../services/e2eeService'
+import { loadCircleKey, decryptString, encryptString, unwrapNip44CircleKey, unwrapLegacyCircleKey } from '../services/e2eeService'
 import { getCircleOwnerKey } from '../services/circleIdStore'
 import type { Circle, CircleMember } from '../../../../shared/types'
 import { useActiveIdentity } from './useActiveIdentity'
@@ -15,31 +15,49 @@ interface RawCircle {
   name?: string | null
   name_ciphertext?: string | null
   name_version?: number
+  key_epoch?: number
+  location_protocol_version?: number
+  rekey_required?: boolean
+  membership_revision?: number
+  self_token?: string
   created_at: string
   is_owner?: boolean
 }
 interface RawMember {
   circle_id: string
-  member_token: string
+  member_token?: string | null
   member_label_ciphertext?: string | null
   alert_radius_km: number | null
   alert_severity: string | null
+  membership_state?: 'PENDING' | 'ACTIVE'
+  accepted_at?: string | null
+  key_wrap_epoch?: number | null
   joined_at: string
 }
 interface RawCircleDetail extends RawCircle {
   members: RawMember[]
-  my_key_wrap?: { version: number; ciphertext: string } | null
+  my_key_wrap?: { version?: number | null; epoch?: number | null; event?: unknown; ciphertext?: string | null } | null
 }
 
 async function toCircleAndMembers(
   detail: RawCircleDetail,
 ): Promise<{ circle: Circle; members: CircleMember[] }> {
-  let key = await loadCircleKey(detail.id)
-  if (!key && detail.my_key_wrap?.version === 2) {
+  const keyEpoch = detail.key_epoch ?? 1
+  let key = await loadCircleKey(detail.id, keyEpoch)
+  if (!key && detail.my_key_wrap) {
     const ownerPubkey = getCircleOwnerKey(detail.id)
-    if (!ownerPubkey) throw new Error('Circle owner key is unavailable')
-    await unwrapNip44CircleKey(detail.id, ownerPubkey, detail.my_key_wrap.ciphertext)
-    key = await loadCircleKey(detail.id)
+    if (ownerPubkey) {
+      try {
+        if (detail.my_key_wrap.version === 2 && detail.my_key_wrap.event) {
+          await unwrapNip44CircleKey(detail.id, ownerPubkey, detail.my_key_wrap.event as never)
+        } else if (detail.my_key_wrap.ciphertext) {
+          await unwrapLegacyCircleKey(detail.id, ownerPubkey, detail.my_key_wrap.ciphertext)
+        }
+      } catch {
+        // leave key null — renders as locked
+      }
+      key = await loadCircleKey(detail.id, keyEpoch)
+    }
   }
 
   // Decrypt circle name
@@ -55,6 +73,11 @@ async function toCircleAndMembers(
     name: displayName,
     name_ciphertext: detail.name_ciphertext,
     name_version: detail.name_version,
+    key_epoch: detail.key_epoch ?? 1,
+    location_protocol_version: detail.location_protocol_version,
+    rekey_required: detail.rekey_required,
+    membership_revision: detail.membership_revision,
+    self_token: detail.self_token,
     created_at: detail.created_at,
     is_owner: detail.is_owner ?? false,
   }
@@ -64,11 +87,14 @@ async function toCircleAndMembers(
     detail.members.map(async (m): Promise<CircleMember> => {
       const member: CircleMember = {
         circle_id: m.circle_id,
-        member_token: m.member_token,
+        member_token: m.member_token ?? null,
         alert_radius_km: m.alert_radius_km ?? 5,
         alert_severity: (m.alert_severity ?? 'MEDIUM') as CircleMember['alert_severity'],
         joined_at: m.joined_at,
         member_label_ciphertext: m.member_label_ciphertext,
+        membership_state: m.membership_state ?? 'ACTIVE',
+        accepted_at: m.accepted_at ?? null,
+        key_wrap_epoch: m.key_wrap_epoch ?? null,
       }
 
       if (key && m.member_label_ciphertext) {
@@ -134,12 +160,9 @@ export function useCircles(): void {
           // a failed PUT does not block the store dispatch and retries on
           // next load once name_version is still 0.
           if (detail.is_owner && detail.name_version === 0 && detail.name) {
-            const migKey = await loadCircleKey(detail.id)
+            const migKey = await loadCircleKey(detail.id, circle.key_epoch ?? 1)
             if (migKey) {
               const nameCiphertext = await encryptString(migKey, detail.name)
-              // Names migrate now; member labels are NOT auto-migrated (the owner
-              // cannot reverse a member_token to a pubkey) — they fill in as members
-              // are (re-)added via add_member. Send an empty member_labels list.
               const encryptionUrl = `${API_BASE}/api/circles/${detail.id}/encryption`
               const body = JSON.stringify({ name_ciphertext: nameCiphertext, member_labels: [] })
               await fetch(encryptionUrl, {
@@ -151,7 +174,10 @@ export function useCircles(): void {
             }
           }
 
-          if (!controller.signal.aborted) dispatch(circleLoaded({ circle, members }))
+          if (!controller.signal.aborted) {
+            dispatch(circleLoaded({ circle, members }))
+            dispatch(circleEpochChanged({ circle_id: circle.circle_id, key_epoch: circle.key_epoch ?? 1, rekey_required: circle.rekey_required ?? true }))
+          }
         } catch {
           // skip failed circles
         }

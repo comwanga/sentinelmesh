@@ -52,7 +52,7 @@ export function createLocationPublisher(options: LocationPublisherOptions): Loca
       }
       inFlight = true
       try {
-        const key = await loadCircleKey(options.circleId)
+        const key = await loadCircleKey(options.circleId, options.keyEpoch)
         if (!key) { stopped = true; throw new Error('Circle key is unavailable') }
         let position: GeolocationPosition
         try { position = await getPosition() } catch {

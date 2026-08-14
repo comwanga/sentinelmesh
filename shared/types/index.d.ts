@@ -122,22 +122,33 @@ export type MemberStatus = 'ONLINE' | 'GHOST' | 'OFFLINE'
 
 export type PresenceMode = 'GHOST' | 'OFFLINE'
 
+export type MembershipState = 'PENDING' | 'ACTIVE'
+
 export interface Circle {
   circle_id: string
   name?: string | null
   name_ciphertext?: string | null
   name_version?: number
+  key_epoch?: number
+  location_protocol_version?: number
+  rekey_required?: boolean
+  membership_revision?: number
+  self_token?: string
   created_at: string
   is_owner?: boolean
 }
 
 export interface CircleMember {
   circle_id: string
-  member_token: string
+  // Present only for the circle owner; null for other members (token privacy).
+  member_token?: string | null
   alert_radius_km: number
   alert_severity: Severity
   joined_at: string
   member_label_ciphertext?: string | null
+  membership_state?: MembershipState
+  accepted_at?: string | null
+  key_wrap_epoch?: number | null
   pubkey?: string
   label?: string
 }
@@ -161,8 +172,43 @@ export interface CircleLocationEnvelopeV1 {
   expires_at: string
 }
 
+export interface CircleEpochChange {
+  circle_id: string
+  key_epoch: number
+  rekey_required: boolean
+}
+
+export interface CircleMemberRemoved {
+  circle_id: string
+  key_epoch: number
+  token: string
+}
+
 export type CircleWsMessage =
   | { type: 'CIRCLE_LOCATION_SNAPSHOT'; payload: CircleLocationEnvelopeV1[] }
   | { type: 'CIRCLE_LOCATION_ENVELOPE'; payload: CircleLocationEnvelopeV1 }
-  | { type: 'CIRCLE_EPOCH_CHANGED'; payload: { circle_id: string; key_epoch: number; rekey_required: boolean } }
-  | { type: 'CIRCLE_MEMBER_REMOVED'; payload: { circle_id: string; key_epoch: number } }
+  | { type: 'CIRCLE_EPOCH_CHANGED'; payload: CircleEpochChange }
+  | { type: 'CIRCLE_MEMBER_REMOVED'; payload: CircleMemberRemoved }
+
+/** v2 circle key package carried as the content of a signed kind-30079 event. */
+export interface CircleKeyPackageV2 {
+  version: 2
+  type: 'sentinelmesh-circle-key-v2'
+  circle_id: string
+  key_epoch: number
+  algorithm: 'AES-256-GCM'
+  key: string
+  issued_at: number
+}
+
+/** A decrypted, verified member location (kept in memory only, never persisted). */
+export interface VerifiedMemberLocation {
+  pubkey: string
+  lat: number
+  lng: number
+  accuracy_m: number
+  precision: 'exact' | 'approximate'
+  event_id: string
+  expires_at: number
+  captured_at: number
+}

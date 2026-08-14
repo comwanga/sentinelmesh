@@ -18,7 +18,7 @@ import {
   decryptCircleLocationV1,
   approximateLocationForSession,
 } from '../e2eeService'
-import { loadVault, saveSecretKey } from '../identityStore'
+import { loadVault, saveSecretKey, loadVaultCircleKey } from '../identityStore'
 import { __resetIdentityCacheForTests, loadIdentity } from '../nostrService'
 import { generateSecretKey, getPublicKey } from 'nostr-tools'
 
@@ -72,13 +72,13 @@ describe('saveCircleKey / loadCircleKey / clearCircleKey', () => {
 describe('rotateCircleKey', () => {
   it('replaces the stored key; old key no longer decrypts new blobs', async () => {
     const old = await generateCircleKey()
-    await saveCircleKey('rot-circle', old)
+    await saveCircleKey('rot-circle', old, 1)
     const oldCipher = await encryptLocation(old, 1.0, 2.0)
 
-    const fresh = await rotateCircleKey('rot-circle')
+    const fresh = await rotateCircleKey('rot-circle', 2)
     expect(fresh.extractable).toBe(true) // returned extractable for re-wrapping to remaining members
 
-    const loaded = await loadCircleKey('rot-circle')
+    const loaded = await loadCircleKey('rot-circle', 2)
     expect(loaded!.extractable).toBe(false) // persisted copy is hardened
     // The rotated key cannot read blobs encrypted under the pre-rotation key
     expect(await decryptLocation(loaded!, oldCipher)).toBeNull()
@@ -162,18 +162,18 @@ describe('NIP-44 circle key distribution', () => {
     await saveSecretKey(owner)
     __resetIdentityCacheForTests()
     await loadIdentity()
-    await saveCircleKeyWithBackup('circle-nip44', rawKey(7))
-    const ownerKey = await loadCircleKey('circle-nip44')
+    await saveCircleKeyWithBackup('circle-nip44', rawKey(7), 1)
+    const ownerKey = await loadCircleKey('circle-nip44', 1)
     const ciphertext = await encryptLocation(ownerKey!, -1.0, 36.0)
-    const event = await createNip44CircleKeyEvent('circle-nip44', getPublicKey(recipient))
+    const event = await createNip44CircleKeyEvent('circle-nip44', getPublicKey(recipient), 1)
     expect(event.content).not.toContain(rawKey(7).toString())
 
     await clearCircleKey('circle-nip44')
     await saveSecretKey(recipient)
     __resetIdentityCacheForTests()
     await loadIdentity()
-    await unwrapNip44CircleKey('circle-nip44', event.pubkey, event.content)
-    const imported = await loadCircleKey('circle-nip44')
+    await unwrapNip44CircleKey('circle-nip44', event.pubkey, event)
+    const imported = await loadCircleKey('circle-nip44', 1)
     expect((await decryptLocation(imported!, ciphertext))!.lat).toBeCloseTo(-1.0)
   })
 
@@ -183,17 +183,17 @@ describe('NIP-44 circle key distribution', () => {
     await saveSecretKey(owner)
     __resetIdentityCacheForTests()
     await loadIdentity()
-    await saveCircleKeyWithBackup('circle-bound', rawKey(8))
-    const event = await createNip44CircleKeyEvent('circle-bound', getPublicKey(recipient))
+    await saveCircleKeyWithBackup('circle-bound', rawKey(8), 1)
+    const event = await createNip44CircleKeyEvent('circle-bound', getPublicKey(recipient), 1)
     await saveSecretKey(recipient)
     __resetIdentityCacheForTests()
     await loadIdentity()
-    await expect(unwrapNip44CircleKey('other-circle', event.pubkey, event.content)).rejects.toThrow('Invalid circle key envelope')
+    await expect(unwrapNip44CircleKey('other-circle', event.pubkey, event)).rejects.toThrow('not bound to this circle and recipient')
 
     await saveSecretKey(generateSecretKey())
     __resetIdentityCacheForTests()
     await loadIdentity()
-    await expect(unwrapNip44CircleKey('circle-bound', event.pubkey, event.content)).rejects.toThrow('Invalid circle key envelope')
+    await expect(unwrapNip44CircleKey('circle-bound', event.pubkey, event)).rejects.toThrow('not bound to this circle and recipient')
   })
 })
 
@@ -240,11 +240,11 @@ describe('saveCircleKeyWithBackup (vault capture)', () => {
   })
 
   it('rotateCircleKey updates the vault to the new key', async () => {
-    await saveCircleKeyWithBackup('circle-C', rawKey(3))
-    const before = (await loadVault())!.circles.find(c => c.id === 'circle-C')!.key
-    const fresh = await rotateCircleKey('circle-C')
+    await saveCircleKeyWithBackup('circle-C', rawKey(3), 1)
+    const before = await loadVaultCircleKey('circle-C', 1)
+    const fresh = await rotateCircleKey('circle-C', 2)
     expect(fresh.extractable).toBe(true) // returned for re-wrapping
-    const after = (await loadVault())!.circles.find(c => c.id === 'circle-C')!.key
-    expect(Array.from(after)).not.toEqual(Array.from(before))
+    const after = await loadVaultCircleKey('circle-C', 2)
+    expect(Array.from(after!)).not.toEqual(Array.from(before!))
   })
 })

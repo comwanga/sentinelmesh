@@ -1,11 +1,19 @@
 import { Marker } from 'react-map-gl/maplibre'
-import type { MemberStatus } from '../../../../shared/types'
+import type { CircleMember, MemberStatus } from '../../../../shared/types'
 
-interface DecryptedLocation { lat: number; lng: number; ts: string }
+interface DecryptedLocation {
+  lat: number
+  lng: number
+  ts: string
+  accuracy_m?: number
+  precision?: 'exact' | 'approximate'
+}
 
 interface CircleMapLayerProps {
   decryptedLocations: Record<string, DecryptedLocation>
   memberStatuses: Record<string, MemberStatus>
+  members?: CircleMember[]
+  myPubkey?: string
 }
 
 function ageLabel(ts: string): { text: string; stale: boolean } {
@@ -16,13 +24,23 @@ function ageLabel(ts: string): { text: string; stale: boolean } {
   return { text: `${mins}m ago`, stale: true }
 }
 
-export function CircleMapLayer({ decryptedLocations, memberStatuses }: CircleMapLayerProps) {
+export function CircleMapLayer({ decryptedLocations, memberStatuses, members = [], myPubkey }: CircleMapLayerProps) {
+  // Resolve a human roster label; never render raw pubkeys.
+  const labelFor = (pubkey: string): string => {
+    const normalized = pubkey.toLowerCase()
+    if (myPubkey && normalized === myPubkey.toLowerCase()) return 'You'
+    const member = members.find(m => m.pubkey && m.pubkey.toLowerCase() === normalized)
+    if (member?.label) return member.label
+    return 'Member'
+  }
+
   return (
     <>
       {Object.entries(decryptedLocations).map(([pubkey, loc]) => {
         if (memberStatuses[pubkey] !== 'ONLINE') return null
-        const truncated = pubkey.length > 10 ? `${pubkey.slice(0, 8)}…` : pubkey
+        const label = labelFor(pubkey)
         const { text: age, stale } = ageLabel(loc.ts)
+        const approximate = loc.precision === 'approximate'
         return (
           <Marker key={pubkey} latitude={loc.lat} longitude={loc.lng}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
@@ -45,7 +63,7 @@ export function CircleMapLayer({ decryptedLocations, memberStatuses }: CircleMap
                 background: 'rgba(13,17,24,0.8)', padding: '1px 4px', borderRadius: 3,
                 whiteSpace: 'nowrap',
               }}>
-                {truncated}
+                {label}{approximate ? ' ≈' : ''}
               </span>
               <span style={{
                 fontFamily: "'Courier New', monospace", fontSize: 8,

@@ -18,7 +18,7 @@ export interface VaultMeta { lastExportedFingerprint: string }
 // v1 record to v2 on first read.
 const VAULT_VERSION = 2
 
-export interface VaultCircle { id: string; key: Uint8Array }      // raw 32-byte AES key
+export interface VaultCircle { id: string; key: Uint8Array; epoch?: number }      // raw 32-byte AES key at a key epoch
 export interface VaultPayload { identitySk: Uint8Array; circles: VaultCircle[] }
 
 interface VaultRecord { version: number; blob: Uint8Array } // blob = IV || AES-GCM(wrapKey, serialized payload)
@@ -94,15 +94,15 @@ function b64decode(s: string): Uint8Array { return Uint8Array.from(atob(s), c =>
 export function encodeVaultPayload(p: VaultPayload): string {
   return JSON.stringify({
     identitySk: b64encode(p.identitySk),
-    circles: p.circles.map(c => ({ id: c.id, key: b64encode(c.key) })),
+    circles: p.circles.map(c => ({ id: c.id, key: b64encode(c.key), epoch: c.epoch ?? 1 })),
   })
 }
 
 export function decodeVaultPayload(json: string): VaultPayload {
-  const o = JSON.parse(json) as { identitySk: string; circles: Array<{ id: string; key: string }> }
+  const o = JSON.parse(json) as { identitySk: string; circles: Array<{ id: string; key: string; epoch?: number }> }
   return {
     identitySk: b64decode(o.identitySk),
-    circles: (o.circles ?? []).map(c => ({ id: c.id, key: b64decode(c.key) })),
+    circles: (o.circles ?? []).map(c => ({ id: c.id, key: b64decode(c.key), epoch: c.epoch ?? 1 })),
   }
 }
 
@@ -215,29 +215,35 @@ export async function __writeLegacyV1ForTests(sk: Uint8Array): Promise<void> {
 }
 
 /** Add or replace a circle's raw key in the vault, preserving identity + others. */
-export async function upsertCircleKey(circleId: string, rawKey: Uint8Array): Promise<void> {
+export async function upsertCircleKey(circleId: string, rawKey: Uint8Array, epoch = 1): Promise<void> {
   return withInitLock(async () => {
     const v = await loadVault()
     if (!v) return // no identity yet — nothing to attach a circle to
-    const circles = v.circles.filter(c => c.id !== circleId)
-    circles.push({ id: circleId, key: new Uint8Array(rawKey) })
+    const circles = v.circles.filter(c => !(c.id === circleId && (c.epoch ?? 1) === epoch))
+    circles.push({ id: circleId, key: new Uint8Array(rawKey), epoch })
     await saveVaultUnlocked({ identitySk: v.identitySk, circles })
   })
 }
 
 /** Return a copy of a raw circle key from the encrypted vault for key distribution. */
-export async function loadVaultCircleKey(circleId: string): Promise<Uint8Array | null> {
+export async function loadVaultCircleKey(circleId: string, epoch?: number): Promise<Uint8Array | null> {
   const vault = await loadVault()
-  const entry = vault?.circles.find(circle => circle.id === circleId)
+  const entries = vault?.circles.filter(circle => circle.id === circleId) ?? []
+  const entry = epoch === undefined
+    ? entries.sort((a, b) => (b.epoch ?? 1) - (a.epoch ?? 1))[0]
+    : entries.find(circle => (circle.epoch ?? 1) === epoch)
   return entry ? new Uint8Array(entry.key) : null
 }
 
-/** Remove a circle entry from the vault. */
-export async function removeVaultCircle(circleId: string): Promise<void> {
+/** Remove a circle entry (optionally a specific epoch) from the vault. */
+export async function removeVaultCircle(circleId: string, epoch?: number): Promise<void> {
   return withInitLock(async () => {
     const v = await loadVault()
     if (!v) return
-    await saveVaultUnlocked({ identitySk: v.identitySk, circles: v.circles.filter(c => c.id !== circleId) })
+    const circles = epoch === undefined
+      ? v.circles.filter(c => c.id !== circleId)
+      : v.circles.filter(c => !(c.id === circleId && (c.epoch ?? 1) === epoch))
+    await saveVaultUnlocked({ identitySk: v.identitySk, circles })
   })
 }
 

@@ -129,6 +129,7 @@ mod tests {
                 quality_min_sample: 5,
                 observatory_snapshot_retention_days: 180,
                 safe_circle_location_enabled: false,
+                gateway_replicas: 1,
             }),
             http_client,
             hub: Arc::new(WsHub::new()),

@@ -161,7 +161,8 @@ async fn push_envelope(
     let circle: Option<(i32, i16, bool, bool)> = sqlx::query_as(
         "SELECT key_epoch, location_protocol_version, rekey_required,
                 owner_token = $2 OR EXISTS (
-                  SELECT 1 FROM circle_members WHERE circle_id = $1 AND member_token = $2
+                  SELECT 1 FROM circle_members
+                   WHERE circle_id = $1 AND member_token = $2 AND membership_state = 'ACTIVE'
                 )
            FROM circles WHERE id = $1",
     )
@@ -214,7 +215,8 @@ async fn list_envelopes(
     let token = circle_token(&state.config.circle_token_secret, circle_id, &auth.pubkey);
     let member: bool = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM circles WHERE id = $1 AND owner_token = $2)
-             OR EXISTS (SELECT 1 FROM circle_members WHERE circle_id = $1 AND member_token = $2)",
+             OR EXISTS (SELECT 1 FROM circle_members
+                         WHERE circle_id = $1 AND member_token = $2 AND membership_state = 'ACTIVE')",
     )
     .bind(circle_id)
     .bind(token)
