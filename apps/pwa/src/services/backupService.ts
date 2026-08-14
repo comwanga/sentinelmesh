@@ -89,7 +89,7 @@ export async function applyRestore(payload: VaultPayload): Promise<RestoreResult
   let circlesRestored = 0
   for (const c of payload.circles) {
     try {
-      await saveCircleKeyWithBackup(c.id, new Uint8Array(c.key))
+      await saveCircleKeyWithBackup(c.id, new Uint8Array(c.key), c.epoch ?? 1)
       addCircleId(c.id)
       circlesRestored++
     } catch {

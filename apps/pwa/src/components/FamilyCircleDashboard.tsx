@@ -1,10 +1,12 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppSelector, useAppDispatch } from '../store'
-import { activeAlertDismissed, circleLeft, circleLoaded } from '../store/circlesSlice'
+import { activeAlertDismissed, circleLeft, circleLoaded, circleEpochChanged, memberAccepted } from '../store/circlesSlice'
 import { getCachedKeypair, signLocalNip98AuthEvent, sha256Hex, toNpub, hexFromNpubOrHex } from '../services/nostrService'
 import { addCircleId, saveCircleOwnerKey } from '../services/circleIdStore'
-import { generateCircleKey, saveCircleKeyWithBackup, loadCircleKey, encryptString, createNip44CircleKeyEvent } from '../services/e2eeService'
+import { generateCircleKey, saveCircleKeyWithBackup, loadCircleKey, encryptString, createNip44CircleKeyEvent, rotateCircleKey, type LocationPrecision } from '../services/e2eeService'
 import { loadVaultCircleKey } from '../services/identityStore'
+import { safeCircleLocationEnabled } from '../config/features'
+import { createLocationPublisher, type LocationPublisher } from '../services/locationPublisher'
 import { CircleSidebar } from './CircleSidebar'
 import { CircleMapLayer } from './CircleMapLayer'
 import { AlertBanner } from './AlertBanner'
@@ -21,19 +23,22 @@ const API_BASE = import.meta.env['VITE_API_BASE_URL'] ?? ''
 
 const EMPTY_MEMBERS: never[] = []
 
-interface RawCircle { id: string; name_ciphertext?: string | null; name_version?: number; created_at: string; is_owner?: boolean }
-interface RawMember { circle_id: string; member_token: string; alert_radius_km: number | null; alert_severity: string | null; joined_at: string }
+interface RawCircle { id: string; name_ciphertext?: string | null; name_version?: number; key_epoch?: number; created_at: string; is_owner?: boolean }
+interface RawMember { circle_id: string; member_token?: string | null; alert_radius_km: number | null; alert_severity: string | null; membership_state?: 'PENDING' | 'ACTIVE'; accepted_at?: string | null; key_wrap_epoch?: number | null; joined_at: string }
 
 function toCircle(raw: RawCircle, displayName?: string): Circle {
-  return { circle_id: raw.id, name: displayName ?? '(locked)', name_ciphertext: raw.name_ciphertext, name_version: raw.name_version, created_at: raw.created_at, is_owner: raw.is_owner ?? false }
+  return { circle_id: raw.id, name: displayName ?? '(locked)', name_ciphertext: raw.name_ciphertext, name_version: raw.name_version, key_epoch: raw.key_epoch ?? 1, created_at: raw.created_at, is_owner: raw.is_owner ?? false }
 }
 
 function toMember(raw: RawMember): CircleMember {
   return {
     circle_id: raw.circle_id,
-    member_token: raw.member_token,
+    member_token: raw.member_token ?? null,
     alert_radius_km: raw.alert_radius_km ?? 5,
     alert_severity: (raw.alert_severity ?? 'MEDIUM') as CircleMember['alert_severity'],
+    membership_state: raw.membership_state ?? 'ACTIVE',
+    accepted_at: raw.accepted_at ?? null,
+    key_wrap_epoch: raw.key_wrap_epoch ?? null,
     joined_at: raw.joined_at,
   }
 }
@@ -113,7 +118,7 @@ function EmptyState() {
       if (!res.ok) { setCreateError(`Server error (${res.status})`); return }
       const raw = await res.json() as RawCircle
       const rawCircleKey = new Uint8Array(await crypto.subtle.exportKey('raw', circleKey))
-      await saveCircleKeyWithBackup(raw.id, rawCircleKey)
+      await saveCircleKeyWithBackup(raw.id, rawCircleKey, 1)
       addCircleId(raw.id)
       const circle = toCircle(raw, effectiveCircleName)
       let members: CircleMember[] = []
@@ -377,19 +382,20 @@ export function FamilyCircleDashboard() {
   const handleAddMember = useCallback(async (npubOrHex: string) => {
     const hex = hexFromNpubOrHex(npubOrHex)
     if (!hex || !activeCircleId) return 'Invalid key format'
-    let key = await loadCircleKey(activeCircleId)
+    const epoch = activeCircle?.key_epoch ?? 1
+    const key = await loadCircleKey(activeCircleId, epoch)
     if (!key) return 'Circle key not found — cannot encrypt member label'
-    if (!(await loadVaultCircleKey(activeCircleId))) {
+    if (!(await loadVaultCircleKey(activeCircleId, epoch))) {
       return 'This legacy circle key cannot be distributed safely. Restore a backup containing the circle key or create a new circle.'
     }
     const labelCiphertext = await encryptString(key, JSON.stringify({ pubkey: hex, name: hex.slice(0, 8) }))
     try {
-      const keyWrapEvent = await createNip44CircleKeyEvent(activeCircleId, hex)
+      const keyWrapEvent = await createNip44CircleKeyEvent(activeCircleId, hex, epoch)
       const memberUrl = `${API_BASE}/api/circles/${activeCircleId}/members`
       const body = JSON.stringify({
         member_pubkey: hex,
         member_label_ciphertext: labelCiphertext,
-        key_wrap_version: 2,
+        key_wrap_epoch: epoch,
         key_wrap_event: keyWrapEvent,
       })
       const headers = await makeAuthHeaders(memberUrl, 'POST', body)
@@ -409,11 +415,142 @@ export function FamilyCircleDashboard() {
 
   const handleDismissAlert = useCallback(() => dispatch(activeAlertDismissed()), [dispatch])
 
+  const myPubkey = getCachedKeypair().publicKey
+
+  const handleAcceptInvite = useCallback(async () => {
+    if (!activeCircleId) return
+    const url = `${API_BASE}/api/circles/${activeCircleId}/accept`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: await makeAuthHeaders(url, 'POST'),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!res.ok) {
+      setShareError(`Acceptance failed (${res.status})`)
+      return
+    }
+    dispatch(memberAccepted({ circle_id: activeCircleId, pubkey: myPubkey }))
+  }, [activeCircleId, myPubkey, dispatch])
+
+  const handleActivateLocation = useCallback(async () => {
+    if (!activeCircleId || !activeCircle?.is_owner) return
+    const nextEpoch = (activeCircle?.key_epoch ?? 1) + 1
+    const freshKey = await rotateCircleKey(activeCircleId, nextEpoch)
+    const nameCiphertext = await encryptString(freshKey, activeCircle.name ?? '(circle)')
+    const memberLabels: { member_token: string; label_ciphertext: string }[] = []
+    const memberWraps: { member_token: string; key_wrap_event: unknown }[] = []
+    for (const m of members) {
+      if (m.membership_state === 'PENDING') continue
+      if (!m.member_token || !m.pubkey) {
+        setShareError('Every active member must have a known public key to activate location.')
+        return
+      }
+      const labelCiphertext = await encryptString(freshKey, JSON.stringify({ pubkey: m.pubkey, name: m.label ?? m.pubkey.slice(0, 8) }))
+      memberLabels.push({ member_token: m.member_token, label_ciphertext: labelCiphertext })
+      const wrapEvent = await createNip44CircleKeyEvent(activeCircleId, m.pubkey, nextEpoch)
+      memberWraps.push({ member_token: m.member_token, key_wrap_event: wrapEvent })
+    }
+    const body = JSON.stringify({
+      expected_revision: activeCircle?.membership_revision ?? 0,
+      next_epoch: nextEpoch,
+      name_ciphertext: nameCiphertext,
+      member_labels: memberLabels,
+      member_wraps: memberWraps,
+    })
+    const url = `${API_BASE}/api/circles/${activeCircleId}/epoch`
+    const headers = await makeAuthHeaders(url, 'POST', body)
+    const res = await fetch(url, {
+      method: 'POST', headers, body,
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!res.ok) {
+      setShareError(`Location activation failed (${res.status})`)
+      return
+    }
+    setShareError(null)
+    dispatch(circleEpochChanged({ circle_id: activeCircleId, key_epoch: nextEpoch, rekey_required: false }))
+  }, [activeCircleId, activeCircle, members, dispatch])
+
+  // ─── Explicit location-sharing controls (off by default) ──────────────────
+  const [sharing, setSharing] = useState(false)
+  const [precision, setPrecision] = useState<LocationPrecision>('approximate')
+  const [shareMinutes, setShareMinutes] = useState(15)
+  const [shareError, setShareError] = useState<string | null>(null)
+  const publisherRef = useRef<LocationPublisher | null>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const durationRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const currentEpoch = activeCircle?.key_epoch ?? 1
+  const epochReady = !activeCircle?.rekey_required && (activeCircle?.location_protocol_version ?? 0) === 1
+  const myPendingMembership = members.find(m => m.pubkey && m.pubkey.toLowerCase() === myPubkey.toLowerCase() && m.membership_state === 'PENDING')
+
+  const stopSharing = useCallback(() => {
+    publisherRef.current?.stop()
+    publisherRef.current = null
+    if (intervalRef.current) clearInterval(intervalRef.current)
+    intervalRef.current = null
+    if (durationRef.current) clearTimeout(durationRef.current)
+    durationRef.current = null
+    setSharing(false)
+  }, [])
+
+  const startSharing = useCallback(() => {
+    if (!activeCircleId) return
+    if (!epochReady || activeCircle?.rekey_required) {
+      setShareError('This circle is not ready for location sharing.')
+      return
+    }
+    const publisher = createLocationPublisher({
+      circleId: activeCircleId,
+      keyEpoch: currentEpoch,
+      precision,
+    })
+    publisherRef.current = publisher
+    const intervalMs = 30_000
+    const publishOnce = () => publisher.publish().catch(() => stopSharing())
+    void publishOnce()
+    intervalRef.current = setInterval(publishOnce, intervalMs)
+    durationRef.current = setTimeout(stopSharing, Math.max(1, shareMinutes) * 60_000)
+    setSharing(true)
+    setShareError(null)
+  }, [activeCircleId, epochReady, activeCircle?.rekey_required, currentEpoch, precision, shareMinutes, stopSharing])
+
+  // Stop sharing on epoch change / rekey / removal.
+  useEffect(() => {
+    if (sharing && (!epochReady || activeCircle?.rekey_required)) stopSharing()
+  }, [sharing, epochReady, activeCircle?.rekey_required, activeCircle?.key_epoch, stopSharing])
+
+  useEffect(() => () => {
+    publisherRef.current?.stop()
+    if (intervalRef.current) clearInterval(intervalRef.current)
+    if (durationRef.current) clearTimeout(durationRef.current)
+  }, [])
+
   if (!activeCircle) return <EmptyState />
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0B0E14' }}>
       <AlertBanner alert={activeAlert} onDismiss={handleDismissAlert} />
+      {myPendingMembership && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#0d1118', borderBottom: '1px solid #1a2035' }}>
+          <span style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#BB86FC' }}>
+            You were invited to this circle. Accept to join.
+          </span>
+          <button onClick={() => { void handleAcceptInvite() }} style={{ background: '#1B5E20', border: '1px solid #4CAF50', borderRadius: 4, color: '#4CAF50', fontFamily: "'Courier New', monospace", fontSize: 11, padding: '6px 12px', cursor: 'pointer' }}>
+            Accept invitation
+          </button>
+        </div>
+      )}
+      {activeCircle?.is_owner && !epochReady && !myPendingMembership && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#0d1118', borderBottom: '1px solid #1a2035' }}>
+          <span style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568' }}>
+            Location sharing is not enabled for this circle yet.
+          </span>
+          <button onClick={() => { void handleActivateLocation() }} style={{ background: '#1B5E20', border: '1px solid #4CAF50', borderRadius: 4, color: '#4CAF50', fontFamily: "'Courier New', monospace", fontSize: 11, padding: '6px 12px', cursor: 'pointer' }}>
+            Activate location
+          </button>
+        </div>
+      )}
       {decryptErrors.length > 0 && (
         <div style={{ background: '#2d1b00', color: '#FF8C00', fontFamily: "'Courier New', monospace", fontSize: 10, padding: '4px 12px' }}>
           Could not decrypt location for: {decryptErrors.join(' · ')} — check your circle key.
@@ -445,9 +582,58 @@ export function FamilyCircleDashboard() {
           />
         )}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: layout === 'mobile' ? 300 : undefined }}>
+          {safeCircleLocationEnabled && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              padding: '8px 12px', borderBottom: '1px solid #1a2035', background: '#0d1118',
+            }}>
+              <button
+                onClick={sharing ? stopSharing : startSharing}
+                disabled={!epochReady && !sharing}
+                style={{
+                  background: sharing ? '#3b1212' : (epochReady ? '#1B5E20' : '#1a2035'),
+                  border: '1px solid ' + (sharing ? '#FC8686' : (epochReady ? '#4CAF50' : '#1a2035')),
+                  borderRadius: 4, color: sharing ? '#FC8686' : (epochReady ? '#4CAF50' : '#4a5568'),
+                  fontFamily: "'Courier New', monospace", fontSize: 11, padding: '6px 12px', cursor: 'pointer',
+                }}
+              >
+                {sharing ? '■ Stop sharing' : '● Share location'}
+              </button>
+              <label style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568' }}>
+                Precision{' '}
+                <select
+                  value={precision}
+                  onChange={e => setPrecision(e.target.value as LocationPrecision)}
+                  disabled={sharing}
+                  style={{ background: '#0B0E14', color: '#e2e8f0', border: '1px solid #1a2035', borderRadius: 3, fontFamily: 'inherit', fontSize: 10 }}
+                >
+                  <option value="approximate">Approximate</option>
+                  <option value="exact">Exact</option>
+                </select>
+              </label>
+              <label style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568' }}>
+                Stop after{' '}
+                <select
+                  value={shareMinutes}
+                  onChange={e => setShareMinutes(Number(e.target.value))}
+                  disabled={sharing}
+                  style={{ background: '#0B0E14', color: '#e2e8f0', border: '1px solid #1a2035', borderRadius: 3, fontFamily: 'inherit', fontSize: 10 }}
+                >
+                  <option value={5}>5 min</option>
+                  <option value={15}>15 min</option>
+                  <option value={30}>30 min</option>
+                  <option value={60}>60 min</option>
+                </select>
+              </label>
+              <span style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: sharing ? '#00E5FF' : '#4a5568' }}>
+                {sharing ? `Sharing ${precision} location · stops after ${shareMinutes} min` : 'Location sharing is off'}
+              </span>
+              {shareError && <span style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#FF2D2D' }}>{shareError}</span>}
+            </div>
+          )}
           <div style={{ flex: 1, position: 'relative' }}>
             <MapCanvas initialViewState={{ longitude: 36.8219, latitude: -1.2921, zoom: 12 }}>
-              <CircleMapLayer decryptedLocations={decryptedLocations} memberStatuses={memberStatuses} />
+              <CircleMapLayer decryptedLocations={decryptedLocations} memberStatuses={memberStatuses} members={members} myPubkey={myPubkey} />
             </MapCanvas>
             <Nip44Badge />
           </div>

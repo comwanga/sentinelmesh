@@ -54,6 +54,10 @@ pub struct Config {
     pub observatory_snapshot_retention_days: u32,
     /// Dedicated fail-closed gate for the v1 opaque circle-location protocol.
     pub safe_circle_location_enabled: bool,
+    /// Number of gateway replicas (for horizontal scaling). Circle membership
+    /// revocation relies on in-process socket invalidation, so safe circle
+    /// location is only supported with a single replica.
+    pub gateway_replicas: u32,
 }
 
 impl Config {
@@ -107,6 +111,7 @@ impl Config {
                 180,
             ),
             safe_circle_location_enabled: env_flag("SAFE_CIRCLE_LOCATION_ENABLED", false),
+            gateway_replicas: parse_u32_env_or(std::env::var("GATEWAY_REPLICAS").ok(), 1).max(1),
             internal_service_secret,
             circle_token_secret,
             trust_proxy: std::env::var("TRUST_PROXY")

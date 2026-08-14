@@ -50,6 +50,16 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Arc::new(config::Config::from_env()?);
+
+    // Circle membership revocation closes removed members' sockets via the
+    // in-process CircleHub, which cannot reach other replicas. Fail closed rather
+    // than silently leaving revoked members connected.
+    if config.safe_circle_location_enabled && config.gateway_replicas > 1 {
+        anyhow::bail!(
+            "SAFE_CIRCLE_LOCATION_ENABLED requires a single gateway replica (GATEWAY_REPLICAS must be 1)"
+        );
+    }
+
     let db = db::create_pool(&config.database_url, config.max_db_connections).await?;
     db::assert_schema_version(&db).await?;
     let reputation_db = db::create_reputation_pool(&config.database_url).await?;

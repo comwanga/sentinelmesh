@@ -68,8 +68,8 @@ export function CircleSidebar({ circle, members, memberStatuses, onInvite, onLea
 
       {/* Member chips */}
       <div style={{ padding: '10px 16px 6px', display: 'flex', flexWrap: 'wrap', gap: 6, borderBottom: '1px solid #1a2035' }}>
-        {members.map(m => (
-          <MemberChip key={m.member_token} pubkey={m.pubkey ?? m.member_token} status={memberStatuses[m.pubkey ?? ''] ?? 'OFFLINE'} />
+        {members.map((m, i) => (
+          <MemberChip key={m.member_token ?? m.pubkey ?? i} pubkey={m.pubkey ?? m.member_token ?? 'member'} status={memberStatuses[m.pubkey ?? ''] ?? 'OFFLINE'} />
         ))}
       </div>
 
@@ -83,13 +83,13 @@ export function CircleSidebar({ circle, members, memberStatuses, onInvite, onLea
             No members yet — use Invite to add people.
           </div>
         )}
-        {members.map(m => {
+        {members.map((m, i) => {
           const status = memberStatuses[m.pubkey ?? ''] ?? 'OFFLINE'
           const displayName = m.label ?? m.pubkey ?? 'unknown member'
           const initial = displayName.slice(0, 1).toUpperCase()
           const avatarColor = AVATAR_COLOR[status]
           return (
-            <div key={m.member_token} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px' }}>
+            <div key={m.member_token ?? m.pubkey ?? i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px' }}>
               <div style={{
                 width: 28, height: 28, borderRadius: '50%',
                 border: `2px solid ${avatarColor}`, color: avatarColor,

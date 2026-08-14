@@ -1,6 +1,7 @@
-// Circle keys are stored as non-extractable CryptoKey objects in IndexedDB.
-// localStorage can only hold strings (forcing an extractable, exfiltratable key),
-// so it is no longer used for keys — XSS cannot export a non-extractable key.
+// Circle keys are stored as non-extractable CryptoKey objects in IndexedDB,
+// keyed by (circleId, key_epoch). localStorage can only hold strings (forcing an
+// extractable, exfiltratable key), so it is no longer used for keys — XSS cannot
+// export a non-extractable key.
 import { finalizeEvent, nip44, verifyEvent, type VerifiedEvent } from 'nostr-tools'
 import { upsertCircleKey, removeVaultCircle, loadVaultCircleKey } from './identityStore'
 import { getCachedKeypair } from './nostrService'
@@ -10,6 +11,8 @@ const LEGACY_KEY_PREFIX = 'sentinelmesh:circle_key:'
 const DB_NAME = 'sentinelmesh'
 const DB_VERSION = 1
 const KEY_STORE = 'circle_keys'
+
+const keyId = (circleId: string, epoch: number) => `${circleId}:${epoch}`
 
 function openKeyDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -54,7 +57,7 @@ function idbDelete(id: string): Promise<void> {
 
 // Ensure a key is non-extractable before persisting. Keys from generateCircleKey
 // are extractable (needed to wrap for distribution); we store a non-extractable
-// clone. Keys from unwrapCircleKey are already non-extractable.
+// clone. Keys from unwrapNip44CircleKey are already non-extractable.
 async function toNonExtractable(key: CryptoKey): Promise<CryptoKey> {
   if (!key.extractable) return key
   const raw = await crypto.subtle.exportKey('raw', key)
@@ -73,10 +76,10 @@ export async function generateCircleKey(): Promise<CryptoKey> {
   return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt'])
 }
 
-/** Persist a circle key non-extractably in IndexedDB (never localStorage). */
-export async function saveCircleKey(circleId: string, key: CryptoKey): Promise<void> {
+/** Persist a circle key non-extractably in IndexedDB, keyed by (circle, epoch). */
+export async function saveCircleKey(circleId: string, key: CryptoKey, epoch = 1): Promise<void> {
   const storable = await toNonExtractable(key)
-  await idbPut(circleId, storable)
+  await idbPut(keyId(circleId, epoch), storable)
   if (typeof localStorage !== 'undefined') localStorage.removeItem(LEGACY_KEY_PREFIX + circleId)
 }
 
@@ -86,34 +89,46 @@ export async function saveCircleKey(circleId: string, key: CryptoKey): Promise<v
  * so the backup can carry it (H-3 Layer 2). The caller's rawKey buffer is zeroed.
  * Use this at every site that originates a circle key (create, rotate, restore).
  */
-export async function saveCircleKeyWithBackup(circleId: string, rawKey: Uint8Array): Promise<void> {
+export async function saveCircleKeyWithBackup(circleId: string, rawKey: Uint8Array, epoch = 1): Promise<void> {
   try {
     const liveKey = await crypto.subtle.importKey(
       'raw', rawKey as unknown as BufferSource, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'],
     )
-    await idbPut(circleId, liveKey)
+    await idbPut(keyId(circleId, epoch), liveKey)
     if (typeof localStorage !== 'undefined') localStorage.removeItem(LEGACY_KEY_PREFIX + circleId)
-    await upsertCircleKey(circleId, rawKey)
+    await upsertCircleKey(circleId, rawKey, epoch)
   } finally {
     new Uint8Array(rawKey.buffer, rawKey.byteOffset, rawKey.byteLength).fill(0)
   }
 }
 
-/** Load a circle key (non-extractable). Migrates a legacy localStorage key once. */
-export async function loadCircleKey(circleId: string): Promise<CryptoKey | null> {
-  const existing = await idbGet(circleId)
+/** Load a circle key (non-extractable) at `epoch`. Migrates a legacy
+ *  epoch-less key (stored under the bare circleId) to epoch 1 once. */
+export async function loadCircleKey(circleId: string, epoch = 1): Promise<CryptoKey | null> {
+  const existing = await idbGet(keyId(circleId, epoch))
   if (existing) return existing
+
+  // Legacy keys from the pre-epoch store live under the bare circleId. They are
+  // epoch-1 protocol-0 keys: migrate in place, never overwrite an epoch key.
+  if (epoch === 1) {
+    const legacy = await idbGet(circleId)
+    if (legacy) {
+      await idbPut(keyId(circleId, 1), legacy)
+      await idbDelete(circleId)
+      return legacy
+    }
+  }
 
   if (typeof localStorage !== 'undefined') {
     const b64 = localStorage.getItem(LEGACY_KEY_PREFIX + circleId)
-    if (b64) {
+    if (b64 && epoch === 1) {
       const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
       try {
         const key = await crypto.subtle.importKey(
           'raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'],
         )
-        await idbPut(circleId, key)
-        await upsertCircleKey(circleId, raw)
+        await idbPut(keyId(circleId, 1), key)
+        await upsertCircleKey(circleId, raw, 1)
         localStorage.removeItem(LEGACY_KEY_PREFIX + circleId)
         return key
       } finally {
@@ -124,36 +139,56 @@ export async function loadCircleKey(circleId: string): Promise<CryptoKey | null>
   return null
 }
 
-/** Delete a circle key from storage (live IDB store + vault backup). */
-export async function clearCircleKey(circleId: string): Promise<void> {
-  await idbDelete(circleId)
+/** Delete a circle key at `epoch` (or every epoch when omitted) from storage. */
+export async function clearCircleKey(circleId: string, epoch?: number): Promise<void> {
+  if (epoch === undefined) {
+    // Best-effort: clear the current/previous/next window plus the legacy slot.
+    for (let e = 1; e <= 64; e++) await idbDelete(keyId(circleId, e))
+    await idbDelete(circleId)
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(LEGACY_KEY_PREFIX + circleId)
+    await removeVaultCircle(circleId)
+    return
+  }
+  await idbDelete(keyId(circleId, epoch))
   if (typeof localStorage !== 'undefined') localStorage.removeItem(LEGACY_KEY_PREFIX + circleId)
-  await removeVaultCircle(circleId)
+  await removeVaultCircle(circleId, epoch)
 }
 
 /**
- * Rotate the circle key after a membership change (e.g. removing a member):
- * generate a fresh key, persist it non-extractably (vault updated too), and
- * return the fresh EXTRACTABLE key so the caller can re-wrap it for the
- * remaining members. A removed member keeps only the old key, which no longer
- * decrypts new location blobs — forward secrecy across membership changes.
+ * Rotate the circle key to `nextEpoch`: generate a fresh key, persist it
+ * non-extractably (vault updated too), and return the fresh EXTRACTABLE key so
+ * the caller can re-wrap it for the remaining members. The key is saved as the
+ * pending epoch BEFORE the owner commits; a failed commit leaves it inert and it
+ * is purged on the next load.
  */
-export async function rotateCircleKey(circleId: string): Promise<CryptoKey> {
+export async function rotateCircleKey(circleId: string, nextEpoch: number): Promise<CryptoKey> {
   const fresh = await generateCircleKey() // extractable
   const raw = new Uint8Array(await crypto.subtle.exportKey('raw', fresh))
-  await saveCircleKeyWithBackup(circleId, raw) // zeroes the raw copy; vault updated
+  await saveCircleKeyWithBackup(circleId, raw, nextEpoch) // zeroes the raw copy
   return fresh
 }
 
-const CIRCLE_KEY_EVENT_KIND = 30079
-const CIRCLE_KEY_EVENT_TYPE = 'sentinelmesh-circle-key-v1'
+/** Purge keys older than (currentEpoch - 1). Envelopes live ≤ 5 minutes, so the
+ *  previous epoch is enough to decrypt in-flight envelopes. */
+export async function purgeCircleKeyEpochs(circleId: string, currentEpoch: number): Promise<void> {
+  const floor = Math.max(1, currentEpoch - 1)
+  for (let e = 1; e < floor; e++) {
+    await idbDelete(keyId(circleId, e))
+    await removeVaultCircle(circleId, e)
+  }
+}
 
-interface CircleKeyPackageV1 {
-  version: 1
+const CIRCLE_KEY_EVENT_KIND = 30079
+const CIRCLE_KEY_EVENT_TYPE = 'sentinelmesh-circle-key-v2'
+
+interface CircleKeyPackageV2 {
+  version: 2
   type: typeof CIRCLE_KEY_EVENT_TYPE
   circle_id: string
+  key_epoch: number
   algorithm: 'AES-256-GCM'
   key: string
+  issued_at: number
 }
 
 function encodeB64(iv: Uint8Array, data: ArrayBuffer): string {
@@ -183,26 +218,50 @@ function decodeRawB64(value: string): Uint8Array {
   return raw
 }
 
-export async function createNip44CircleKeyEvent(circleId: string, recipientPubkey: string): Promise<VerifiedEvent> {
+function singleTag(event: VerifiedEvent, name: string): string | null {
+  const matches = event.tags.filter(tag => tag[0] === name)
+  if (matches.length !== 1) return null
+  return matches[0]![1] ?? null
+}
+
+/**
+ * Build and sign a v2 circle-key wrap (kind 30079) for `recipientPubkey` at
+ * `keyEpoch`. The content is a NIP-44 v2 pairwise-encrypted v2 package whose tags
+ * exactly bind d/circle/epoch/p. The recipient verifies the event and the trusted
+ * local owner before decrypting.
+ */
+export async function createNip44CircleKeyEvent(
+  circleId: string,
+  recipientPubkey: string,
+  keyEpoch: number,
+): Promise<VerifiedEvent> {
   if (!/^[0-9a-f]{64}$/i.test(recipientPubkey)) throw new Error('Invalid recipient public key')
-  const rawKey = await loadVaultCircleKey(circleId)
+  if (!Number.isSafeInteger(keyEpoch) || keyEpoch < 1) throw new Error('Invalid key epoch')
+  const rawKey = await loadVaultCircleKey(circleId, keyEpoch)
   if (!rawKey) throw new Error('Circle key is not available in the encrypted vault')
   const keypair = getCachedKeypair()
   try {
     const plaintext = JSON.stringify({
-      version: 1,
+      version: 2,
       type: CIRCLE_KEY_EVENT_TYPE,
       circle_id: circleId,
+      key_epoch: keyEpoch,
       algorithm: 'AES-256-GCM',
       key: rawB64(rawKey),
-    } satisfies CircleKeyPackageV1)
+      issued_at: Math.floor(Date.now() / 1000),
+    } satisfies CircleKeyPackageV2)
     const conversationKey = nip44.v2.utils.getConversationKey(keypair.secretKey, recipientPubkey)
     try {
       const content = nip44.v2.encrypt(plaintext, conversationKey)
       return finalizeEvent({
         kind: CIRCLE_KEY_EVENT_KIND,
         created_at: Math.floor(Date.now() / 1000),
-        tags: [['d', CIRCLE_KEY_EVENT_TYPE], ['circle', circleId], ['p', recipientPubkey.toLowerCase()]],
+        tags: [
+          ['d', CIRCLE_KEY_EVENT_TYPE],
+          ['circle', circleId],
+          ['epoch', String(keyEpoch)],
+          ['p', recipientPubkey.toLowerCase()],
+        ],
         content,
       }, keypair.secretKey)
     } finally {
@@ -213,7 +272,61 @@ export async function createNip44CircleKeyEvent(circleId: string, recipientPubke
   }
 }
 
+/**
+ * Verify and unwrap a v2 circle-key wrap. The full signed event must bind the
+ * trusted local owner, this circle, an epoch, and this recipient; the pairwise
+ * NIP-44 plaintext must be a valid v2 package. Saves the key at the package's
+ * epoch.
+ */
 export async function unwrapNip44CircleKey(
+  circleId: string,
+  ownerPubkey: string,
+  event: VerifiedEvent,
+): Promise<number> {
+  const keypair = getCachedKeypair()
+  if (!/^[0-9a-f]{64}$/.test(ownerPubkey)) throw new Error('Circle owner key is unavailable')
+  if (!verifyEvent(event) || event.kind !== CIRCLE_KEY_EVENT_KIND) {
+    throw new Error('Invalid circle key envelope')
+  }
+  if (event.pubkey !== ownerPubkey.toLowerCase()) {
+    throw new Error('Circle key envelope is not signed by the trusted owner')
+  }
+  if (singleTag(event, 'd') !== CIRCLE_KEY_EVENT_TYPE
+    || singleTag(event, 'circle') !== circleId
+    || singleTag(event, 'p') !== keypair.publicKey.toLowerCase()) {
+    throw new Error('Circle key envelope is not bound to this circle and recipient')
+  }
+  const epochTag = singleTag(event, 'epoch')
+  if (!epochTag || !/^\d+$/.test(epochTag)) throw new Error('Circle key envelope has no valid epoch')
+  const keyEpoch = Number(epochTag)
+
+  const conversationKey = nip44.v2.utils.getConversationKey(keypair.secretKey, ownerPubkey)
+  let rawKey: Uint8Array | null = null
+  try {
+    const plaintext = nip44.v2.decrypt(event.content, conversationKey)
+    const value = JSON.parse(plaintext) as Partial<CircleKeyPackageV2>
+    if (value.version !== 2 || value.type !== CIRCLE_KEY_EVENT_TYPE
+      || value.circle_id !== circleId || value.key_epoch !== keyEpoch
+      || value.algorithm !== 'AES-256-GCM' || typeof value.key !== 'string') {
+      throw new Error('Invalid circle key package')
+    }
+    rawKey = decodeRawB64(value.key)
+    await saveCircleKeyWithBackup(circleId, rawKey, keyEpoch)
+  } catch {
+    throw new Error('Invalid circle key envelope')
+  } finally {
+    conversationKey.fill(0)
+    rawKey?.fill(0)
+  }
+  return keyEpoch
+}
+
+/**
+ * Legacy protocol-0 read-only unwrap: the v1 circle-key package (no epoch) was
+ * NIP-44 v2 pairwise-encrypted and stored as opaque ciphertext. It yields an
+ * epoch-1 key usable only for name/label decryption — never live location.
+ */
+export async function unwrapLegacyCircleKey(
   circleId: string,
   ownerPubkey: string,
   ciphertext: string,
@@ -224,12 +337,13 @@ export async function unwrapNip44CircleKey(
   let rawKey: Uint8Array | null = null
   try {
     const plaintext = nip44.v2.decrypt(ciphertext, conversationKey)
-    const value = JSON.parse(plaintext) as Partial<CircleKeyPackageV1>
-    if (value.version !== 1 || value.type !== CIRCLE_KEY_EVENT_TYPE
-      || value.circle_id !== circleId || value.algorithm !== 'AES-256-GCM'
-      || typeof value.key !== 'string') throw new Error('Invalid circle key package')
+    const value = JSON.parse(plaintext) as Partial<{ version: number; circle_id: string; algorithm: string; key: string }>
+    if (value.version !== 1 || value.circle_id !== circleId
+      || value.algorithm !== 'AES-256-GCM' || typeof value.key !== 'string') {
+      throw new Error('Invalid circle key envelope')
+    }
     rawKey = decodeRawB64(value.key)
-    await saveCircleKeyWithBackup(circleId, rawKey)
+    await saveCircleKeyWithBackup(circleId, rawKey, 1)
   } catch {
     throw new Error('Invalid circle key envelope')
   } finally {

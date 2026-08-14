@@ -85,7 +85,7 @@ pub async fn ws_circles_handler(
 }
 
 async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
-    let (circle_id, pubkey) = loop {
+    let (circle_id, self_token) = loop {
         match socket.recv().await {
             Some(Ok(Message::Text(text))) => {
                 let msg = match serde_json::from_str::<CircleClientMsg>(&text) {
@@ -105,7 +105,7 @@ async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
                 } = msg;
 
                 let resolved_pubkey = match nostr_auth_event {
-                    Some(raw) => match verify_ws_auth(&raw) {
+                    Some(raw) => match verify_ws_auth(&raw, circle_id, &state).await {
                         Ok(pk) => pk,
                         Err(e) => {
                             let _ = socket
@@ -135,7 +135,8 @@ async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
                 );
                 let is_member: bool = sqlx::query_scalar::<_, i64>(
                     "SELECT COUNT(*) FROM (
-                       SELECT 1 FROM circle_members WHERE circle_id = $1 AND member_token = $2
+                       SELECT 1 FROM circle_members
+                        WHERE circle_id = $1 AND member_token = $2 AND membership_state = 'ACTIVE'
                        UNION
                        SELECT 1 FROM circles WHERE id = $1 AND owner_token = $2
                      ) sub",
@@ -151,20 +152,22 @@ async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
                     let _ = socket
                         .send(Message::Close(Some(CloseFrame {
                             code: 4003,
-                            reason: std::borrow::Cow::Borrowed("not a circle member"),
+                            reason: std::borrow::Cow::Borrowed("not an active circle member"),
                         })))
                         .await;
                     return;
                 }
 
-                break (circle_id, resolved_pubkey);
+                break (circle_id, join_token);
             }
             _ => return,
         }
     };
 
     // Location transport is independently dark unless explicitly enabled.
-    if state.config.safe_circle_location_enabled {
+    if state.config.safe_circle_location_enabled
+        && is_active_member(&state, circle_id, &self_token).await
+    {
         if let Ok(blobs) = fetch_blob_snapshot(&state.db, circle_id).await {
             let payload =
                 serde_json::json!({ "type": "CIRCLE_LOCATION_SNAPSHOT", "payload": blobs });
@@ -173,11 +176,8 @@ async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
     }
 
     let mut rx = state.circle_hub.subscribe(circle_id);
-    // This connection's own per-circle token, matched against MEMBER_REMOVED
-    // broadcasts (which carry the removed member's token, not a raw pubkey) so a
-    // removed member's live socket is force-closed.
-    let self_token =
-        crate::circles::token::circle_token(&state.config.circle_token_secret, circle_id, &pubkey);
+    // This connection's own per-circle token, matched against CIRCLE_MEMBER_REMOVED
+    // broadcasts so a removed member's live socket is force-closed.
     loop {
         tokio::select! {
             result = rx.recv() => {
@@ -185,20 +185,20 @@ async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
                     Ok(msg) => {
                         let text = String::from_utf8_lossy(&msg).into_owned();
                         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-                            if v["type"] == "MEMBER_REMOVED" && v["token"] == self_token.as_str() {
+                            if v["type"] == "CIRCLE_MEMBER_REMOVED"
+                                && v["payload"]["token"] == self_token.as_str() {
                                 let _ = socket.send(Message::Close(Some(CloseFrame {
                                     code: 4003,
                                     reason: std::borrow::Cow::Borrowed("removed from circle"),
                                 }))).await;
                                 return;
                             }
-                            // Internal token-targeted control message; never expose it to clients.
-                            if v["type"] == "MEMBER_REMOVED" { continue; }
                         }
                         if socket.send(Message::Text(text)).await.is_err() { break; }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                        if state.config.safe_circle_location_enabled {
+                        if state.config.safe_circle_location_enabled
+                            && is_active_member(&state, circle_id, &self_token).await {
                             if let Ok(blobs) = fetch_blob_snapshot(&state.db, circle_id).await {
                                 let payload = serde_json::json!({ "type": "CIRCLE_LOCATION_SNAPSHOT", "payload": blobs });
                                 if socket.send(Message::Text(payload.to_string())).await.is_err() { break; }
@@ -216,7 +216,48 @@ async fn handle_circle_ws(mut socket: WebSocket, state: AppState) {
     }
 }
 
-fn verify_ws_auth(raw: &serde_json::Value) -> Result<String, String> {
+async fn is_active_member(state: &AppState, circle_id: Uuid, token: &str) -> bool {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM (
+           SELECT 1 FROM circle_members
+            WHERE circle_id = $1 AND member_token = $2 AND membership_state = 'ACTIVE'
+           UNION
+           SELECT 1 FROM circles WHERE id = $1 AND owner_token = $2
+         ) sub",
+    )
+    .bind(circle_id)
+    .bind(token)
+    .fetch_one(&state.db)
+    .await
+    .map(|n| n > 0)
+    .unwrap_or(false)
+}
+
+/// Exactly one tag of the given name, else an error (strict duplicate rejection).
+fn single_ws_tag(event: &nostr_sdk::Event, name: &str) -> Result<String, String> {
+    let mut values = event.tags.iter().filter_map(|tag| {
+        let v = tag.as_slice();
+        (v.first().map(String::as_str) == Some(name))
+            .then(|| v.get(1).cloned())
+            .flatten()
+    });
+    let value = values
+        .next()
+        .ok_or_else(|| format!("auth event missing {name} tag"))?;
+    if values.next().is_some() {
+        return Err(format!("auth event has duplicate {name} tags"));
+    }
+    Ok(value)
+}
+
+/// Verify a fresh active-signer kind 27235 event bound to the canonical
+/// `/ws/circles` GET endpoint, the exact circle, and a nonce, with strict
+/// duplicate-tag rejection, signature/timestamp checks, and a Redis replay claim.
+async fn verify_ws_auth(
+    raw: &serde_json::Value,
+    circle_id: Uuid,
+    state: &AppState,
+) -> Result<String, String> {
     let event: nostr_sdk::Event =
         serde_json::from_value(raw.clone()).map_err(|_| "invalid auth event JSON".to_string())?;
     if event.kind != nostr_sdk::Kind::Custom(27235) {
@@ -230,6 +271,40 @@ fn verify_ws_auth(raw: &serde_json::Value) -> Result<String, String> {
     event
         .verify()
         .map_err(|_| "invalid signature".to_string())?;
+
+    let circle = single_ws_tag(&event, "circle")?;
+    if circle != circle_id.to_string() {
+        return Err("auth event is not bound to this circle".to_string());
+    }
+    let _nonce = single_ws_tag(&event, "nonce")?;
+    let u = single_ws_tag(&event, "u")?;
+    if !u.ends_with("/ws/circles") {
+        return Err("auth event is not bound to /ws/circles".to_string());
+    }
+    let method = single_ws_tag(&event, "method")?;
+    if !method.eq_ignore_ascii_case("GET") {
+        return Err("auth method must be GET".to_string());
+    }
+
+    let key = format!("circle-ws:v1:jti:{}", event.id.to_hex());
+    let mut conn = state.redis.clone();
+    let set_result: Option<String> = tokio::time::timeout(
+        std::time::Duration::from_millis(250),
+        redis::cmd("SET")
+            .arg(&key)
+            .arg(1)
+            .arg("NX")
+            .arg("EX")
+            .arg(120)
+            .query_async(&mut conn),
+    )
+    .await
+    .map_err(|_| "auth service unavailable".to_string())?
+    .map_err(|_| "auth service unavailable".to_string())?;
+    if set_result.is_none() {
+        return Err("auth event replay detected".to_string());
+    }
+
     Ok(event.pubkey.to_hex())
 }
 
@@ -249,7 +324,9 @@ async fn fetch_blob_snapshot(
         ),
     >(
         "SELECT id, protocol_version, key_epoch, ciphertext, created_at, expires_at
-         FROM location_blobs WHERE circle_id = $1 AND expires_at > NOW()",
+         FROM location_blobs
+         WHERE circle_id = $1 AND expires_at > NOW()
+           AND key_epoch = (SELECT key_epoch FROM circles WHERE id = $1)",
     )
     .bind(circle_id)
     .fetch_all(pool)
