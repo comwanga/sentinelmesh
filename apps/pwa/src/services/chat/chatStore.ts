@@ -26,6 +26,9 @@ export interface StoredConversation {
   title: string
   muted: boolean
   last_activity_at: number
+  participants?: string[]
+  group_id?: string
+  relay_url?: string
 }
 
 export interface StoredMessage {
@@ -202,6 +205,42 @@ export async function listMessages(conversationId: string, opts: { limit?: numbe
     }
     req.onerror = () => { db.close(); reject(req.error) }
   })
+}
+
+// ── Public channel messages (kind 9, plaintext) ──────────────────────────────
+// Public NIP-29 messages are not encrypted, so they are stored as-is (in the
+// `ciphertext` slot, which is a misnomer for public content) so they survive a
+// page refresh and render immediately before the relay sync completes.
+
+export interface PublicChannelMessage {
+  id: string
+  channel_id: string
+  sender_pubkey: string
+  created_at: number
+  content: string
+}
+
+export async function putChannelMessage(message: PublicChannelMessage): Promise<void> {
+  await putMessage({
+    id: message.id,
+    conversation_id: message.channel_id,
+    sender_pubkey: message.sender_pubkey,
+    created_at: message.created_at,
+    kind: 9,
+    ciphertext: message.content,
+    delivery_state: 'delivered',
+  })
+}
+
+export async function listChannelMessages(channelId: string): Promise<PublicChannelMessage[]> {
+  const stored = await listMessages(channelId)
+  return stored.map(message => ({
+    id: message.id,
+    channel_id: message.conversation_id,
+    sender_pubkey: message.sender_pubkey,
+    created_at: message.created_at,
+    content: message.ciphertext,
+  }))
 }
 
 // ── Gift-wrap deduplication ──────────────────────────────────────────────────

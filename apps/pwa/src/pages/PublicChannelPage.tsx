@@ -11,6 +11,7 @@ import { RelayPoolAdapter } from '../services/relay/relayClient'
 import { createChannelMessage, signChannelMessage } from '../services/chat/nip29'
 import { publishChannelMessage } from '../services/chat/publicChannel'
 import { channelConversationId } from '../services/chat/conversationId'
+import { putChannelMessage } from '../services/chat/chatStore'
 import { MessageList } from '../components/chat/MessageList'
 import { MessageComposer } from '../components/chat/MessageComposer'
 
@@ -35,10 +36,12 @@ export function PublicChannelPage() {
     const pubkey = await signer.pubkey()
     const message = createChannelMessage(pubkey, groupId, text)
     const event = await signChannelMessage(signer, message)
-    // Optimistic local echo.
+    const channel_id = channelConversationId(relayUrl, groupId)
+    // Optimistic local echo + durable persistence so the message survives refresh.
+    void putChannelMessage({ id: event.id, channel_id, sender_pubkey: pubkey, created_at: event.created_at, content: text })
     dispatch(channelMessageReceived({
-      channel_id: channelConversationId(relayUrl, groupId),
-      message: { id: event.id, channel_id: channelConversationId(relayUrl, groupId), sender_pubkey: pubkey, created_at: event.created_at, content: text },
+      channel_id,
+      message: { id: event.id, channel_id, sender_pubkey: pubkey, created_at: event.created_at, content: text },
     }))
     const pool = new RelayPool({ signer })
     try {

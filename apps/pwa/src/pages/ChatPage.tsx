@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '../store'
 import { conversationAdded } from '../store/dmSlice'
@@ -9,6 +9,10 @@ import { parseChannelRef } from '../services/chat/publicChannel'
 import { hexFromNpubOrHex } from '../services/nostrService'
 import { getNostrSigner } from '../services/signerService'
 import { directConversationId } from '../services/chat/dmConversation'
+import { createGroupTemplate, newGroupId, setMetadataTemplate } from '../services/chat/nip29'
+import { RelayPool } from '../services/relay/relayPool'
+import { RelayPoolAdapter } from '../services/relay/relayClient'
+import { putConversation, listConversations } from '../services/chat/chatStore'
 
 export function ChatPage() {
   const navigate = useNavigate()
@@ -21,8 +25,23 @@ export function ChatPage() {
   const [joinError, setJoinError] = useState<string | null>(null)
   const [dmInput, setDmInput] = useState('')
   const [dmError, setDmError] = useState<string | null>(null)
+  const [createName, setCreateName] = useState('')
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
 
   const joinedIds = getJoinedChannels()
+
+  // Restore persisted DM/circle conversations so the roster (and the npub the
+  // user chatted with) survives a refresh.
+  useEffect(() => {
+    void listConversations().then(stored => {
+      for (const c of stored) {
+        if ((c.kind === 'dm' || c.kind === 'circle') && c.participants?.length) {
+          dispatch(conversationAdded({ id: c.id, kind: c.kind, title: c.title, participants: c.participants }))
+        }
+      }
+    }).catch(() => {})
+  }, [dispatch])
 
   const handleJoin = useCallback(() => {
     const parsed = parseChannelRef(joinInput)
@@ -33,13 +52,45 @@ export function ChatPage() {
     navigate(`/chat/community/${encodeURIComponent(parsed.groupId)}`)
   }, [joinInput, navigate])
 
+  const handleCreateChannel = useCallback(async () => {
+    const name = createName.trim()
+    const relayUrl = chatRelays.community
+    if (!name) { setCreateError('Enter a channel name.'); return }
+    if (!relayUrl) { setCreateError('No community relay configured.'); return }
+    setCreating(true)
+    setCreateError(null)
+    try {
+      const signer = getNostrSigner()
+      const groupId = newGroupId()
+      const createEvent = await signer.signEvent(createGroupTemplate(groupId))
+      const metadataEvent = await signer.signEvent(setMetadataTemplate(groupId, { name }))
+      const pool = new RelayPool({ signer })
+      try {
+        const client = new RelayPoolAdapter(pool)
+        await client.publish([relayUrl], createEvent)
+        await client.publish([relayUrl], metadataEvent)
+      } finally {
+        pool.destroy()
+      }
+      addJoinedChannel(groupId)
+      setCreateName('')
+      navigate(`/chat/community/${encodeURIComponent(groupId)}`)
+    } catch {
+      setCreateError('Could not create the channel.')
+    } finally {
+      setCreating(false)
+    }
+  }, [createName, navigate])
+
   const handleNewDm = useCallback(async () => {
     const hex = hexFromNpubOrHex(dmInput)
     if (!hex) { setDmError('Enter an npub or hex public key.'); return }
     const signer = getNostrSigner()
     const myPubkey = await signer.pubkey()
     const id = await directConversationId(myPubkey, hex)
-    dispatch(conversationAdded({ id, kind: 'dm', title: hex.slice(0, 12), participants: [myPubkey, hex].sort() }))
+    const participants = [myPubkey, hex].sort()
+    dispatch(conversationAdded({ id, kind: 'dm', title: hex.slice(0, 12), participants }))
+    void putConversation({ id, kind: 'dm', title: hex.slice(0, 12), muted: false, last_activity_at: Date.now(), participants })
     setDmError(null)
     setDmInput('')
     navigate(`/chat/dm/${id}`)
@@ -85,10 +136,7 @@ export function ChatPage() {
               onChange={e => { setDmInput(e.target.value); setDmError(null) }}
               onKeyDown={e => { if (e.key === 'Enter') void handleNewDm() }}
               placeholder="npub1… or hex pubkey"
-              style={{
-                flex: 1, background: '#0B0E14', border: '1px solid #1a2035', borderRadius: 4,
-                color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 12, padding: '8px 10px', outline: 'none',
-              }}
+              style={{ flex: 1, background: '#0B0E14', border: '1px solid #1a2035', borderRadius: 4, color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 12, padding: '8px 10px', outline: 'none' }}
             />
             <button onClick={() => void handleNewDm()} style={{ background: '#1B5E20', border: '1px solid #4CAF50', borderRadius: 4, color: '#4CAF50', fontFamily: "'Courier New', monospace", fontSize: 11, padding: '8px 14px', cursor: 'pointer' }}>
               Message
@@ -101,7 +149,24 @@ export function ChatPage() {
       {chatRelays.community && (
         <div style={{ padding: '12px 16px', borderBottom: '1px solid #1a2035' }}>
           <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#4a5568', letterSpacing: '0.06em', marginBottom: 6 }}>
-            JOIN A CHANNEL
+            CREATE A CHANNEL
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={createName}
+              onChange={e => { setCreateName(e.target.value); setCreateError(null) }}
+              onKeyDown={e => { if (e.key === 'Enter') void handleCreateChannel() }}
+              placeholder="Channel name"
+              style={{ flex: 1, background: '#0B0E14', border: '1px solid #1a2035', borderRadius: 4, color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 12, padding: '8px 10px', outline: 'none' }}
+            />
+            <button onClick={() => void handleCreateChannel()} disabled={creating || !createName.trim()} style={{ background: creating || !createName.trim() ? '#1a2035' : '#1B5E20', border: '1px solid ' + (creating || !createName.trim() ? '#1a2035' : '#4CAF50'), borderRadius: 4, color: creating || !createName.trim() ? '#4a5568' : '#4CAF50', fontFamily: "'Courier New', monospace", fontSize: 11, padding: '8px 14px', cursor: 'pointer' }}>
+              {creating ? '…' : 'Create'}
+            </button>
+          </div>
+          {createError && <div style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#FF2D2D', marginTop: 6 }}>{createError}</div>}
+
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: 9, color: '#4a5568', letterSpacing: '0.06em', margin: '14px 0 6px' }}>
+            OR JOIN A CHANNEL
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
@@ -109,10 +174,7 @@ export function ChatPage() {
               onChange={e => { setJoinInput(e.target.value); setJoinError(null) }}
               onKeyDown={e => { if (e.key === 'Enter') handleJoin() }}
               placeholder="group id or naddr…"
-              style={{
-                flex: 1, background: '#0B0E14', border: '1px solid #1a2035', borderRadius: 4,
-                color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 12, padding: '8px 10px', outline: 'none',
-              }}
+              style={{ flex: 1, background: '#0B0E14', border: '1px solid #1a2035', borderRadius: 4, color: '#e2e8f0', fontFamily: "'Courier New', monospace", fontSize: 12, padding: '8px 10px', outline: 'none' }}
             />
             <button onClick={handleJoin} style={{ background: '#1B5E20', border: '1px solid #4CAF50', borderRadius: 4, color: '#4CAF50', fontFamily: "'Courier New', monospace", fontSize: 11, padding: '8px 14px', cursor: 'pointer' }}>
               Join
@@ -154,4 +216,3 @@ export function ChatPage() {
     </div>
   )
 }
-
