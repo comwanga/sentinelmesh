@@ -152,10 +152,14 @@ fn is_public_ip(ip: IpAddr) -> bool {
 }
 
 async fn fetch_document(domain: &str, name: &str) -> Result<Nip05Document, AppError> {
-    let addresses: Vec<_> = tokio::net::lookup_host((domain, 443))
-        .await
-        .map_err(|_| AppError::Unprocessable("NIP-05 domain could not be resolved".into()))?
-        .collect();
+    let addresses: Vec<_> = tokio::time::timeout(
+        Duration::from_secs(5),
+        tokio::net::lookup_host((domain, 443)),
+    )
+    .await
+    .map_err(|_| AppError::Unprocessable("NIP-05 domain could not be resolved".into()))?
+    .map_err(|_| AppError::Unprocessable("NIP-05 domain could not be resolved".into()))?
+    .collect();
     if addresses.is_empty() || addresses.iter().any(|address| !is_public_ip(address.ip())) {
         return Err(AppError::Unprocessable(
             "NIP-05 domain does not resolve to a public address".into(),

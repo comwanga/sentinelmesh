@@ -31,4 +31,7 @@ RUN touch sentinel-core/src/lib.rs gateway/src/main.rs && \
 
 EXPOSE 3000
 
+HEALTHCHECK --interval=10s --timeout=3s --start-period=45s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:3000/ready >/dev/null || exit 1
+
 CMD ["cargo", "watch", "-x", "run -p gateway"]

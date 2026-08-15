@@ -79,13 +79,14 @@ mod tests {
     async fn make_state(secret: &str) -> AppState {
         use crate::{
             config::Config,
-            maps::{DisabledMapProvider, MapProvider},
+            maps::{MapProvider, NominatimAdapter},
             ws::{circle_hub::CircleHub, hub::WsHub},
         };
         use governor::{Quota, RateLimiter};
         use std::num::NonZeroU32;
         let http_client = reqwest::Client::new();
-        let map_provider: Arc<dyn MapProvider> = Arc::new(DisabledMapProvider);
+        let map_provider: Arc<dyn MapProvider> =
+            Arc::new(NominatimAdapter::new(http_client.clone()));
         let acoustic_limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
             NonZeroU32::new(5).unwrap(),
         )));

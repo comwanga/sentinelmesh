@@ -24,20 +24,3 @@ pub trait MapProvider: Send + Sync {
         request: ReverseRequest,
     ) -> Result<Option<SearchResult>, MapProviderError>;
 }
-
-pub struct DisabledMapProvider;
-
-#[async_trait]
-impl MapProvider for DisabledMapProvider {
-    async fn search(&self, _: SearchRequest) -> Result<Vec<SearchResult>, MapProviderError> {
-        Err(MapProviderError::Unavailable)
-    }
-
-    async fn route(&self, _: RouteRequest) -> Result<Vec<RouteResult>, MapProviderError> {
-        Err(MapProviderError::Unavailable)
-    }
-
-    async fn reverse(&self, _: ReverseRequest) -> Result<Option<SearchResult>, MapProviderError> {
-        Err(MapProviderError::Unavailable)
-    }
-}

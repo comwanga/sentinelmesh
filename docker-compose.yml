@@ -74,6 +74,7 @@ services:
       NLP_SYNTHESIS_ENABLED: ${NLP_SYNTHESIS_ENABLED:-true}
       CONSENSUS_REQUIRE_ESTABLISHED: ${CONSENSUS_REQUIRE_ESTABLISHED:-true}
       MAX_DB_CONNECTIONS: ${MAX_DB_CONNECTIONS:-50}
+      RUST_LOG: ${RUST_LOG:-${LOG_LEVEL:-info}}
     depends_on:
       migrate:
         condition: service_completed_successfully

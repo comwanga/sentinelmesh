@@ -80,7 +80,9 @@ async fn main() -> anyhow::Result<()> {
                 .ok_or_else(|| anyhow::anyhow!("MAP_API_ENABLED requires STADIA_API_KEY"))?,
         ))
     } else {
-        std::sync::Arc::new(maps::DisabledMapProvider)
+        // Keyless OSM Nominatim geocoding (search + reverse) keeps location lookup
+        // and home-address setup working without a paid key. Routing stays gated.
+        std::sync::Arc::new(maps::NominatimAdapter::new(http_client.clone()))
     };
 
     let acoustic_limiter: Arc<DefaultKeyedRateLimiter<String>> = Arc::new(RateLimiter::keyed(
