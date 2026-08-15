@@ -9,6 +9,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: false,
+      // Local builds (VITE_DISABLE_SERVICE_WORKER=true) ship a self-destroying
+      // service worker: when a previously-cached SW is superseded by this one, it
+      // clears its caches and unregisters, breaking the stale-precache loop.
+      selfDestroying: process.env.VITE_DISABLE_SERVICE_WORKER === 'true',
       manifest: {
         name: 'SentinelMesh',
         short_name: 'SentinelMesh',

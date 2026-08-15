@@ -4,7 +4,7 @@ A privacy-aware community safety network. SentinelMesh combines a live OpenStree
 
 The hard part of an app like this isn't drawing dots on a map — it's deciding **which dots to trust**. SentinelMesh's design is built around that question: automated signals start out untrusted and earn trust only through independent corroboration, and the server is built to hold as little readable personal data as possible.
 
-The default product supports the safety map, alert list, signed community reports, local or remote signing, optional NIP-05 identity, encrypted backup and restore, and opt-in push perimeters. Family Circles, acoustic detection, routing, photos, and Insights remain experimental and hidden by default. See [`docs/V2_SCOPE.md`](docs/V2_SCOPE.md) for the supported boundary and trust terminology.
+The default product supports the safety map, alert list, signed community reports, local or remote signing, encrypted Family Circles, optional NIP-05 identity, encrypted backup and restore, and opt-in push perimeters. Acoustic detection, routing, photos, and Insights remain experimental and hidden by default. See [`docs/V2_SCOPE.md`](docs/V2_SCOPE.md) for the supported boundary and trust terminology.
 
 ---
 
@@ -16,7 +16,7 @@ The default product supports the safety map, alert list, signed community report
 | **Community reports** | Core | Submits location-based reports signed by the user's local Nostr key and supports community confirmation or denial. |
 | **Nostr identity** | Core | Generates an encrypted local identity or connects a NIP-46 remote signer, with backup, restore, NIP-19 key handling, and optional NIP-05 verification. |
 | **Push notifications** | Core | User-enabled alert perimeters deliver confirmed incidents through durable, geographically targeted queues. |
-| **Family Circles** | Experimental | Circle management is behind `VITE_ENABLE_EXPERIMENTAL_CIRCLES`. Location sharing additionally requires both `SAFE_CIRCLE_LOCATION_ENABLED=true` and `VITE_ENABLE_SAFE_CIRCLE_LOCATION=true`; it is off by default. Membership uses epoch-bound keys and pending/accept, removal revokes a member and forces a rekey, the circle WebSocket requires a fresh bound kind-27235 auth event, and markers render only decrypted, roster-verified locations with explicit user controls. |
+| **Family Circles** | Core | Encrypted family circles: create/join/manage circles, invite members, and exchange NIP-44-wrapped keys. Location sharing is a separate opt-in (`SAFE_CIRCLE_LOCATION_ENABLED=true` and `VITE_ENABLE_SAFE_CIRCLE_LOCATION=true`; off by default). Membership uses epoch-bound keys and pending/accept, removal revokes a member and forces a rekey, the circle WebSocket requires a fresh bound kind-27235 auth event, and markers render only decrypted, roster-verified locations with explicit user controls. |
 | **Community + encrypted chat** | Experimental | Disabled by default (`VITE_ENABLE_CHAT=false`). Public NIP-29 channels and NIP-17/NIP-59 encrypted DMs and Circle rooms require configured relays; relay webhooks and generic push are gated behind `CHAT_PUSH_ENABLED`. See `docs/operations/relay-conformance.md`. |
 | **Acoustic detection** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ACOUSTIC`; detections are client assertions and cannot independently confirm an event. |
 | **Routing** | Experimental | Retained behind `VITE_ENABLE_EXPERIMENTAL_ROUTING`; routes are not described as safe or authoritative. |
@@ -337,7 +337,7 @@ sentinelmesh/
 - [x] NIP-98 authenticated mutations and replay protection
 - [x] Bright responsive interface and OpenStreetMap-based MapLibre cartography
 
-Signal ingestion, Family Circles, acoustic detection, routing, photos, and Insights are retained as experimental work. Presence in the repository is not an end-to-end completion claim.
+Signal ingestion, acoustic detection, routing, photos, and Insights are retained as experimental work. Presence in the repository is not an end-to-end completion claim.
 
 ---
 

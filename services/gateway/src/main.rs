@@ -242,15 +242,20 @@ async fn main() -> anyhow::Result<()> {
             HeaderName::from_static("x-nostr-auth"),
         ]);
 
-    // Rate limiting: 100 req/s per IP, burst of 50
+    // Rate limiting: 100 req/s per IP, burst of 50. tower_governor's
+    // `per_second(n)` sets the replenish INTERVAL (one token every n seconds),
+    // so the 100-request-per-second quota is `per_millisecond(10)`.
     let governor_conf = Arc::new(
         GovernorConfigBuilder::default()
-            .per_second(100)
+            .per_millisecond(10)
             .burst_size(50)
             .finish()
             .expect("invalid governor config"),
     );
 
+    // The rate limiter is applied only to the REST API. Health/live/ready and
+    // WebSocket endpoints must never be rate-limited (the container healthcheck
+    // hits /ready and would otherwise flap to unhealthy).
     let app = Router::new()
         .route("/health", get(health))
         .route("/live", get(health))
@@ -259,10 +264,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/ws", get(ws::ws_handler))
         .route("/ws/circles", get(ws::ws_circles_handler))
         .route("/ws/events", get(ws::ws_events_handler))
-        .merge(routes::build_router())
-        .layer(GovernorLayer {
+        .merge(routes::build_router().layer(GovernorLayer {
             config: governor_conf,
-        })
+        }))
         .layer(cors)
         .with_state(state);
 
