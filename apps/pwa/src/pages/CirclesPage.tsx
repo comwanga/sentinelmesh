@@ -27,7 +27,7 @@ export function CirclesPage() {
   return (
     <div data-testid="circles-page" className="bright-feature circles-page">
       <div className="feature-banner">
-        Experimental encrypted circles
+        Encrypted family circles
       </div>
 
       {layout === 'mobile' && (

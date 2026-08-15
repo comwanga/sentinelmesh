@@ -4,14 +4,13 @@ function enabled(value: string | undefined): boolean {
 
 export const experimentalFeatures = Object.freeze({
   acoustic: enabled(import.meta.env.VITE_ENABLE_EXPERIMENTAL_ACOUSTIC),
-  circles: enabled(import.meta.env.VITE_ENABLE_EXPERIMENTAL_CIRCLES),
   insights: enabled(import.meta.env.VITE_ENABLE_EXPERIMENTAL_INSIGHTS),
   photos: enabled(import.meta.env.VITE_ENABLE_EXPERIMENTAL_PHOTOS),
   routing: enabled(import.meta.env.VITE_ENABLE_EXPERIMENTAL_ROUTING),
 })
 
-// Independent of the broad circles experiment: location stays dark unless this
-// dedicated build-time gate is explicitly enabled.
+// Family Circles is a core feature (always available). Circle location sharing
+// stays behind its own gate.
 export const safeCircleLocationEnabled = enabled(import.meta.env.VITE_ENABLE_SAFE_CIRCLE_LOCATION)
 
 // Chat (NIP-29 public channels + NIP-17/NIP-59 encrypted DMs and Circle rooms).

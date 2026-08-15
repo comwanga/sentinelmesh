@@ -10,8 +10,8 @@ interface Props {
 
 const cards: { label: string; desc: string; icon: string; key: keyof Props }[] = [
   { label: 'Report Incident',  desc: 'Share what you see. Keep others safe.',          icon: '📢', key: 'onReport' },
+  { label: 'Family Circles',   desc: 'Encrypted family location sharing.',              icon: '👥', key: 'onCircles' },
   ...(experimentalFeatures.acoustic ? [{ label: 'Acoustic Detect', desc: 'Experimental on-device sound classification.', icon: '🎙', key: 'onAcoustic' as const }] : []),
-  ...(experimentalFeatures.circles ? [{ label: 'Family Circles', desc: 'Experimental encrypted location sharing.', icon: '👥', key: 'onCircles' as const }] : []),
   ...(experimentalFeatures.routing ? [
     { label: 'Route Preview', desc: 'Experimental routes around a selected incident.', icon: '🛣', key: 'onRoutes' as const },
     { label: 'Navigate Home', desc: 'Experimental walking directions to a saved location.', icon: '🏠', key: 'onHomeRoute' as const },

@@ -1,16 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-describe('experimental feature flags', () => {
+describe('feature flags', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.resetModules()
   })
 
-  it('does not let the circles experiment enable safe location', async () => {
-    vi.stubEnv('VITE_ENABLE_EXPERIMENTAL_CIRCLES', 'true')
-    const { experimentalFeatures, safeCircleLocationEnabled } = await import('./features')
-    expect(experimentalFeatures.circles).toBe(true)
+  it('keeps safe circle location disabled by default', async () => {
+    const { safeCircleLocationEnabled } = await import('./features')
     expect(safeCircleLocationEnabled).toBe(false)
+  })
+
+  it('requires an explicit true value to enable safe circle location', async () => {
+    vi.stubEnv('VITE_ENABLE_SAFE_CIRCLE_LOCATION', 'true')
+    const { safeCircleLocationEnabled } = await import('./features')
+    expect(safeCircleLocationEnabled).toBe(true)
   })
 
   it('keeps every experimental feature disabled by default', async () => {
@@ -18,12 +22,12 @@ describe('experimental feature flags', () => {
     expect(Object.values(experimentalFeatures).every(value => value === false)).toBe(true)
   })
 
-  it('requires an explicit true value to enable a feature', async () => {
-    vi.stubEnv('VITE_ENABLE_EXPERIMENTAL_CIRCLES', 'true')
+  it('requires an explicit true value to enable an experimental feature', async () => {
+    vi.stubEnv('VITE_ENABLE_EXPERIMENTAL_ACOUSTIC', 'true')
     vi.stubEnv('VITE_ENABLE_EXPERIMENTAL_ROUTING', 'false')
 
     const { experimentalFeatures } = await import('./features')
-    expect(experimentalFeatures.circles).toBe(true)
+    expect(experimentalFeatures.acoustic).toBe(true)
     expect(experimentalFeatures.routing).toBe(false)
   })
 })

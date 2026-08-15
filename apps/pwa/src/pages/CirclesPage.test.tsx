@@ -20,10 +20,10 @@ vi.mock('react-router-dom', () => ({
 }))
 
 describe('CirclesPage', () => {
-  it('renders the experimental encrypted circles notice', () => {
+  it('renders the encrypted family circles notice', () => {
     mockUseBreakpoint.mockReturnValue({ layout: 'desktop' })
     render(<CirclesPage />)
-    expect(screen.getByText('Experimental encrypted circles')).toBeInTheDocument()
+    expect(screen.getByText('Encrypted family circles')).toBeInTheDocument()
   })
 
   it('mobile: renders the safety map button', () => {

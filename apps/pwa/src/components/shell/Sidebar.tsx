@@ -1,12 +1,12 @@
 import { Bell, FileText, Map, MessageSquare, Settings, ShieldPlus, Users } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
-import { experimentalFeatures, chatEnabled } from '../../config/features'
+import { chatEnabled } from '../../config/features'
 import { useActiveIdentity } from '../../hooks/useActiveIdentity'
 
 const items = [
   { path: '/map', label: 'Safety map', Icon: Map }, { path: '/alerts', label: 'Alerts', Icon: Bell },
   { path: '/reports', label: 'Community reports', Icon: FileText },
-  ...(experimentalFeatures.circles ? [{ path: '/circles', label: 'Family circles', Icon: Users }] : []),
+  { path: '/circles', label: 'Family circles', Icon: Users },
   ...(chatEnabled ? [{ path: '/chat', label: 'Community chat', Icon: MessageSquare }] : []),
   { path: '/settings', label: 'Identity + settings', Icon: Settings },
 ]
