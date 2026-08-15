@@ -17,11 +17,23 @@ export const NIP29_KIND_ADD_USER = 9000
 export const NIP29_KIND_REMOVE_USER = 9001
 export const NIP29_KIND_SET_METADATA = 9002
 export const NIP29_KIND_DELETE_EVENT = 9005
+export const NIP29_KIND_CREATE_GROUP = 9007
 export const NIP29_KIND_PIN = 9010
 
 /** Build a NIP-29 management event template bound to exactly one `h` group tag. */
 export function buildManagementTemplate(kind: number, groupId: string, tags: string[][], content = ''): EventTemplate {
   return { kind, created_at: Math.floor(Date.now() / 1000), tags: [['h', groupId], ...tags], content }
+}
+
+/** Generate a fresh, relay-scoped NIP-29 group id (random hex). */
+export function newGroupId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** Kind-9007 create-group template for a new public channel. */
+export function createGroupTemplate(groupId: string): EventTemplate {
+  return buildManagementTemplate(NIP29_KIND_CREATE_GROUP, groupId, [])
 }
 
 export function deleteMessageTemplate(groupId: string, eventId: string): EventTemplate {

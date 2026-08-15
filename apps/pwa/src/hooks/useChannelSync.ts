@@ -14,6 +14,7 @@ import { fetchRelayInfo } from '../services/relay/relayConnection'
 import { loadChannelState } from '../services/chat/publicChannel'
 import { subscribeChannel, fetchChannelHistory, resumeSince } from '../services/chat/chatSync'
 import { channelConversationId } from '../services/chat/conversationId'
+import { putChannelMessage, listChannelMessages } from '../services/chat/chatStore'
 import type { Event } from 'nostr-tools'
 
 export interface ChannelRef {
@@ -39,7 +40,22 @@ export function useChannelSync(ref: ChannelRef | null): void {
       return { id: event.id, channel_id: channelId, sender_pubkey: event.pubkey, created_at: event.created_at, content: event.content }
     }
 
+    function remember(event: Event): void {
+      void putChannelMessage({ id: event.id, channel_id: channelId, sender_pubkey: event.pubkey, created_at: event.created_at, content: event.content })
+    }
+
     async function run(): Promise<void> {
+      // Restore locally-persisted messages immediately so the channel is not
+      // empty (or "lost") after a refresh, before the relay sync completes.
+      void listChannelMessages(channelId).then(stored => {
+        if (!disposed && stored.length) {
+          dispatch(channelHistoryLoaded({
+            channel_id: channelId,
+            messages: stored.map(m => ({ id: m.id, channel_id: m.channel_id, sender_pubkey: m.sender_pubkey, created_at: m.created_at, content: m.content })),
+          }))
+        }
+      }).catch(() => {})
+
       try {
         const signer = getNostrSigner()
         pool = new RelayPool({ signer })
@@ -58,20 +74,20 @@ export function useChannelSync(ref: ChannelRef | null): void {
         // Bounded history first, then live subscription from the overlap cursor.
         const history = await fetchChannelHistory(client, relayUrl, groupId)
         if (disposed) return
-        for (const event of history) seen.add(event.id)
+        for (const event of history) { seen.add(event.id); remember(event) }
         dispatch(channelHistoryLoaded({ channel_id: channelId, messages: history.map(toChatMessage) }))
 
         const last = history[history.length - 1]?.created_at
         const sub = subscribeChannel(client, relayUrl, groupId, {
           seen,
           since: last ? resumeSince(last) : undefined,
-          onEvent: (event) => dispatch(channelMessageReceived({ channel_id: channelId, message: toChatMessage(event) })),
+          onEvent: (event) => { remember(event); dispatch(channelMessageReceived({ channel_id: channelId, message: toChatMessage(event) })) },
           onEose: () => dispatch(channelSynced(channelId)),
         })
         if (disposed) { sub.close(); return }
         subs.push(sub)
       } catch {
-        // Relay unreachable — the UI shows the unconfigured/unavailable state.
+        // Relay unreachable — locally-persisted messages still render.
       }
     }
 
