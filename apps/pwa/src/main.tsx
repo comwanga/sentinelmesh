@@ -10,7 +10,7 @@ import { loadIdentity } from './services/nostrService'
 import { initializeActiveSigner } from './services/signerService'
 import { registerServiceWorker, unregisterServiceWorkers } from './services/serviceWorker'
 
-if (import.meta.env.PROD) registerServiceWorker()
+if (import.meta.env.PROD && import.meta.env.VITE_DISABLE_SERVICE_WORKER !== 'true') registerServiceWorker()
 else unregisterServiceWorkers()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
