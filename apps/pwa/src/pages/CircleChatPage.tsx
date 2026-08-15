@@ -9,12 +9,14 @@ import { sendGroupMessage } from '../services/chat/dmSend'
 import { roomConversationId } from '../services/chat/dmConversation'
 import { circleChatParticipants, circleChatFeasible } from '../services/chat/circleChat'
 import { chatRelays } from '../config/chat'
+import { useActiveIdentity } from '../hooks/useActiveIdentity'
 import { MessageList } from '../components/chat/MessageList'
 import { MessageComposer } from '../components/chat/MessageComposer'
 
 export function CircleChatPage() {
   const { circleId = '' } = useParams()
   const dispatch = useAppDispatch()
+  const { pubkey: myPubkey } = useActiveIdentity()
   const circle = useAppSelector(s => s.circles.circles.find(c => c.circle_id === circleId))
   const members = useAppSelector(s => (circleId ? (s.circles.members[circleId] ?? []) : []))
   const [conversationId, setConversationId] = useState<string | null>(null)
@@ -66,7 +68,7 @@ export function CircleChatPage() {
         <span style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#BB86FC', fontWeight: 700 }}>{circle?.name ?? 'Circle chat'}</span>
         <span style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568' }}>NIP-17 encrypted · room</span>
       </div>
-      <MessageList messages={messages} emptyText="No messages yet." />
+      <MessageList messages={messages} emptyText="No messages yet." myPubkey={myPubkey} />
       <MessageComposer onSend={handleSend} />
     </div>
   )

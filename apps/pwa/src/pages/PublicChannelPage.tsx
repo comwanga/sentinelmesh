@@ -12,12 +12,14 @@ import { createChannelMessage, signChannelMessage } from '../services/chat/nip29
 import { publishChannelMessage } from '../services/chat/publicChannel'
 import { channelConversationId } from '../services/chat/conversationId'
 import { putChannelMessage } from '../services/chat/chatStore'
+import { useActiveIdentity } from '../hooks/useActiveIdentity'
 import { MessageList } from '../components/chat/MessageList'
 import { MessageComposer } from '../components/chat/MessageComposer'
 
 export function PublicChannelPage() {
   const { groupId = '' } = useParams()
   const dispatch = useAppDispatch()
+  const { pubkey: myPubkey } = useActiveIdentity()
   const relayUrl = chatRelays.community
   const channelId = relayUrl ? channelConversationId(relayUrl, groupId) : ''
   const channel = useAppSelector(s => (channelId ? s.chat.channels[channelId] : undefined))
@@ -61,7 +63,7 @@ export function PublicChannelPage() {
         <span style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#00E5FF', fontWeight: 700 }}># {channel?.name ?? groupId.slice(0, 12)}</span>
         {channel && <span style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568' }}>{channel.members.length} members</span>}
       </div>
-      <MessageList messages={messages} emptyText="No messages yet — say hello." />
+      <MessageList messages={messages} emptyText="No messages yet — say hello." myPubkey={myPubkey} />
       <MessageComposer onSend={handleSend} />
     </div>
   )

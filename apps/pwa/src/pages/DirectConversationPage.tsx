@@ -7,12 +7,14 @@ import { RelayPool } from '../services/relay/relayPool'
 import { RelayPoolAdapter } from '../services/relay/relayClient'
 import { sendDirectMessage } from '../services/chat/dmSend'
 import { chatRelays } from '../config/chat'
+import { useActiveIdentity } from '../hooks/useActiveIdentity'
 import { MessageList } from '../components/chat/MessageList'
 import { MessageComposer } from '../components/chat/MessageComposer'
 
 export function DirectConversationPage() {
   const { conversationId = '' } = useParams()
   const dispatch = useAppDispatch()
+  const { pubkey: myPubkey } = useActiveIdentity()
   const conversation = useAppSelector(s => s.dm.conversations[conversationId])
   const messages = useAppSelector(s => (conversationId ? (s.dm.messages[conversationId] ?? []) : []))
 
@@ -51,7 +53,7 @@ export function DirectConversationPage() {
         <span style={{ fontFamily: "'Courier New', monospace", fontSize: 12, color: '#BB86FC', fontWeight: 700 }}>{conversation.title}</span>
         <span style={{ fontFamily: "'Courier New', monospace", fontSize: 10, color: '#4a5568' }}>NIP-17 encrypted</span>
       </div>
-      <MessageList messages={messages} emptyText="No messages yet." />
+      <MessageList messages={messages} emptyText="No messages yet." myPubkey={myPubkey} />
       <MessageComposer onSend={handleSend} />
     </div>
   )
