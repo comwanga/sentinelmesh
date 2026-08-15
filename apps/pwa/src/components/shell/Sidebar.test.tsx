@@ -19,10 +19,10 @@ describe('Sidebar', () => {
   it('renders core navigation only by default', () => {
     const s = makeStore()
     render(<Sidebar />, { wrapper: makeWrapper(s) })
-    ;['Safety map', 'Alerts', 'Community reports', 'Identity + settings'].forEach(label => {
+    ;['Safety map', 'Alerts', 'Community reports', 'Family circles', 'Identity + settings'].forEach(label => {
       expect(screen.getByText(label)).toBeInTheDocument()
     })
-    ;['Family circles', 'Routes', 'Acoustic Detect', 'Insights'].forEach(label => {
+    ;['Routes', 'Acoustic Detect', 'Insights', 'Community chat'].forEach(label => {
       expect(screen.queryByText(label)).not.toBeInTheDocument()
     })
     expect(screen.queryByText('All systems operational')).not.toBeInTheDocument()

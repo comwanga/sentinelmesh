@@ -1,11 +1,17 @@
-import { Bell, FilePlus2, Map, Settings } from 'lucide-react'
+import { Bell, FilePlus2, Map, MessageSquare, Users } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
+import { chatEnabled } from '../../config/features'
+
+const linkClass = ({ isActive }: { isActive: boolean }) => isActive ? 'active' : ''
 
 export function BottomNav() {
-  return <nav className="field-nav" aria-label="Main navigation">
-    <NavLink to="/map" aria-label="Map" className={({ isActive }) => isActive ? 'active' : ''}><Map /><span>Map</span></NavLink>
-    <NavLink to="/alerts" aria-label="Alerts" className={({ isActive }) => isActive ? 'active' : ''}><Bell /><span>Alerts</span></NavLink>
+  const count = chatEnabled ? 5 : 4
+
+  return <nav className="field-nav" aria-label="Main navigation" style={{ gridTemplateColumns: `repeat(${count}, 1fr)` }}>
+    <NavLink to="/map" aria-label="Map" className={linkClass}><Map /><span>Map</span></NavLink>
+    <NavLink to="/alerts" aria-label="Alerts" className={linkClass}><Bell /><span>Alerts</span></NavLink>
     <NavLink to="/reports" aria-label="Report" className="field-report"><FilePlus2 /><span>Report</span></NavLink>
-    <NavLink to="/settings" aria-label="Profile" className={({ isActive }) => isActive ? 'active' : ''}><Settings /><span>Identity</span></NavLink>
+    <NavLink to="/circles" aria-label="Family circles" className={linkClass}><Users /><span>Circles</span></NavLink>
+    {chatEnabled && <NavLink to="/chat" aria-label="Community chat" className={linkClass}><MessageSquare /><span>Chat</span></NavLink>}
   </nav>
 }

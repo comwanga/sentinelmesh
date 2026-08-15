@@ -1,4 +1,4 @@
-import { Bell, Command, Search } from 'lucide-react'
+import { Bell, Command, Search, Settings } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAppSelector } from '../../store'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
@@ -15,5 +15,6 @@ export function Header() {
     {layout === 'desktop' && <div className="atlas-search"><Search size={16} /><input aria-label="Search the safety map" placeholder="Search an area or review the live map" onKeyDown={event => { if (event.key === 'Enter' && event.currentTarget.value.trim()) navigate(`/map?q=${encodeURIComponent(event.currentTarget.value.trim())}`) }} /><kbd><Command size={12} /> K</kbd></div>}
     <div className={`network-state ${connected ? 'live' : ''}`}><i /><span>{connected ? 'Network live' : 'Reconnecting'}</span></div>
     <button className="header-alerts" onClick={() => navigate('/alerts')} aria-label={`${activeCount} active alerts`}><Bell />{activeCount > 0 && <b>{activeCount > 99 ? '99+' : activeCount}</b>}</button>
+    <button className="header-alerts" onClick={() => navigate('/settings')} aria-label="Identity and settings"><Settings /></button>
   </header>
 }
