@@ -147,11 +147,20 @@ fn tag_values(event: &nostr_sdk::Event, name: &str) -> Vec<String> {
 }
 
 fn canonical_url(parts: &Parts, config: &crate::config::Config) -> String {
+    // Prefer the original (un-nested) URI set by Router::nest, so NIP-98 URL
+    // binding matches the full client-facing path (e.g. /api/push/subscribe)
+    // rather than the router-stripped path (e.g. /subscribe).
     let path_and_query = parts
-        .uri
-        .path_and_query()
-        .map(|pq| pq.as_str())
-        .unwrap_or("/");
+        .extensions
+        .get::<axum::extract::OriginalUri>()
+        .and_then(|original| original.0.path_and_query().map(|pq| pq.as_str()))
+        .unwrap_or_else(|| {
+            parts
+                .uri
+                .path_and_query()
+                .map(|pq| pq.as_str())
+                .unwrap_or("/")
+        });
 
     if let Some(base) = &config.public_base_url {
         return format!("{base}{path_and_query}");
@@ -357,7 +366,7 @@ mod tests {
     async fn make_state() -> AppState {
         use crate::{
             config::Config,
-            maps::{DisabledMapProvider, MapProvider},
+            maps::{MapProvider, NominatimAdapter},
             ws::{circle_hub::CircleHub, hub::WsHub},
         };
         use governor::{Quota, RateLimiter};
@@ -367,7 +376,7 @@ mod tests {
         };
         let http_client = reqwest::Client::new();
         let map_provider: std::sync::Arc<dyn MapProvider> =
-            std::sync::Arc::new(DisabledMapProvider);
+            std::sync::Arc::new(NominatimAdapter::new(http_client.clone()));
         let acoustic_limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
             NonZeroU32::new(5).unwrap(),
         )));
@@ -745,7 +754,7 @@ mod tests {
     async fn redis_unavailable_returns_503() {
         use crate::{
             config::Config,
-            maps::{DisabledMapProvider, MapProvider},
+            maps::{MapProvider, NominatimAdapter},
             ws::{circle_hub::CircleHub, hub::WsHub},
         };
         use governor::{Quota, RateLimiter};
@@ -772,7 +781,7 @@ mod tests {
 
         let http_client = reqwest::Client::new();
         let map_provider: std::sync::Arc<dyn MapProvider> =
-            std::sync::Arc::new(DisabledMapProvider);
+            std::sync::Arc::new(NominatimAdapter::new(http_client.clone()));
         let acoustic_limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
             NonZeroU32::new(5).unwrap(),
         )));
@@ -851,10 +860,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn canonical_url_uses_original_uri_when_nested() {
+        // Router::nest strips the prefix from parts.uri (e.g. /api/push/subscribe
+        // becomes /subscribe). NIP-98 binding must use the original client-facing
+        // URL so the signed `u` tag matches.
+        let state = make_state().await;
+        let mut parts = make_parts("POST", "/subscribe");
+        parts.extensions.insert(axum::extract::OriginalUri(
+            "https://api.sentinelmesh.io/api/push/subscribe"
+                .parse()
+                .unwrap(),
+        ));
+        assert_eq!(
+            canonical_url(&parts, &state.config),
+            "https://api.sentinelmesh.io/api/push/subscribe"
+        );
+    }
+
+    #[tokio::test]
     async fn canonical_url_host_header_port_stripping() {
         use crate::{
             config::Config,
-            maps::{DisabledMapProvider, MapProvider},
+            maps::{MapProvider, NominatimAdapter},
             ws::{circle_hub::CircleHub, hub::WsHub},
         };
         use governor::{Quota, RateLimiter};
@@ -869,7 +896,7 @@ mod tests {
             .expect("Redis required");
         let http_client = reqwest::Client::new();
         let map_provider: std::sync::Arc<dyn MapProvider> =
-            std::sync::Arc::new(DisabledMapProvider);
+            std::sync::Arc::new(NominatimAdapter::new(http_client.clone()));
         let acoustic_limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
             NonZeroU32::new(5).unwrap(),
         )));

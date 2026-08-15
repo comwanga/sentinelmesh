@@ -12,6 +12,7 @@ interface ImportMetaEnv {
   readonly VITE_CHAT_INBOX_RELAY_URL?: string
   readonly VITE_CHAT_COMMUNITY_RELAY_URL?: string
   readonly VITE_CHAT_DISCOVERY_RELAYS?: string
+  readonly VITE_DISABLE_SERVICE_WORKER?: string
 }
 
 interface ImportMeta {
